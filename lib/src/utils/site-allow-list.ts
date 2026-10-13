@@ -37,6 +37,13 @@ export const SITE_ALLOW_LIST_CACHE_MS = 10 * 60 * 1000
 /** The ENS registry, at the same address on every chain ENS is deployed to. */
 export const ENS_REGISTRY_ADDRESS = "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"
 
+/**
+ * The longest chain answer read, in bytes. A record of a thousand sites is a
+ * few tens of kilobytes, and an answer of millions of bytes overflows the
+ * stack of the hex test, so anything longer is refused before it is read.
+ */
+const MAX_CHAIN_ANSWER_BYTES = 128 * 1024
+
 const LOG_PREFIX = "[SiteAllowList]"
 const ENTRY_SEPARATOR = /[\s,]+/
 const ENS_LABEL = /^[a-z0-9-]+$/
@@ -45,6 +52,7 @@ const WORD_BYTES = 32
 const ADDRESS_BYTES = 20
 const SELECTOR_BYTES = 4
 const HEX_RADIX = 16
+const HEX_PREFIX_LENGTH = 2
 
 const RESOLVER_SELECTOR = selector("resolver(bytes32)")
 const TEXT_SELECTOR = selector("text(bytes32,string)")
@@ -155,6 +163,14 @@ function encodeTextCall(node: string, key: string): string {
 }
 
 function resultBytes(result: unknown, subject: string): Uint8Array {
+  if (
+    typeof result === "string" &&
+    result.length > HEX_PREFIX_LENGTH + MAX_CHAIN_ANSWER_BYTES * 2
+  ) {
+    throw new Error(
+      `${subject} answered ${result.length} characters, longer than ${MAX_CHAIN_ANSWER_BYTES} bytes of hex data.`,
+    )
+  }
   if (typeof result !== "string" || !/^0x([0-9a-fA-F]{2})*$/.test(result)) {
     throw new Error(`${subject} answered something that is not hex data.`)
   }

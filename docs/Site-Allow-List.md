@@ -74,6 +74,8 @@ The answer is "refused" when:
 
 - no endpoint is set,
 - the endpoint does not answer, or answers an error,
+- an answer is longer than `MAX_CHAIN_ANSWER_BYTES`, 128 KiB of data, far more
+  than any list of sites needs,
 - the name has no resolver,
 - the record is empty, unreadable, or names no clean origin,
 - the name setting is not a plain lower-case name,
