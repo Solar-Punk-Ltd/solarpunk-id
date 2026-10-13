@@ -12,11 +12,19 @@
  *
  * Key model (master key = the account wallet's private key): the per-app secret
  * derives straight from the master key (`deriveSecret(master, appOrigin)`).
+ *
+ * While the master key is unlocked here, and only here, it also signs the
+ * site's chat binding (docs/Chat-Binding.md): the account's statement that the
+ * address of that app secret is its chat address on the site. One binding per
+ * site is kept on the connection, so a reconnect reuses it.
  */
+import { PrivateKey } from '@ethersphere/bee-js'
+import { type ChatBinding, acceptedChatBinding } from '@snaha/swarm-id'
 import {
   type ConnectedApp,
   type SyncedAccount,
   appSessionDuration,
+  createChatBinding,
   deriveSecret,
   serializeSyncedAccount,
   stampsReachableByApp,
@@ -32,7 +40,12 @@ import type { Account } from '$lib/types'
  * Write the connected-app entry into the account record (this is what fires the
  * storage event the proxy iframe authenticates from).
  */
-function saveConnection(account: Account, request: ConnectRequest, appSecret: string): void {
+function saveConnection(
+  account: Account,
+  request: ConnectRequest,
+  appSecret: string,
+  chatBinding: ChatBinding | undefined,
+): void {
   const now = Date.now()
   const connection: ConnectedApp = {
     appUrl: request.appOrigin,
@@ -42,8 +55,31 @@ function saveConnection(account: Account, request: ConnectRequest, appSecret: st
     appSecret,
     lastConnectedAt: now,
     connectedUntil: now + appSessionDuration(account.settings),
+    chatBinding,
   }
   account.connectApp(connection)
+}
+
+/**
+ * The binding this account already keeps for the site, if it still names this
+ * site, the address of this app secret and this account. Anything else is
+ * replaced, never handed over.
+ */
+function keptChatBinding(
+  account: Account,
+  appOrigin: string,
+  appSecret: string,
+): ChatBinding | undefined {
+  const kept = account.connectedApps.find((app) => app.appUrl === appOrigin)?.chatBinding
+  return acceptedChatBinding(
+    kept,
+    {
+      site: appOrigin,
+      chatAddress: new PrivateKey(appSecret).publicKey().address().toHex(),
+      signer: account.id.toHex(),
+    },
+    { allowLocalHttp: import.meta.env.DEV },
+  )
 }
 
 /**
@@ -97,7 +133,12 @@ export function partitionHandoverAccount(
  * without one is refused rather than producing a session that cannot upload
  * and cannot be told it was revoked.
  */
-function sendSecretToOpener(account: Account, request: ConnectRequest, appSecret: string): void {
+function sendSecretToOpener(
+  account: Account,
+  request: ConnectRequest,
+  appSecret: string,
+  chatBinding: ChatBinding | undefined,
+): void {
   if (!request.partitionChallenge || !window.opener) {
     return
   }
@@ -109,6 +150,7 @@ function sendSecretToOpener(account: Account, request: ConnectRequest, appSecret
       secret: appSecret,
       account: partitionHandoverAccount(account.toSyncedRecord(), request.appOrigin),
       networkSettings: networkSettingsStore.settings,
+      chatBinding,
     },
   }
   // The account collections and network settings are Svelte $state proxies,
@@ -129,8 +171,13 @@ export async function completeConnect(
 ): Promise<void> {
   const masterKey = strip0x(privateKeyFromEntropy(entropy))
   const appSecret = await deriveSecret(masterKey, request.appOrigin)
-  saveConnection(account, request, appSecret)
-  sendSecretToOpener(account, request, appSecret)
+  const chatBinding =
+    keptChatBinding(account, request.appOrigin, appSecret) ??
+    createChatBinding(masterKey, request.appOrigin, new Date(), {
+      allowLocalHttp: import.meta.env.DEV,
+    })
+  saveConnection(account, request, appSecret, chatBinding)
+  sendSecretToOpener(account, request, appSecret, chatBinding)
 }
 
 /** The still-valid prior connection to this app, if the account has one. */
@@ -154,7 +201,8 @@ export function reuseConnection(account: Account, request: ConnectRequest): bool
   if (!existing?.appSecret) {
     return false
   }
-  saveConnection(account, request, existing.appSecret)
-  sendSecretToOpener(account, request, existing.appSecret)
+  const chatBinding = keptChatBinding(account, request.appOrigin, existing.appSecret)
+  saveConnection(account, request, existing.appSecret, chatBinding)
+  sendSecretToOpener(account, request, existing.appSecret, chatBinding)
   return true
 }

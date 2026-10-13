@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { STORAGE_CHALLENGE_KEY } from '@snaha/swarm-id/internal'
 
+import { isAcceptedSite } from '$lib/accepted-site'
+
 /**
  * A dApp connection request, parsed from the URL hash the @snaha/swarm-id
  * client puts on the connect popup (e.g. #origin=…&appName=…&challenge=…).
@@ -39,6 +41,9 @@ function deriveAppName(origin: string): string {
 }
 
 let request = $state<ConnectRequest | undefined>(undefined)
+// The site the last link named when `isAcceptedSite` refused it, for the
+// page to say so instead of offering accounts.
+let refusedSite = $state<string | undefined>(undefined)
 // Whether the connect that just completed was the account's FIRST to this app
 // (no active connected-app entry at select time). Set by the chooser right
 // before the handshake; the done page keys the drive-picker variant off it.
@@ -51,6 +56,10 @@ export const connectStore = {
 
   get firstConnect() {
     return firstConnect
+  },
+
+  get refusedSite() {
+    return refusedSite
   },
 
   setFirstConnect(value: boolean) {
@@ -69,6 +78,12 @@ export const connectStore = {
     if (!appOrigin) {
       return request !== undefined
     }
+    if (!isAcceptedSite(appOrigin)) {
+      request = undefined
+      refusedSite = appOrigin
+      return false
+    }
+    refusedSite = undefined
 
     // Storage partitioning detection: the proxy iframe wrote this challenge
     // to localStorage right before opening the popup. If we can't read it
@@ -97,6 +112,7 @@ export const connectStore = {
 
   clear() {
     request = undefined
+    refusedSite = undefined
     firstConnect = false
   },
 }

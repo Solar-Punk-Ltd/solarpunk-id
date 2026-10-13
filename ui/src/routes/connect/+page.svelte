@@ -12,6 +12,7 @@
   import { goto } from '$app/navigation'
   import { resolve } from '$app/paths'
 
+  import { chatBindingNotice } from '$lib/chat-binding-notice'
   import AccountList from '$lib/components/account-list.svelte'
   import AccountStartChoice from '$lib/components/account-start-choice.svelte'
   import AppHeader from '$lib/components/app-header.svelte'
@@ -133,7 +134,18 @@
   <AppHeader />
 
   <main class="flex w-full flex-1 flex-col items-center justify-center px-8 pb-24">
-    {#if missingRequest}
+    {#if connectStore.refusedSite}
+      <div class="flex w-full max-w-96 flex-col items-center gap-8">
+        <div class="flex flex-col items-center gap-2">
+          <CircleAlert class="text-destructive size-5" />
+          <div class="flex flex-col items-center text-center">
+            <p class="text-sm font-bold">This site cannot connect</p>
+            <p class="text-sm break-all">{connectStore.refusedSite}</p>
+            <p class="text-sm">Swarm ID connects only to a site at a plain https address.</p>
+          </div>
+        </div>
+      </div>
+    {:else if missingRequest}
       <div class="flex w-full max-w-96 flex-col items-center gap-8">
         <div class="flex flex-col items-center gap-2">
           <CircleAlert class="text-destructive size-5" />
@@ -162,6 +174,7 @@
           <div class="flex flex-col items-center text-center">
             <p class="text-lg font-bold">Connect to {request.appName}</p>
             <p class="text-sm">{request.appOrigin}</p>
+            <p class="text-muted-foreground mt-2 text-sm">{chatBindingNotice(request.appOrigin)}</p>
           </div>
         </div>
 
