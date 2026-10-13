@@ -1228,13 +1228,11 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     expect(String(createCalls[0][1])).toBe(BATCH_ID_HEX)
   })
 
-  // A partitioned session keeps its device id in the iframe's OWN (partitioned)
-  // storage, which nothing outside the iframe can read. Surfacing the id is what
-  // let a page answer whether that storage survives a reload — on real Safari it
-  // does (#584, measured on iOS 18.7 / Safari 26.6). What is still unmeasured is
-  // ITP's ~30-day eviction of a dormant account, which would make every session
-  // a new device in the roster (#570).
-  it("reports the proxy's device id in the connection info", async () => {
+  // The device id is the frame's own: the lease and the roster identify this
+  // device by it, and nothing an app does needs it. Handing it to every page
+  // that embeds the frame gave each of them a stable per-browser identifier, so
+  // it stays inside the frame (review P2-4).
+  it("keeps the device id inside the frame, out of the connection info", async () => {
     const challenge = await startPartitionedConnect()
     await sendSetSecret(challenge, {
       account: serializeSyncedAccount(makeSyncedAccount()),
@@ -1244,9 +1242,11 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     expect(storedId).toBeTruthy()
 
     const infos = messagesOfType("connectionInfoChanged")
-    const reported = infos.map((info) => info.deviceId).filter(Boolean)
-    expect(reported).not.toHaveLength(0)
-    for (const id of reported) expect(id).toBe(storedId)
+    expect(infos).not.toHaveLength(0)
+    for (const info of infos) {
+      expect(info).not.toHaveProperty("deviceId")
+      expect(JSON.stringify(info)).not.toContain(storedId)
+    }
   })
 
   it("answers a bus lease-request by yielding and announcing the release", async () => {
