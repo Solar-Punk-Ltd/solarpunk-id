@@ -90,8 +90,7 @@ Keep PRs small and focused on a single concern.
 - **E2E and browser tests**: `tests/*.test.ts` in `ui/` and `demo/` (Playwright)
 - **Integration tests**: `lib/test/integration/` (Vitest) against a local Bee cluster — run in CI
   by `integration-tests.yml`, and locally once `pnpm dev:cluster:start` is up
-- **Live tests**: `lib/test/live/` and `ui/`'s `test:live` — opt-in, they self-skip without a
-  configured endpoint
+- **Live tests**: `lib/test/live/`, opt-in, they self-skip without a configured endpoint
 
 Run tests with:
 
