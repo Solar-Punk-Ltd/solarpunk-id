@@ -473,7 +473,8 @@ Done:
   iframe, the connect popup's `window.opener` `postMessage` reaches it, the hydrated view
   builds a working stamper, a chunk uploads and reads back byte-identical, and the device id
   holds across a reload. A private window passes the same five checks, with its own device id,
-  discarded when the window closes.
+  discarded when the window closes. Apps no longer receive the device id, so this is no longer
+  checked ([Hardening.md](Hardening.md)).
 
 Not yet written:
 

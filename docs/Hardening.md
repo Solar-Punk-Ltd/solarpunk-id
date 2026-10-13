@@ -1,10 +1,10 @@
 # Hardening
 
-What the identity site does to close the P2 and P3 findings of the 2026-10-14
-security review. Each section says what changed, where it lives, and the
+What the identity site does to keep its pages, its stored keys and its
+sessions safe. Each section says why, what changed, where it lives, and the
 constant that tunes it.
 
-## The pages refuse to run inside a frame (P2-3)
+## The pages refuse to run inside a frame
 
 Served from Swarm through bzz.link, the site cannot send `X-Frame-Options` or a
 `frame-ancestors` header, and a meta CSP cannot carry `frame-ancestors`. So any
@@ -24,7 +24,7 @@ Safari backup prompt, because those navigate to the account pages.
 - Tests: `ui/src/lib/frame-guard.test.ts`, and the browser journey
   `ui/tests/framing.test.ts`.
 
-## Every use of the connect window's site checks it first (P3-1)
+## Every use of the connect window's site checks it first
 
 The site arrives in the connect window's own link, written by whoever opened
 it, and becomes the app secret's derivation label and the key its connection
@@ -40,7 +40,7 @@ or store under such a site:
   (`ui/src/lib/stores/accounts.svelte.ts`).
 - Code: `ui/src/lib/accepted-site.ts` (`isCleanSite`, `requireCleanSite`).
 
-## Keys are sealed at rest (P2-2)
+## Keys are sealed at rest
 
 Key material in `localStorage` is stored encrypted:
 
@@ -105,7 +105,7 @@ stored accounts are read with their keys open (`accountsLoaded`).
   wrapping key. It keeps the plain keys out of the files a profile is stored
   in, out of storage dumps and out of backups of the browser profile.
 
-## A restored session checks it was not ended before its first write, and a session lasts 7 days (P2-6)
+## A restored session checks it was not ended before its first write, and a session lasts 7 days
 
 A session the frame restores from storage, from shared storage or from a
 partition's own saved session, now asks the account's published state whether
@@ -131,7 +131,7 @@ A session the person connects in this load writes without the check.
 - `DEFAULT_SESSION_DURATION` in `lib/src/utils/constants.ts` is now 7 days
   (was 30). An account's own setting still overrides it.
 
-## Apps no longer receive the device id (P2-4)
+## Apps no longer receive the device id
 
 The frame's device id is how the lease and the device roster identify this
 device. It was sent to every embedding page in `connectionInfoChanged`, which
@@ -139,7 +139,7 @@ gave each site a stable identifier for the browser. It now stays inside the
 frame. `ConnectionInfo` has no `deviceId`, and the demo's Safari check no
 longer compares it across reloads.
 
-## A backup prompt for Safari's 7-day storage limit (P2-7)
+## A backup prompt for Safari's 7-day storage limit
 
 Safari deletes everything a site's scripts stored after 7 days in which the
 person did not use the site, and the account on this device goes with it.
