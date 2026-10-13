@@ -1401,3 +1401,89 @@ describe("updateAfterWrite capacity guard (#416)", () => {
     ).rejects.toThrow(/is full/)
   })
 })
+
+describe("UtilizationAwareStamper.stampDataChunk (a stamp handed to an app)", () => {
+  const SIGNER_KEY = new PrivateKey(
+    new Uint8Array(32).map((_, i) => (i + 7) & 0xff),
+  ).toHex()
+  const OWNER = new EthAddress("00".repeat(20))
+  const ENCRYPTION_KEY = new Uint8Array(32).map((_, i) => (i * 3 + 1) & 0xff)
+  const DEPTH = 20
+  const BUCKET = 0x0abc
+  const SLOT_OFFSET = 4
+
+  const cache = {
+    getAllChunks: async () => [],
+    putChunk: async () => undefined,
+  } as unknown as UtilizationStoreDB
+
+  async function boundStamper(): Promise<UtilizationAwareStamper> {
+    const stamper = await UtilizationAwareStamper.create(
+      SIGNER_KEY,
+      TEST_BATCH_ID,
+      DEPTH,
+      cache,
+      OWNER,
+      ENCRYPTION_KEY,
+    )
+    stamper.bindPartition({
+      partition: 1,
+      partitionCount: PARTITION_COUNT,
+      localCounter: new Uint32Array(NUM_BUCKETS),
+    })
+    return stamper
+  }
+
+  const slotOf = (index: Uint8Array): number =>
+    new DataView(index.buffer, index.byteOffset, index.byteLength).getUint32(
+      SLOT_OFFSET,
+      false,
+    )
+
+  it("stamps a data slot, past the reserved ones, and a new slot each call", async () => {
+    const stamper = await boundStamper()
+    const address = makeAddressInBucket(BUCKET, 1)
+
+    const first = slotOf(stamper.stampDataChunk(address).index)
+    const second = slotOf(stamper.stampDataChunk(address).index)
+
+    expect(first).toBeGreaterThanOrEqual(PARTITION_COUNT)
+    expect(second).toBeGreaterThanOrEqual(PARTITION_COUNT)
+    expect(second).not.toBe(first)
+  })
+
+  it("refuses the account's own lock SOC rather than hand out its reserved slot", async () => {
+    const stamper = await boundStamper()
+    const backupKeyHex = await deriveSecret(
+      uint8ArrayToHex(ENCRYPTION_KEY),
+      BACKUP_KEY_LABEL,
+    )
+    const backupOwner = new PrivateKey(backupKeyHex).publicKey().address()
+    const lockSoc = lockSocAddress(TEST_BATCH_ID, 0, backupOwner)
+
+    expect(() => stamper.stampDataChunk(lockSoc)).toThrow(
+      expect.objectContaining({ name: "ReservedSlotError" }),
+    )
+  })
+
+  it("refuses a registered counter or state chunk", async () => {
+    const stamper = await boundStamper()
+    const counterChunk = makeAddressInBucket(BUCKET, 2)
+    stamper.markReservedUtilizationChunk(counterChunk)
+
+    expect(() => stamper.stampDataChunk(counterChunk)).toThrow(
+      expect.objectContaining({ name: "ReservedSlotError" }),
+    )
+  })
+
+  it("refuses the intent SOC while its slot is reserved", async () => {
+    const stamper = await boundStamper()
+    const intentSoc = makeAddressInBucket(BUCKET, 3)
+
+    await stamper.withIntentSocSlot(intentSoc, 0, async () => {
+      expect(() => stamper.stampDataChunk(intentSoc)).toThrow(
+        expect.objectContaining({ name: "ReservedSlotError" }),
+      )
+    })
+  })
+})
