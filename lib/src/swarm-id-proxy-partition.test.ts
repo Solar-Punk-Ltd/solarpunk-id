@@ -207,6 +207,7 @@ import { BatchId, EthAddress, PrivateKey } from "@ethersphere/bee-js"
 
 import { SwarmIdProxy, PUBLISH_DEBOUNCE_MS } from "./swarm-id-proxy"
 import type { ProxyConfig } from "./swarm-id-proxy"
+import { allowingSites } from "./test-fixtures"
 import { SignalingTransport } from "./bus/signaling-transport"
 import { busChannelName } from "./bus/account-bus"
 import { BusMessageSchema } from "./bus/messages"
@@ -326,7 +327,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
   let storageListener: (event: StorageEvent) => void
 
   /** (Re)create the proxy under a fresh window mock; keeps `localStorageFake`. */
-  function mountProxy(config?: ProxyConfig): void {
+  function mountProxy(config: Partial<ProxyConfig> = {}): void {
     const listeners: Record<string, unknown> = {}
     const mockWindow = {
       addEventListener: vi.fn((type: string, listener: unknown) => {
@@ -348,7 +349,10 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     vi.stubGlobal("window", mockWindow)
     vi.stubGlobal("localStorage", localStorageFake)
 
-    proxy = new SwarmIdProxy(config)
+    proxy = new SwarmIdProxy({
+      siteAllowList: allowingSites(PARENT_ORIGIN),
+      ...config,
+    })
     messageListener = listeners["message"] as MessageListener
     storageListener = listeners["storage"] as (event: StorageEvent) => void
   }

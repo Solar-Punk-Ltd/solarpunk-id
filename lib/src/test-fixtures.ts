@@ -13,6 +13,7 @@ import type {
   ConnectedApp,
   PostageStamp,
 } from "./schemas"
+import type { SiteAllowList } from "./utils/site-allow-list"
 
 export const TEST_ETH_ADDRESS_HEX = "a".repeat(40)
 export const TEST_ETH_ADDRESS_2_HEX = "b".repeat(40)
@@ -117,5 +118,22 @@ export function createPostageStamp(
     exists: true,
     createdAt: 1700000000000,
     ...overrides,
+  }
+}
+
+/**
+ * An allow list that answers from `origins` alone, for tests that are not
+ * about how the list is read (`utils/site-allow-list.test.ts` is).
+ */
+export function allowingSites(...origins: string[]): SiteAllowList {
+  return {
+    check: async (origin) =>
+      origins.includes(origin)
+        ? { allowed: true }
+        : {
+            allowed: false,
+            reason: "not-listed",
+            message: `${origin} is not on the test allow list.`,
+          },
   }
 }
