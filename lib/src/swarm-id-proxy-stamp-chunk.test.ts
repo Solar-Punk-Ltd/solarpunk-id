@@ -40,6 +40,7 @@ import {
   SWARM_ENCRYPTION_LABEL,
   deriveSecretSync,
 } from "./utils/key-derivation"
+import { allowingSites } from "./test-fixtures"
 import { hexToUint8Array } from "./utils/hex"
 
 type StampChunkMessage = {
@@ -177,7 +178,9 @@ describe("SwarmIdProxy stampChunk", () => {
 
   /** A fresh frame over the same storage, as a reload leaves it */
   const reloadProxy = () => {
-    proxy = new SwarmIdProxy()
+    proxy = new SwarmIdProxy({
+      siteAllowList: allowingSites(PARENT_ORIGIN, OTHER_ORIGIN),
+    })
     messageListener = listeners["message"] as typeof messageListener
   }
 
