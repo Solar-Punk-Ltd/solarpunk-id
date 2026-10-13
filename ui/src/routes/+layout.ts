@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Pure client-side SPA: the identity UI runs entirely in the browser
-// (WebAuthn, wallet signing, iframe proxy), so SSR is off. Routes are still
-// prerendered as client-rendered HTML shells: GitHub Pages serves only real
-// files (the adapter's index.html fallback never kicks in there), so deep
-// links like /proxy and /connect would otherwise 404 in deployments.
+// (WebAuthn, wallet signing, iframe proxy), so SSR is off. No route is
+// prerendered either. The build is the adapter's `index.html` fallback and the
+// assets, and a host serves that one page for every route. On Swarm that is the
+// website's error document. A prerendered `connect.html` beside the
+// `connect/done.html` folder would instead make Bee redirect `/connect` to
+// `/connect/` (see `$lib/hosting/swarm-website`).
 export const ssr = false
-export const prerender = true

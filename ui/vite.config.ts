@@ -18,11 +18,10 @@ import { stampWorkerDev } from '../lib/dev/vite-stamp-worker.js'
  *
  * - the dev funding seam, `$lib/payment/dev-funding`, the one module
  *   production code may reach it through;
- * - the `/dev` route, which imports it directly and keeps its own copy. Its
- *   `prerender = false` only keeps a `dev.html` out of the static output — the
- *   adapter's `index.html` fallback serves the route anyway wherever the host
- *   has a catch-all, and the client router then loads its chunk, dev tools and
- *   all, on the production domain. The stub answers 404.
+ * - the `/dev` route, which imports it directly and keeps its own copy. No
+ *   route is prerendered, and the adapter's `index.html` fallback serves every
+ *   path, so the client router would load its chunk, dev tools and all, on the
+ *   production domain. The stub answers 404.
  *
  * The two are swapped differently. The seam's import is redirected to the stub
  * module: a plugin rather than a `resolve.alias` entry, because SvelteKit's
@@ -31,8 +30,7 @@ import { stampWorkerDev } from '../lib/dev/vite-stamp-worker.js'
  * plugin does get the absolute path, which is what the pattern matches. The
  * route's page keeps its id and is handed the stub's SOURCE instead: SvelteKit
  * looks a route's component up in the Vite manifest by its source path, and a
- * redirected id is simply not there. (Its `+page.ts` needs no swap — it
- * carries only `prerender = false`, and imports nothing.)
+ * redirected id is simply not there.
  *
  * Verify with a build, not by reading: CI greps the built assets for markers
  * that sit on the leak path (`resolveLocalRail` → the local rail → the solver
