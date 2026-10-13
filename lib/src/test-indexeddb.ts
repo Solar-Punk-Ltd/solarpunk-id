@@ -208,3 +208,28 @@ export function createUnopenableIndexedDB() {
     open: () => failedRequest<never>("IndexedDB could not be opened"),
   }
 }
+
+/**
+ * An IndexedDB whose open is blocked, as by another tab holding an older
+ * version open, and never goes on. Install it with
+ * `vi.stubGlobal("indexedDB", ...)`.
+ */
+export function createBlockedIndexedDB() {
+  return {
+    open() {
+      const req = request<never>()
+      later(() => req.onblocked?.({ target: req }))
+      return req
+    },
+  }
+}
+
+/**
+ * An IndexedDB whose open never settles. Install it with
+ * `vi.stubGlobal("indexedDB", ...)`.
+ */
+export function createHangingIndexedDB() {
+  return {
+    open: () => request<never>(),
+  }
+}

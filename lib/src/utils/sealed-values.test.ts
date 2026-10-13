@@ -8,7 +8,9 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import {
+  createBlockedIndexedDB,
   createFakeIndexedDB,
+  createHangingIndexedDB,
   createUnopenableIndexedDB,
 } from "../test-indexeddb"
 
@@ -29,6 +31,7 @@ describe("sealed values", () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
@@ -125,6 +128,34 @@ describe("sealed values", () => {
 
     expect(openedValue(sealed)).toBeUndefined()
     expect(isSealedValueUnavailable(sealed)).toBe(true)
+  })
+
+  it("treats a blocked IndexedDB open as one that failed, so sealing goes on for the page", async () => {
+    const sealed = await (await freshModule()).sealValue(SECRET)
+    vi.stubGlobal("indexedDB", createBlockedIndexedDB())
+    const {
+      sealValue,
+      openedValue,
+      primeSealedValues,
+      isSealedValueUnavailable,
+    } = await freshModule()
+
+    const forThisPage = await sealValue("written in this page")
+    await primeSealedValues([sealed])
+
+    expect(openedValue(forThisPage)).toBe("written in this page")
+    expect(isSealedValueUnavailable(sealed)).toBe(true)
+  })
+
+  it("gives up on an IndexedDB open that never settles, and seals for the page", async () => {
+    vi.stubGlobal("indexedDB", createHangingIndexedDB())
+    const { sealValue, openedValue } = await freshModule()
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+
+    const sealing = sealValue(SECRET)
+    await vi.runAllTimersAsync()
+
+    expect(openedValue(await sealing)).toBe(SECRET)
   })
 
   it("keeps a non-extractable wrapping key, made once for every caller", async () => {
