@@ -555,6 +555,7 @@ describe("snapshotContainsContribution", () => {
 describe("mergeConnectedApps — chat binding", () => {
   const SITE = "https://viewer.example.com"
   const ACCOUNT_KEY = "5a".repeat(32)
+  const ACCOUNT = new PrivateKey(ACCOUNT_KEY).publicKey().address().toHex()
   const older = createChatBinding(
     ACCOUNT_KEY,
     SITE,
@@ -574,6 +575,7 @@ describe("mergeConnectedApps — chat binding", () => {
     const [merged] = mergeConnectedApps(
       [app({ lastConnectedAt: 1_000_000, chatBinding: older })],
       [app({ lastConnectedAt: 2_000_000 })],
+      ACCOUNT,
     )
 
     expect(merged.lastConnectedAt).toBe(2_000_000)
@@ -582,11 +584,11 @@ describe("mergeConnectedApps — chat binding", () => {
 
   it("keeps the binding on a tie with an entry that carries none", () => {
     expect(
-      mergeConnectedApps([app({})], [app({ chatBinding: older })])[0]
+      mergeConnectedApps([app({})], [app({ chatBinding: older })], ACCOUNT)[0]
         .chatBinding,
     ).toEqual(older)
     expect(
-      mergeConnectedApps([app({ chatBinding: older })], [app({})])[0]
+      mergeConnectedApps([app({ chatBinding: older })], [app({})], ACCOUNT)[0]
         .chatBinding,
     ).toEqual(older)
   })
@@ -595,6 +597,7 @@ describe("mergeConnectedApps — chat binding", () => {
     const [merged] = mergeConnectedApps(
       [app({ lastConnectedAt: 2_000_000, chatBinding: older })],
       [app({ lastConnectedAt: 1_000_000, chatBinding: newer })],
+      ACCOUNT,
     )
 
     expect(merged.lastConnectedAt).toBe(2_000_000)
@@ -614,9 +617,42 @@ describe("mergeConnectedApps — chat binding", () => {
     const [merged] = mergeConnectedApps(
       [app({ lastConnectedAt: 1_000_000, chatBinding: older })],
       [app({ lastConnectedAt: 2_000_000, chatBinding: forged })],
+      ACCOUNT,
     )
 
     expect(merged.lastConnectedAt).toBe(2_000_000)
+    expect(merged.chatBinding).toEqual(older)
+  })
+
+  it("keeps a binding over a copy of it with only the date moved later", () => {
+    const dateEdited = {
+      ...older,
+      message: older.message.replace(
+        "2026-10-14T12:00:00.000Z",
+        "2999-01-01T00:00:00.000Z",
+      ),
+    }
+    const [merged] = mergeConnectedApps(
+      [app({ lastConnectedAt: 1_000_000, chatBinding: older })],
+      [app({ lastConnectedAt: 2_000_000, chatBinding: dateEdited })],
+      ACCOUNT,
+    )
+
+    expect(merged.chatBinding).toEqual(older)
+  })
+
+  it("keeps this account's binding over a far-future one another account signed", () => {
+    const otherAccount = createChatBinding(
+      "6b".repeat(32),
+      SITE,
+      new Date("2999-01-01T00:00:00.000Z"),
+    )
+    const [merged] = mergeConnectedApps(
+      [app({ lastConnectedAt: 1_000_000, chatBinding: older })],
+      [app({ lastConnectedAt: 2_000_000, chatBinding: otherAccount })],
+      ACCOUNT,
+    )
+
     expect(merged.chatBinding).toEqual(older)
   })
 
@@ -624,6 +660,7 @@ describe("mergeConnectedApps — chat binding", () => {
     const [merged] = mergeConnectedApps(
       [app({ chatBinding: older })],
       [app({ revokedAt: 2_000_000, disconnectedAt: 2_000_000 })],
+      ACCOUNT,
     )
 
     expect(merged.revokedAt).toBe(2_000_000)

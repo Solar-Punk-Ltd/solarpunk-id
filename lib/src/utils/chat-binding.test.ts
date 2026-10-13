@@ -353,30 +353,44 @@ describe("newerChatBinding", () => {
   })()
 
   it("picks the binding with the later date, whichever side it is on", () => {
-    expect(newerChatBinding(older, newer, SITE)).toEqual(newer)
-    expect(newerChatBinding(newer, older, SITE)).toEqual(newer)
+    expect(newerChatBinding(older, newer, SITE, ACCOUNT_ADDRESS)).toEqual(newer)
+    expect(newerChatBinding(newer, older, SITE, ACCOUNT_ADDRESS)).toEqual(newer)
   })
 
   it("picks the one that is there over none", () => {
-    expect(newerChatBinding(undefined, older, SITE)).toEqual(older)
-    expect(newerChatBinding(older, undefined, SITE)).toEqual(older)
-    expect(newerChatBinding(undefined, undefined, SITE)).toBeUndefined()
+    expect(newerChatBinding(undefined, older, SITE, ACCOUNT_ADDRESS)).toEqual(
+      older,
+    )
+    expect(newerChatBinding(older, undefined, SITE, ACCOUNT_ADDRESS)).toEqual(
+      older,
+    )
+    expect(
+      newerChatBinding(undefined, undefined, SITE, ACCOUNT_ADDRESS),
+    ).toBeUndefined()
   })
 
   it("keeps the first on a tie", () => {
     const same = { ...older }
-    expect(newerChatBinding(older, same, SITE)).toBe(older)
+    expect(newerChatBinding(older, same, SITE, ACCOUNT_ADDRESS)).toBe(older)
   })
 
   it("ranks a binding whose message does not parse below any that does", () => {
     const broken = { message: "not a binding", signature: older.signature }
-    expect(newerChatBinding(broken, older, SITE)).toEqual(older)
-    expect(newerChatBinding(older, broken, SITE)).toEqual(older)
+    expect(newerChatBinding(broken, older, SITE, ACCOUNT_ADDRESS)).toEqual(
+      older,
+    )
+    expect(newerChatBinding(older, broken, SITE, ACCOUNT_ADDRESS)).toEqual(
+      older,
+    )
   })
 
   it("never lets a far-future binding that does not verify beat a valid older one", () => {
-    expect(newerChatBinding(forged, older, SITE)).toEqual(older)
-    expect(newerChatBinding(older, forged, SITE)).toEqual(older)
+    expect(newerChatBinding(forged, older, SITE, ACCOUNT_ADDRESS)).toEqual(
+      older,
+    )
+    expect(newerChatBinding(older, forged, SITE, ACCOUNT_ADDRESS)).toEqual(
+      older,
+    )
   })
 
   it("never lets a far-future binding for another site beat this site's", () => {
@@ -385,8 +399,44 @@ describe("newerChatBinding", () => {
       "https://other.example.com",
       FAR_FUTURE,
     )
-    expect(newerChatBinding(elsewhere, older, SITE)).toEqual(older)
-    expect(newerChatBinding(older, elsewhere, SITE)).toEqual(older)
+    expect(newerChatBinding(elsewhere, older, SITE, ACCOUNT_ADDRESS)).toEqual(
+      older,
+    )
+    expect(newerChatBinding(older, elsewhere, SITE, ACCOUNT_ADDRESS)).toEqual(
+      older,
+    )
+  })
+
+  it("never lets a copy with only its date moved later beat the original", () => {
+    // The old signature over the edited message still recovers an address,
+    // just not the account's.
+    const dateEdited = {
+      ...older,
+      message: older.message.replace(DATE_TEXT, FAR_FUTURE.toISOString()),
+    }
+    expect(verifyChatBinding(dateEdited).site).toBe(SITE)
+    expect(newerChatBinding(dateEdited, older, SITE, ACCOUNT_ADDRESS)).toEqual(
+      older,
+    )
+    expect(newerChatBinding(older, dateEdited, SITE, ACCOUNT_ADDRESS)).toEqual(
+      older,
+    )
+  })
+
+  it("never lets a far-future binding another account signed beat this account's", () => {
+    const otherAccount = createChatBinding("cd".repeat(32), SITE, FAR_FUTURE)
+    expect(
+      newerChatBinding(otherAccount, older, SITE, ACCOUNT_ADDRESS),
+    ).toEqual(older)
+    expect(
+      newerChatBinding(older, otherAccount, SITE, ACCOUNT_ADDRESS),
+    ).toEqual(older)
+  })
+
+  it("compares the account in any case and with or without 0x", () => {
+    const bare = ACCOUNT_ADDRESS.slice(2).toUpperCase()
+    expect(newerChatBinding(newer, older, SITE, bare)).toEqual(newer)
+    expect(newerChatBinding(older, newer, SITE, bare)).toEqual(newer)
   })
 
   it("ranks two bindings that do not verify by date, the first on a tie", () => {
@@ -394,9 +444,13 @@ describe("newerChatBinding", () => {
       ...forged,
       message: forged.message.replace("2999", "2998"),
     }
-    expect(newerChatBinding(earlierForged, forged, SITE)).toEqual(forged)
-    expect(newerChatBinding(forged, earlierForged, SITE)).toEqual(forged)
+    expect(
+      newerChatBinding(earlierForged, forged, SITE, ACCOUNT_ADDRESS),
+    ).toEqual(forged)
+    expect(
+      newerChatBinding(forged, earlierForged, SITE, ACCOUNT_ADDRESS),
+    ).toEqual(forged)
     const same = { ...forged }
-    expect(newerChatBinding(forged, same, SITE)).toBe(forged)
+    expect(newerChatBinding(forged, same, SITE, ACCOUNT_ADDRESS)).toBe(forged)
   })
 })
