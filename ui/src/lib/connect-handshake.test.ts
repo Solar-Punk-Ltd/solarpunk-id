@@ -112,6 +112,31 @@ describe('partitionHandoverAccount', () => {
     }
   })
 
+  // Each connected site's entry can carry that site's chat binding, which links
+  // the account to its chat there. The frame this goes to runs inside the page
+  // of the site being connected, so it gets that site's binding and no other.
+  it("carries only this site's chat binding", () => {
+    const ACCOUNT_KEY = '5a'.repeat(32)
+    const OTHER_ORIGIN = 'https://other.example.com'
+    const date = new Date('2026-10-14T12:00:00.000Z')
+    const own = createChatBinding(ACCOUNT_KEY, APP_ORIGIN, date)
+    const other = createChatBinding(ACCOUNT_KEY, OTHER_ORIGIN, date)
+    const account = makeAccount()
+    account.connectedApps = [
+      { ...account.connectedApps[0], chatBinding: own },
+      { appUrl: OTHER_ORIGIN, appName: 'Other', lastConnectedAt: 1_000_000, chatBinding: other },
+    ]
+
+    const payload = partitionHandoverAccount(account, APP_ORIGIN)
+
+    const apps = payload.connectedApps as Record<string, unknown>[]
+    expect(apps.map((app) => app.appUrl)).toEqual([APP_ORIGIN, OTHER_ORIGIN])
+    expect(apps[0].chatBinding).toEqual(own)
+    expect(apps[1].chatBinding).toBeUndefined()
+    expect(JSON.stringify(payload)).not.toContain(other.signature)
+    expect(account.connectedApps[1].chatBinding).toEqual(other)
+  })
+
   // The proxy REFUSES a handover whose account does not parse, so a narrowing
   // that quietly drops a required field no longer degrades the session — it
   // ends it. Nothing else checks this sender against that receiver, and the
