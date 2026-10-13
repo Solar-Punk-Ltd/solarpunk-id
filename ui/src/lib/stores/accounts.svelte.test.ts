@@ -360,6 +360,40 @@ describe('Account.setAppStamp', () => {
   })
 })
 
+// An app entry is keyed by its site, and the site comes from the connect
+// window's link. Both writers that take one check it (review P3-1).
+describe('Account refuses a site that is not a clean origin', () => {
+  const DIRTY_SITE = 'https://app.example.com/path'
+
+  it('records no connection for it', () => {
+    let commits = 0
+    const account = new Account(signedInRecord(), () => commits++)
+
+    expect(() =>
+      account.connectApp({ appUrl: DIRTY_SITE, appName: 'Test App', lastConnectedAt: 1 }),
+    ).toThrow(/not accepted/)
+
+    expect(account.connectedApps).toHaveLength(0)
+    expect(commits).toBe(0)
+  })
+
+  it('points no drive for it, even at an entry already stored under it', () => {
+    let commits = 0
+    const account = new Account(
+      {
+        ...signedInRecord(),
+        connectedApps: [{ appUrl: DIRTY_SITE, appName: 'Test App', lastConnectedAt: 1 }],
+      },
+      () => commits++,
+    )
+
+    account.setAppStamp(DIRTY_SITE, new BatchId('c'.repeat(64)))
+
+    expect(account.connectedApps[0].postageStampBatchID).toBeUndefined()
+    expect(commits).toBe(0)
+  })
+})
+
 describe('Account.setAccess', () => {
   it('swaps the vault while signed in', () => {
     const account = new Account(signedInRecord(), noCommit)
