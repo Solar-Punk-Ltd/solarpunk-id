@@ -4759,6 +4759,8 @@ export class SwarmIdProxy {
    * write path as an upload, so it is returned only after the coordinator has
    * published the partition counter, the guarantee an upload's ack carries.
    * It also needs the stamper state saved, and refuses when that save fails.
+   * A restored session stamps only once its session check allows writes, as
+   * every write does (`ensureCanWrite`).
    * The account's own lock and counter chunks never
    * come through here, they stay inside the frame and go through its node.
    */
@@ -4769,7 +4771,7 @@ export class SwarmIdProxy {
     const { requestId, chunk } = message
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
       if (this.isSubsidisedModeActive()) throw subsidisedStampRefusal()
       const prepared = prepareChunkToStamp(chunk, {
         appSecret: this.appSecret!,

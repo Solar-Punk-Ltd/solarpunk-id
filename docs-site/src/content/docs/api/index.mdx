@@ -951,8 +951,9 @@ Each refusal is `upload-unavailable` with the reason in the table, and its messa
 
 **Throws:**
 
-- `SwarmIdError` `not-authenticated` if no session is connected
+- `SwarmIdError` `not-authenticated` if no session is connected, or a session restored from storage turns out to have been ended while no page was open
 - `SwarmIdError` `upload-unavailable` if the account cannot stamp, with reason `subsidised` in subsidised mode
+- `SwarmIdError` `upload-unavailable` with reason `session-unconfirmed` when a session restored from storage could not yet check that it was not ended. A stamp from a restored session waits for that check, as every write does
 - `SwarmIdError` `upload-unavailable` with reason `app-stamp-count`, `app-stamp-rate`, `app-bucket-share` or `app-slice-full` when the app has reached one of its [limits](#limits-per-app)
 - `SwarmIdError` `invalid-request` for a chunk of the wrong shape or an owner that is one of the account's keys
 - `SwarmIdError` `partition-contended` or `lease-lost` as for an upload
