@@ -43,7 +43,10 @@ function onWire(app: ConnectedApp): ConnectedApp {
 }
 
 function fold(local: ConnectedApp[], incoming: ConnectedApp[]): ConnectedApp[] {
-  return restoreLocalSessionFields(mergeConnectedApps(local, incoming), local)
+  return restoreLocalSessionFields(
+    mergeConnectedApps(local, incoming, ACCOUNT_ID),
+    local,
+  )
 }
 
 describe("restoreLocalSessionFields — a peer's Disconnect", () => {

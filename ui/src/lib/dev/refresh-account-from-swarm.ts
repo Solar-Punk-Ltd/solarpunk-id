@@ -80,7 +80,11 @@ export async function refreshAccountFromSwarm(accountId: string): Promise<Refres
     // collections with the local ones using the same LWW/tombstone primitives
     // the publish side uses, so a local change can't be clobbered by an older
     // remote value (and a local tombstone survives a stale remote active copy).
-    const mergedApps = mergeConnectedApps(account.connectedApps, state.connectedApps)
+    const mergedApps = mergeConnectedApps(
+      account.connectedApps,
+      state.connectedApps,
+      account.id.toHex(),
+    )
     const mergedStamps = mergePostageStamps(account.postageStamps, state.postageStamps)
     // Keep *this* device first-class even if no feed lists it yet.
     const mergedDevices = mergeDevices(

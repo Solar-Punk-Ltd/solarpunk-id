@@ -1754,6 +1754,7 @@ export class SwarmIdProxy {
           deltaFoldView(snapshot),
         ],
         mergeDevicesList(account.devices, snapshot.metadata.devices),
+        account.id.toHex(),
       )
       const foldedAccount = foldedToSyncedAccount({
         id: account.id,

@@ -362,34 +362,52 @@ function signedAt(binding: ChatBinding): number {
   }
 }
 
-function verifiesForSite(binding: ChatBinding, site: string): boolean {
+/**
+ * Whether `account` signed `binding` and it names `site`. The chat address is
+ * not checked: deriving it needs the account key, which a merge does not
+ * hold, and only the account key can sign a binding its signer check passes.
+ */
+function signedByAccountForSite(
+  binding: ChatBinding,
+  site: string,
+  account: string,
+): boolean {
   try {
-    return verifyChatBinding(binding, MERGE_SITE_OPTIONS).site === site
+    const verified = verifyChatBinding(binding, MERGE_SITE_OPTIONS)
+    return (
+      verified.site === site &&
+      normalizeAddress(verified.signer) === normalizeAddress(account)
+    )
   } catch {
     return false
   }
 }
 
 /**
- * Of two bindings for the connection to `site`, the one that verifies and
- * names `site` over one that does not, then the later date, the first on a
- * tie, and whichever is there when only one is. The date is the signer's own
- * claim, so a binding that does not verify must never outrank one that does
- * by claiming a later one. A binding is never withdrawn, only replaced by a
- * newer one (docs/Chat-Binding.md), so this is the whole of how two copies of
- * a connection merge theirs.
+ * Of two bindings for the connection to `site` in `account`'s state, the one
+ * `account` signed for `site` over one it did not, then the later date, the
+ * first on a tie, and whichever is there when only one is. The date is the
+ * signer's own claim, and any message with a valid signature recovers SOME
+ * signer, so a binding whose date was edited, or that another key signed, must
+ * never outrank the account's own by claiming a later one. A binding is never
+ * withdrawn, only replaced by a newer one (docs/Chat-Binding.md), so this is
+ * the whole of how two copies of a connection merge theirs.
+ *
+ * @param account - the account's address, its `id`, in any case and with or
+ *   without `0x`
  */
 export function newerChatBinding(
   first: ChatBinding | undefined,
   second: ChatBinding | undefined,
   site: string,
+  account: string,
 ): ChatBinding | undefined {
   if (!first || !second) {
     return first ?? second
   }
-  const firstVerifies = verifiesForSite(first, site)
-  if (firstVerifies !== verifiesForSite(second, site)) {
-    return firstVerifies ? first : second
+  const firstAccepted = signedByAccountForSite(first, site, account)
+  if (firstAccepted !== signedByAccountForSite(second, site, account)) {
+    return firstAccepted ? first : second
   }
   return signedAt(second) > signedAt(first) ? second : first
 }

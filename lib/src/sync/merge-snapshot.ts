@@ -61,6 +61,7 @@ export function mergeSnapshotWithRemote(
     connectedApps: mergeConnectedApps(
       local.connectedApps,
       remote.connectedApps,
+      local.accountId,
     ),
     postageStamps: mergePostageStamps(
       local.postageStamps,
@@ -106,9 +107,14 @@ export function mergeDevicesList(local: Device[], remote: Device[]): Device[] {
   return Array.from(merged.values())
 }
 
+/**
+ * @param accountId - the account whose connected apps these are, the only
+ *   signer whose chat binding a merge ranks by date over another
+ */
 export function mergeConnectedApps(
   local: ConnectedApp[],
   remote: ConnectedApp[],
+  accountId: string,
 ): ConnectedApp[] {
   const keyOf = (a: ConnectedApp) => a.appUrl
   // Last-writer-wins per app on TWO clocks, the way devices and stamps merge:
@@ -124,8 +130,8 @@ export function mergeConnectedApps(
   //   no membership field, so without a clock of its own it ties with every
   //   stale copy of the entry and loses — the same correction #663 made for a
   //   device's name.
-  // - The chat binding overlays on its own signed date, a binding that
-  //   verifies for the entry's site first. A proxy frame holds only its own
+  // - The chat binding overlays on its own signed date, a binding the
+  //   account signed for the entry's site first. A proxy frame holds only its own
   //   site's binding and the bus carries none, so an entry that wins
   //   membership can arrive without the binding its peer kept, and a binding
   //   is never withdrawn, only replaced (docs/Chat-Binding.md).
@@ -157,6 +163,7 @@ export function mergeConnectedApps(
       winner.chatBinding,
       loser.chatBinding,
       winner.appUrl,
+      accountId,
     )
     merged.set(
       keyOf(a),

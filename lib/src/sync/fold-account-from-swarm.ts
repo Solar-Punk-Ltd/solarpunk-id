@@ -157,7 +157,7 @@ async function doFoldAccountFromSwarm(opts: {
   // above, and guarantees `foldAccount` has a view carrying `accountPublicKey`.
   if (views.length === 0) return undefined
 
-  const account = foldAccount(views, devices)
+  const account = foldAccount(views, devices, opts.accountId)
   // Coalesced callers share this ONE result (see `inFlightFolds`). Freeze the
   // arrays they iterate so a stray mutation throws loudly instead of silently
   // corrupting a concurrent caller's view.
