@@ -1686,6 +1686,47 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       expect(window.open).not.toHaveBeenCalled()
     })
 
+    // Review P2-2: the handed-over secret, the derivation key and the stamp's
+    // signer key are sealed at rest with this partition's own wrapping key.
+    it("keeps no key in plain text in the stored session", async () => {
+      await connectPartitioned()
+
+      const raw =
+        localStorageFake.getItem(partitionSessionStorageKey(PARENT_ORIGIN)) ??
+        ""
+      expect(raw).not.toBe("")
+      for (const secret of [
+        "33".repeat(32),
+        "11".repeat(32),
+        "22".repeat(32),
+      ]) {
+        expect(raw).not.toContain(secret)
+      }
+    })
+
+    // What a lost wrapping key looks like from here: a sealed session that
+    // does not open. It is no session, never one read some other way.
+    it("is signed out when the stored session cannot be opened", async () => {
+      await connectPartitioned()
+      const key = partitionSessionStorageKey(PARENT_ORIGIN)
+      const record = JSON.parse(localStorageFake.getItem(key)!) as {
+        data: string
+      }
+      const flipped =
+        record.data.slice(0, -1) + (record.data.endsWith("0") ? "1" : "0")
+      localStorageFake.setItem(
+        key,
+        JSON.stringify({ ...record, data: flipped }),
+      )
+
+      await reload()
+
+      const infos = messagesOfType("connectionInfoChanged")
+      expect(infos[infos.length - 1]?.canUpload).toBe(false)
+      expect(infos[infos.length - 1]?.identity).toBeUndefined()
+      await vi.waitFor(() => expect(storedSession()).toBeUndefined())
+    })
+
     it("keeps the deadline the session was given, not a fresh one", async () => {
       await connectPartitioned()
       const record = storedSession()!
