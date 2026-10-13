@@ -601,6 +601,25 @@ describe("mergeConnectedApps — chat binding", () => {
     expect(merged.chatBinding).toEqual(newer)
   })
 
+  it("keeps a valid binding over a far-future one that does not verify", () => {
+    const signed = createChatBinding(
+      ACCOUNT_KEY,
+      SITE,
+      new Date("2999-01-01T00:00:00.000Z"),
+    )
+    const forged = {
+      ...signed,
+      signature: `${signed.signature.slice(0, -2)}1d`,
+    }
+    const [merged] = mergeConnectedApps(
+      [app({ lastConnectedAt: 1_000_000, chatBinding: older })],
+      [app({ lastConnectedAt: 2_000_000, chatBinding: forged })],
+    )
+
+    expect(merged.lastConnectedAt).toBe(2_000_000)
+    expect(merged.chatBinding).toEqual(older)
+  })
+
   it("keeps the binding past a revoke", () => {
     const [merged] = mergeConnectedApps(
       [app({ chatBinding: older })],

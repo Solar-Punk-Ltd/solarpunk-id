@@ -342,26 +342,58 @@ describe("newerChatBinding", () => {
     SITE,
     new Date("2026-10-15T12:00:00.000Z"),
   )
+  const FAR_FUTURE = new Date("2999-01-01T00:00:00.000Z")
+  /** A far-future binding whose recovery byte is neither 27 nor 28. */
+  const forged = (() => {
+    const signed = createChatBinding(ACCOUNT_KEY, SITE, FAR_FUTURE)
+    return { ...signed, signature: `${signed.signature.slice(0, -2)}1d` }
+  })()
 
   it("picks the binding with the later date, whichever side it is on", () => {
-    expect(newerChatBinding(older, newer)).toEqual(newer)
-    expect(newerChatBinding(newer, older)).toEqual(newer)
+    expect(newerChatBinding(older, newer, SITE)).toEqual(newer)
+    expect(newerChatBinding(newer, older, SITE)).toEqual(newer)
   })
 
   it("picks the one that is there over none", () => {
-    expect(newerChatBinding(undefined, older)).toEqual(older)
-    expect(newerChatBinding(older, undefined)).toEqual(older)
-    expect(newerChatBinding(undefined, undefined)).toBeUndefined()
+    expect(newerChatBinding(undefined, older, SITE)).toEqual(older)
+    expect(newerChatBinding(older, undefined, SITE)).toEqual(older)
+    expect(newerChatBinding(undefined, undefined, SITE)).toBeUndefined()
   })
 
   it("keeps the first on a tie", () => {
     const same = { ...older }
-    expect(newerChatBinding(older, same)).toBe(older)
+    expect(newerChatBinding(older, same, SITE)).toBe(older)
   })
 
   it("ranks a binding whose message does not parse below any that does", () => {
     const broken = { message: "not a binding", signature: older.signature }
-    expect(newerChatBinding(broken, older)).toEqual(older)
-    expect(newerChatBinding(older, broken)).toEqual(older)
+    expect(newerChatBinding(broken, older, SITE)).toEqual(older)
+    expect(newerChatBinding(older, broken, SITE)).toEqual(older)
+  })
+
+  it("never lets a far-future binding that does not verify beat a valid older one", () => {
+    expect(newerChatBinding(forged, older, SITE)).toEqual(older)
+    expect(newerChatBinding(older, forged, SITE)).toEqual(older)
+  })
+
+  it("never lets a far-future binding for another site beat this site's", () => {
+    const elsewhere = createChatBinding(
+      ACCOUNT_KEY,
+      "https://other.example.com",
+      FAR_FUTURE,
+    )
+    expect(newerChatBinding(elsewhere, older, SITE)).toEqual(older)
+    expect(newerChatBinding(older, elsewhere, SITE)).toEqual(older)
+  })
+
+  it("ranks two bindings that do not verify by date, the first on a tie", () => {
+    const earlierForged = {
+      ...forged,
+      message: forged.message.replace("2999", "2998"),
+    }
+    expect(newerChatBinding(earlierForged, forged, SITE)).toEqual(forged)
+    expect(newerChatBinding(forged, earlierForged, SITE)).toEqual(forged)
+    const same = { ...forged }
+    expect(newerChatBinding(forged, same, SITE)).toBe(forged)
   })
 })
