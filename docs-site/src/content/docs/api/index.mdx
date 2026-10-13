@@ -899,7 +899,17 @@ The whole chunk goes in, never an address: the iframe computes the address itsel
 
 Anything else is refused with `invalid-request`: a chunk that also names an address, an owner or a signature, a pre-signed chunk, and a single-owner chunk whose owner would be one of the account's own keys (the backup signer that owns its lock, partition state, device state and roster chunks, its postage signer, its ACT sharing key, its derivation and encryption keys, and the account address).
 
-The stamp goes through the same write path as an upload: the cross-tab write lock, the device's partition lease, and a fresh slot in the bucket. It is returned only once the bucket counter it spent is saved and, for an account shared between devices, published, which is the guarantee an upload's acknowledgement carries. Two calls never return the same bucket slot, and the slots the account keeps for its own bookkeeping are never handed out. The account's own lock and counter chunks stay inside the iframe and go through its own node.
+The stamp goes through the same write path as an upload: the cross-tab write lock, the device's partition lease, and a fresh slot in the bucket. It is returned only once the bucket counter it spent is saved and, for an account shared between devices, published, which is the guarantee an upload's acknowledgement carries. When the iframe cannot save the counter, the call is refused with `internal` and no stamp is returned, because a counter that was never saved could hand the same slot out again after a reload. Two different chunks never get the same bucket slot, and the slots the account keeps for its own bookkeeping are never handed out. The account's own lock and counter chunks stay inside the iframe and go through its own node.
+
+#### The same single-owner chunk again
+
+A chat sends every message as a new version of one single-owner chunk, its inbox, whose address never changes. The account's stamp is mutable, and on a mutable stamp Bee replaces a chunk stamped at the same slot when the new stamp has a newer timestamp. So when an app asks to stamp a single-owner chunk this device already stamped for it on this stamp, the iframe stamps it again at the same slot with a newer timestamp instead of spending a new one. A chat then keeps one slot for its inbox however many messages it sends.
+
+- Stamping again spends no slot, so it does not count against the bucket share or the account's own half. It still counts against the app's count and rate.
+- The timestamp is the current time, or one millisecond past the last stamp at that slot when the device's clock went back, so the new stamp always wins.
+- The iframe remembers the slot per app origin and per stamp in its own storage, beside the app's limits, so a reload keeps it. It remembers up to 256 addresses per app and stamp (`SOC_RESTAMP_SLOT_LIMIT` in `lib/src/proxy/soc-restamp-slots.ts`). Past that, a new address takes a new slot each time, as a content chunk does.
+- Only a slot this device took in its current partition lane is reused. On another device, or once this device holds another lane, the same address takes a new slot.
+- A content chunk always takes a new slot.
 
 In [subsidised mode](../subsidised-gateway/) the gateway stamps every upload, so there is no stamp of the account's to return: the call is refused with `upload-unavailable` and reason `subsidised`.
 
@@ -943,6 +953,7 @@ Each refusal is `upload-unavailable` with the reason in the table, and its messa
 - `SwarmIdError` `upload-unavailable` with reason `app-stamp-count`, `app-stamp-rate`, `app-bucket-share` or `app-slice-full` when the app has reached one of its [limits](#limits-per-app)
 - `SwarmIdError` `invalid-request` for a chunk of the wrong shape or an owner that is one of the account's keys
 - `SwarmIdError` `partition-contended` or `lease-lost` as for an upload
+- `SwarmIdError` `internal` when the bucket counter the stamp spent could not be saved, and no stamp is returned
 
 **Example:**
 
