@@ -124,10 +124,11 @@ export function mergeConnectedApps(
   //   no membership field, so without a clock of its own it ties with every
   //   stale copy of the entry and loses — the same correction #663 made for a
   //   device's name.
-  // - The chat binding overlays on its own signed date. A proxy frame holds
-  //   only its own site's binding and the bus carries none, so an entry that
-  //   wins membership can arrive without the binding its peer kept, and a
-  //   binding is never withdrawn, only replaced (docs/Chat-Binding.md).
+  // - The chat binding overlays on its own signed date, a binding that
+  //   verifies for the entry's site first. A proxy frame holds only its own
+  //   site's binding and the bus carries none, so an entry that wins
+  //   membership can arrive without the binding its peer kept, and a binding
+  //   is never withdrawn, only replaced (docs/Chat-Binding.md).
   //
   // Distinct apps still both survive (union).
   const recency = (a: ConnectedApp) =>
@@ -152,7 +153,11 @@ export function mergeConnectedApps(
             postageStampBatchIDAt: loser.postageStampBatchIDAt,
           }
         : winner
-    const chatBinding = newerChatBinding(winner.chatBinding, loser.chatBinding)
+    const chatBinding = newerChatBinding(
+      winner.chatBinding,
+      loser.chatBinding,
+      winner.appUrl,
+    )
     merged.set(
       keyOf(a),
       chatBinding === winner.chatBinding

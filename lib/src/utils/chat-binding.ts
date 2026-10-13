@@ -345,31 +345,49 @@ export function onlySiteChatBinding<
   })
 }
 
+// Local http is a development site's, and which sites a binding may name is
+// decided where it is signed, not where it is merged.
+const MERGE_SITE_OPTIONS: SiteOriginOptions = { allowLocalHttp: true }
+
 /** When a binding says it was signed, or minus infinity if it does not parse. */
 function signedAt(binding: ChatBinding): number {
   try {
-    // Local http is a development site's, and which sites a binding may name
-    // is decided where it is signed, not where it is merged.
     return Date.parse(
-      parseChatBindingMessage(binding.message, { allowLocalHttp: true }).date,
+      parseChatBindingMessage(binding.message, MERGE_SITE_OPTIONS).date,
     )
   } catch {
     return Number.NEGATIVE_INFINITY
   }
 }
 
+function verifiesForSite(binding: ChatBinding, site: string): boolean {
+  try {
+    return verifyChatBinding(binding, MERGE_SITE_OPTIONS).site === site
+  } catch {
+    return false
+  }
+}
+
 /**
- * Of two bindings for one site, the one with the later date, the first on a
- * tie, and whichever is there when only one is. A binding is never withdrawn,
- * only replaced by a newer one (docs/Chat-Binding.md), so this is the whole of
- * how two copies of a connection merge theirs.
+ * Of two bindings for the connection to `site`, the one that verifies and
+ * names `site` over one that does not, then the later date, the first on a
+ * tie, and whichever is there when only one is. The date is the signer's own
+ * claim, so a binding that does not verify must never outrank one that does
+ * by claiming a later one. A binding is never withdrawn, only replaced by a
+ * newer one (docs/Chat-Binding.md), so this is the whole of how two copies of
+ * a connection merge theirs.
  */
 export function newerChatBinding(
   first: ChatBinding | undefined,
   second: ChatBinding | undefined,
+  site: string,
 ): ChatBinding | undefined {
   if (!first || !second) {
     return first ?? second
+  }
+  const firstVerifies = verifiesForSite(first, site)
+  if (firstVerifies !== verifiesForSite(second, site)) {
+    return firstVerifies ? first : second
   }
   return signedAt(second) > signedAt(first) ? second : first
 }
