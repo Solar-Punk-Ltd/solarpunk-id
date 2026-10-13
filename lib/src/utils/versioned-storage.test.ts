@@ -149,3 +149,56 @@ describe("VersionedStorageManager — same-window change notification", () => {
     expect(() => writer.save([{ name: "x" }])).not.toThrow()
   })
 })
+
+describe("VersionedStorageManager — a sealed write that fails", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function sealedManager(storage: StorageAdapter, seal: () => void) {
+    return new VersionedStorageManager<Item>({
+      key: "sealed-failure-key",
+      currentVersion: 1,
+      storage,
+      parsers: { 1: createZodParser(ItemsSchema) },
+      sealing: {
+        seal: async (records) => {
+          seal()
+          return records
+        },
+        open: (data) => data,
+        prime: async () => undefined,
+      },
+    })
+  }
+
+  it("rejects when sealing fails, so the caller can tell the person, and later writes still run", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined)
+    let failing = true
+    const manager = sealedManager(new MemoryStorageAdapter(), () => {
+      if (failing) throw new Error("seal failed")
+    })
+
+    await expect(manager.save([{ name: "x" }])).rejects.toThrow("seal failed")
+    await expect(manager.update(() => [{ name: "x" }])).rejects.toThrow(
+      "seal failed",
+    )
+    failing = false
+    await manager.save([{ name: "y" }])
+
+    expect(manager.load()).toEqual([{ name: "y" }])
+  })
+
+  it("rejects when storage refuses the write", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined)
+    const storage = new MemoryStorageAdapter()
+    vi.spyOn(storage, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded")
+    })
+    const manager = sealedManager(storage, () => undefined)
+
+    await expect(manager.save([{ name: "x" }])).rejects.toThrow(
+      "quota exceeded",
+    )
+  })
+})

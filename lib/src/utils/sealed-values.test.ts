@@ -7,7 +7,10 @@
  * never read some other way.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { createFakeIndexedDB } from "../test-indexeddb"
+import {
+  createFakeIndexedDB,
+  createUnopenableIndexedDB,
+} from "../test-indexeddb"
 
 type SealedValues = typeof import("./sealed-values")
 
@@ -87,6 +90,41 @@ describe("sealed values", () => {
 
     expect(isSealedValue(SECRET)).toBe(false)
     expect(openedValue(SECRET)).toBeUndefined()
+  })
+
+  it("seals and opens for the page when indexedDB is null", async () => {
+    vi.stubGlobal("indexedDB", null)
+    const { sealValue, openedValue } = await freshModule()
+
+    const sealed = await sealValue(SECRET)
+
+    expect(openedValue(sealed)).toBe(SECRET)
+  })
+
+  it("seals and opens for the page when IndexedDB cannot be opened", async () => {
+    vi.stubGlobal("indexedDB", createUnopenableIndexedDB())
+    const { sealValue, openedValue } = await freshModule()
+
+    const sealed = await sealValue(SECRET)
+
+    expect(openedValue(sealed)).toBe(SECRET)
+  })
+
+  it("counts an earlier page's value as unavailable, not lost, when IndexedDB cannot be opened", async () => {
+    const sealed = await (await freshModule()).sealValue(SECRET)
+    vi.stubGlobal("indexedDB", createUnopenableIndexedDB())
+    const {
+      sealValue,
+      primeSealedValues,
+      openedValue,
+      isSealedValueUnavailable,
+    } = await freshModule()
+    await sealValue("written in this page")
+
+    await primeSealedValues([sealed])
+
+    expect(openedValue(sealed)).toBeUndefined()
+    expect(isSealedValueUnavailable(sealed)).toBe(true)
   })
 
   it("keeps a non-extractable wrapping key, made once for every caller", async () => {

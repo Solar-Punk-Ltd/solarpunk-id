@@ -21,7 +21,8 @@ import {
 } from '@snaha/swarm-id/internal'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { Account, accountsStore } from './accounts.svelte'
+import { ACCOUNT_SAVE_FAILED_TEXT, Account, accountsStore } from './accounts.svelte'
+import { toastStore } from './toast.svelte'
 
 // The store module reads `browser` and (indirectly, via the lib storage
 // manager) `window.localStorage` at import time — install both before it loads.
@@ -150,6 +151,22 @@ describe('persist read-merge-write (two-tab race)', () => {
 // A regression in this plumb reintroduces the echo of #707 silently.
 // Review P2-2: a connect leaves the app secret, the derivation key and every
 // signer key sealed in storage, never in plain text.
+describe('a save that fails', () => {
+  it('tells the person with a toast', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const show = vi.spyOn(toastStore, 'show')
+    vi.spyOn(window.localStorage, 'setItem').mockImplementationOnce(() => {
+      throw new Error('quota exceeded')
+    })
+
+    accountsStore.add(record(X_ID_HEX, 'x'))
+    await writesLanded()
+
+    expect(show).toHaveBeenCalledWith(ACCOUNT_SAVE_FAILED_TEXT)
+    vi.restoreAllMocks()
+  })
+})
+
 describe('persist keeps no key in plain text', () => {
   it('after an account is added and an app connected', async () => {
     const APP_SECRET = '5a'.repeat(32)
