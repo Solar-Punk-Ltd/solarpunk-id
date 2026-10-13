@@ -95,6 +95,16 @@ vi.mock("./sync/session-check", () => ({
   checkRestoredSession: vi.fn(() => restoredSessionVerdict.value),
 }))
 
+// Passes through, so a test can say this page could not reach the wrapping
+// key for one stored value, which is what a failed IndexedDB read leaves.
+vi.mock("./utils/sealed-values", async (importActual) => {
+  const actual = await importActual<typeof import("./utils/sealed-values")>()
+  return {
+    ...actual,
+    isSealedValueUnavailable: vi.fn(actual.isSealedValueUnavailable),
+  }
+})
+
 vi.mock("./storage/utilization-store", () => ({
   UtilizationStoreDB: vi.fn(function () {
     return {}
@@ -232,7 +242,11 @@ import { KNOWN_DEVICE_MAX_AGE_MS } from "./utils/active-devices"
 import { PRESENCE_INTERVAL_MS, PRESENCE_MAX_AGE_MS } from "./bus/presence"
 import { mergeDevicesList } from "./sync/merge-snapshot"
 import { checkRestoredSession } from "./sync/session-check"
-import { openedValue, sealValue } from "./utils/sealed-values"
+import {
+  isSealedValueUnavailable,
+  openedValue,
+  sealValue,
+} from "./utils/sealed-values"
 import { DEFAULT_BEE_NODE_URL } from "./schemas"
 import type {
   ConnectedApp,
@@ -1770,6 +1784,34 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       expect(infos[infos.length - 1]?.canUpload).toBe(false)
       expect(infos[infos.length - 1]?.identity).toBeUndefined()
       await vi.waitFor(() => expect(storedSession()).toBeUndefined())
+    })
+
+    // The wrapping key could not be read this page, so the session may still
+    // open on a later load. It is no session here, and the record stays.
+    it("keeps a stored session whose wrapping key this page could not read", async () => {
+      await connectPartitioned()
+      const key = partitionSessionStorageKey(PARENT_ORIGIN)
+      const record = JSON.parse(localStorageFake.getItem(key)!) as {
+        data: string
+      }
+      const unreachable =
+        record.data.slice(0, -1) + (record.data.endsWith("0") ? "1" : "0")
+      const stored = JSON.stringify({ ...record, data: unreachable })
+      localStorageFake.setItem(key, stored)
+      const isUnavailable = vi.mocked(isSealedValueUnavailable)
+      const actualIsUnavailable = isUnavailable.getMockImplementation()
+      isUnavailable.mockImplementation((sealed) => sealed === unreachable)
+      try {
+        await reload()
+
+        const infos = messagesOfType("connectionInfoChanged")
+        expect(infos[infos.length - 1]?.canUpload).toBe(false)
+        expect(infos[infos.length - 1]?.identity).toBeUndefined()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        expect(localStorageFake.getItem(key)).toBe(stored)
+      } finally {
+        isUnavailable.mockImplementation(actualIsUnavailable!)
+      }
     })
 
     it("keeps the deadline the session was given, not a fresh one", async () => {
