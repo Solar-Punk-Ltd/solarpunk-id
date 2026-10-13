@@ -6,6 +6,7 @@ import { BatchId } from "@ethersphere/bee-js"
 import { Binary } from "cafe-utility"
 import { makeEncryptedContentAddressedChunk } from "../chunk"
 import {
+  ACCOUNT_RESERVED_LANE_SHARE,
   CHUNK_SIZE,
   DATA_COUNTER_START,
   NUM_BUCKETS,
@@ -1485,5 +1486,114 @@ describe("UtilizationAwareStamper.stampDataChunk (a stamp handed to an app)", ()
         expect.objectContaining({ name: "ReservedSlotError" }),
       )
     })
+  })
+})
+
+describe("UtilizationAwareStamper app slice (app stamps and the account's own uploads)", () => {
+  const SIGNER_KEY = new PrivateKey(
+    new Uint8Array(32).map((_, i) => (i + 11) & 0xff),
+  ).toHex()
+  const OWNER = new EthAddress("00".repeat(20))
+  const ENCRYPTION_KEY = new Uint8Array(32).map((_, i) => (i * 5 + 3) & 0xff)
+  const DEPTH = 20
+  const BUCKET = 0x1234
+  const OTHER_BUCKET = 0x4321
+
+  const cache = {
+    getAllChunks: async () => [],
+    putChunk: async () => undefined,
+  } as unknown as UtilizationStoreDB
+
+  async function boundStamper(
+    localCounter = new Uint32Array(NUM_BUCKETS),
+  ): Promise<UtilizationAwareStamper> {
+    const stamper = await UtilizationAwareStamper.create(
+      SIGNER_KEY,
+      TEST_BATCH_ID,
+      DEPTH,
+      cache,
+      OWNER,
+      ENCRYPTION_KEY,
+    )
+    stamper.bindPartition({
+      partition: 0,
+      partitionCount: PARTITION_COUNT,
+      localCounter,
+    })
+    return stamper
+  }
+
+  const appSlice = (): number =>
+    Math.floor(
+      partitionCapacity(DEPTH, PARTITION_COUNT) *
+        (1 - ACCOUNT_RESERVED_LANE_SHARE),
+    )
+
+  it("keeps the top of each bucket lane for the account: the app slice is the rest", async () => {
+    const stamper = await boundStamper()
+
+    expect(stamper.appSliceCapacity()).toBe(appSlice())
+    expect(stamper.appSliceCapacity()).toBeGreaterThan(0)
+    expect(stamper.appSliceCapacity()).toBeLessThan(
+      partitionCapacity(DEPTH, PARTITION_COUNT),
+    )
+  })
+
+  it("refuses an app stamp once the bucket's app slice is used, and the account's own uploads still get the rest of the lane", async () => {
+    const stamper = await boundStamper()
+    for (let i = 0; i < appSlice(); i++) {
+      stamper.stampDataChunk(makeAddressInBucket(BUCKET, i))
+    }
+
+    expect(() =>
+      stamper.stampDataChunk(makeAddressInBucket(BUCKET, appSlice())),
+    ).toThrow(expect.objectContaining({ name: "AppSliceFullError" }))
+
+    const accountShare = partitionCapacity(DEPTH, PARTITION_COUNT) - appSlice()
+    for (let i = 0; i < accountShare; i++) {
+      expect(() =>
+        stamper.stamp(makeAddressInBucket(BUCKET, appSlice() + 1 + i)),
+      ).not.toThrow()
+    }
+    expect(() => stamper.stamp(makeAddressInBucket(BUCKET, 99))).toThrow(
+      /Bucket is full/,
+    )
+  })
+
+  it("does not spend a slot on a refused app stamp", async () => {
+    const counter = new Uint32Array(NUM_BUCKETS)
+    const stamper = await boundStamper(counter)
+    for (let i = 0; i < appSlice(); i++) {
+      stamper.stampDataChunk(makeAddressInBucket(BUCKET, i))
+    }
+
+    expect(() =>
+      stamper.stampDataChunk(makeAddressInBucket(BUCKET, appSlice())),
+    ).toThrow(expect.objectContaining({ name: "AppSliceFullError" }))
+    expect(stamper.getLocalCounter()?.[BUCKET]).toBe(appSlice())
+  })
+
+  it("refuses an app stamp in a bucket the account's own uploads already filled past the slice", async () => {
+    const stamper = await boundStamper()
+    for (let i = 0; i < appSlice(); i++) {
+      stamper.stamp(makeAddressInBucket(BUCKET, i))
+    }
+
+    expect(() =>
+      stamper.stampDataChunk(makeAddressInBucket(BUCKET, appSlice())),
+    ).toThrow(expect.objectContaining({ name: "AppSliceFullError" }))
+  })
+
+  it("reads the slice from the partition counter, so it holds after a reload or a handover", async () => {
+    const counter = new Uint32Array(NUM_BUCKETS)
+    counter[BUCKET] = appSlice()
+    const stamper = await boundStamper(counter)
+
+    expect(() =>
+      stamper.stampDataChunk(makeAddressInBucket(BUCKET, 0)),
+    ).toThrow(expect.objectContaining({ name: "AppSliceFullError" }))
+    expect(() =>
+      stamper.stampDataChunk(makeAddressInBucket(OTHER_BUCKET, 0)),
+    ).not.toThrow()
   })
 })
