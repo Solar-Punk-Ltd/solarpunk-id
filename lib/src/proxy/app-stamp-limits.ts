@@ -12,7 +12,7 @@
 import { z } from "zod"
 import { SwarmIdError } from "../errors"
 
-/** Stamps one app may take from one of the account's stamps, ever */
+/** Slots one app may spend from one of the account's stamps, ever. A stamp again at a slot already held spends none */
 export const APP_STAMP_COUNT_LIMIT = 10_000
 
 /** Stamps one app may take within one {@link APP_STAMP_RATE_WINDOW_MS} */
@@ -127,17 +127,19 @@ export function appStampRefusal(
   return undefined
 }
 
-/** The usage once one more stamp at a slot already held is counted */
+/**
+ * The usage once one more stamp at a slot already held is counted. It spends
+ * no slot, and the count bounds slots spent, so only the rate counts it.
+ */
 export function recordAppRestamp(
   usage: AppStampUsage,
   now: number,
 ): AppStampUsage {
   const current = windowIsCurrent(usage, now)
   return {
-    count: usage.count + 1,
+    ...usage,
     windowStart: current ? usage.windowStart : now,
     windowCount: current ? usage.windowCount + 1 : 1,
-    buckets: usage.buckets,
   }
 }
 
@@ -149,6 +151,7 @@ export function recordAppStamp(
 ): AppStampUsage {
   return {
     ...recordAppRestamp(usage, now),
+    count: usage.count + 1,
     buckets: { ...usage.buckets, [bucket]: (usage.buckets[bucket] ?? 0) + 1 },
   }
 }
