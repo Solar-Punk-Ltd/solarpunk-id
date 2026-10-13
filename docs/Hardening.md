@@ -68,6 +68,12 @@ absent and never read as plain text:
 - a partitioned session that cannot be opened is no session, and is removed
 - a key found in plain text counts as one that cannot be opened
 
+A failure to read the wrapping key at all, because IndexedDB returned an
+error, is not the same as a key that is gone. The account then reads as
+signed out for that page only: its stored record is left exactly as it is,
+no write in that page replaces it with the signed-out copy, and a later load
+that can read IndexedDB opens the keys again (`isSealedValueUnavailable`).
+
 Without IndexedDB there is nowhere to keep the key beside the data, so it lasts
 as long as the page and the next load reads as signed out.
 

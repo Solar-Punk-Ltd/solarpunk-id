@@ -66,10 +66,14 @@ export type StorageChangeListener<T> = (
  * Encryption of fields inside the stored records. Sealing is asynchronous and
  * reading storage is not, so `prime` opens what is stored into memory and
  * `open` then reads it synchronously. What `prime` could not open, `open`
- * treats as absent.
+ * treats as absent. `seal` is handed what is stored at the time of the write,
+ * so it can keep a stored record this page could not read.
  */
 export interface RecordSealing {
-  seal(records: Record<string, unknown>[]): Promise<Record<string, unknown>[]>
+  seal(
+    records: Record<string, unknown>[],
+    stored: unknown,
+  ): Promise<Record<string, unknown>[]>
   open(data: unknown): unknown
   prime(data: unknown): Promise<void>
 }
@@ -362,18 +366,25 @@ export class VersionedStorageManager<T> {
   async prime(): Promise<void> {
     const sealing = this.options.sealing
     if (!sealing) return
-    const stored = this.options.storage.getItem(this.options.key)
-    if (!stored) return
     try {
-      const parsed: unknown = JSON.parse(stored)
-      const versioned = VersionedStorageSchema.safeParse(parsed)
-      await sealing.prime(versioned.success ? versioned.data.data : parsed)
+      const stored = this.storedData()
+      if (stored === undefined) return
+      await sealing.prime(stored)
     } catch (e) {
       console.error(
         `[${this.options.loggerName ?? "Storage"}] Prime failed:`,
         e,
       )
     }
+  }
+
+  /** The records as stored, still sealed, or `undefined` when there are none. */
+  private storedData(): unknown {
+    const stored = this.options.storage.getItem(this.options.key)
+    if (!stored) return undefined
+    const parsed: unknown = JSON.parse(stored)
+    const versioned = VersionedStorageSchema.safeParse(parsed)
+    return versioned.success ? versioned.data.data : parsed
   }
 
   /**
@@ -441,7 +452,7 @@ export class VersionedStorageManager<T> {
     records: Record<string, unknown>[],
   ): Promise<Record<string, unknown>[]> {
     return this.options.sealing
-      ? this.options.sealing.seal(records)
+      ? this.options.sealing.seal(records, this.storedData())
       : Promise.resolve(records)
   }
 

@@ -17,6 +17,8 @@
  * (`openedValue`) for the rest of the page's life. A value that cannot be
  * opened, because the wrapping key is gone or the value was altered, stays
  * unopened: callers treat the key it held as absent, never as plain text.
+ * A value whose wrapping key could not be read at all, because IndexedDB
+ * failed, is unavailable rather than lost (`isSealedValueUnavailable`).
  */
 
 import { hexToUint8Array, uint8ArrayToHex } from "./hex"
@@ -179,10 +181,22 @@ export async function sealValue(plaintext: string): Promise<string> {
   return sealed
 }
 
+/**
+ * Values this page could not reach the wrapping key for. They may open on a
+ * later load, so what holds them must not be written over in this one.
+ */
+const unavailableThisPage = new Set<string>()
+
 async function openOne(sealed: string): Promise<void> {
+  let key: CryptoKey
+  try {
+    key = await getWrappingKey()
+  } catch {
+    unavailableThisPage.add(sealed)
+    return
+  }
   try {
     const bytes = hexToUint8Array(sealed.slice(SEALED_VALUE_PREFIX.length))
-    const key = await getWrappingKey()
     const plaintext = new TextDecoder().decode(
       await crypto.subtle.decrypt(
         { name: "AES-GCM", iv: bytes.slice(0, IV_BYTES) },
@@ -195,6 +209,15 @@ async function openOne(sealed: string): Promise<void> {
   } catch {
     // Left unopened: the wrapping key is gone, or the value was altered.
   }
+}
+
+/**
+ * Whether this page failed to reach the wrapping key for this value, as
+ * opposed to reaching it and finding the value will not open. Stays true for
+ * the rest of the page even if a later try opens it.
+ */
+export function isSealedValueUnavailable(sealed: string): boolean {
+  return unavailableThisPage.has(sealed)
 }
 
 /** Open these sealed values into memory, so `openedValue` can read them. */

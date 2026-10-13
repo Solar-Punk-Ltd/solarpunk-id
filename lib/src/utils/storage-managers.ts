@@ -18,6 +18,7 @@ import {
 } from "./versioned-storage"
 import {
   isSealedValue,
+  isSealedValueUnavailable,
   openedValue,
   primeSealedValues,
   sealValue,
@@ -338,13 +339,37 @@ function openStoredKeys(record: JsonRecord): JsonRecord {
   }
 }
 
+/** Whether this page could not reach the wrapping key for a key of this record. */
+function holdsUnavailableKeys(record: JsonRecord): boolean {
+  return storedKeys(record).some(
+    (value) => isSealedValue(value) && isSealedValueUnavailable(value),
+  )
+}
+
+/**
+ * The record to store for one being written. A signed-out record standing for
+ * a stored one whose keys this page could not reach is the in-memory remnant
+ * of `openStoredKeys`, and writing it would delete keys a later load can still
+ * open, so the stored record is kept as it is.
+ */
+function recordToStore(
+  record: JsonRecord,
+  storedById: Map<unknown, JsonRecord>,
+): Promise<JsonRecord> | JsonRecord {
+  if (holdsKeys(record)) return mapStoredKeys(record, sealValue)
+  const stored = storedById.get(record.id)
+  return stored && holdsUnavailableKeys(stored) ? stored : record
+}
+
 const accountKeySealing: RecordSealing = {
-  seal: (records) =>
-    Promise.all(
-      records.map((record) =>
-        holdsKeys(record) ? mapStoredKeys(record, sealValue) : record,
-      ),
-    ),
+  seal: (records, stored) => {
+    const storedById = new Map(
+      recordsOf(stored).map((record) => [record.id, record]),
+    )
+    return Promise.all(
+      records.map((record) => recordToStore(record, storedById)),
+    )
+  },
   open: (data) =>
     Array.isArray(data)
       ? data.map((record) =>
