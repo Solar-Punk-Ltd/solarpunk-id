@@ -21,6 +21,7 @@ import {
 } from "../test-fixtures"
 import {
   createFakeIndexedDB,
+  createUnopenableIndexedDB,
   createUnreadableIndexedDB,
 } from "../test-indexeddb"
 import { sealValue } from "./sealed-values"
@@ -417,6 +418,34 @@ describe("the accounts document keeps its keys sealed", () => {
     expect(isSignedOutAccount(failing.load()[0])).toBe(true)
     await failing.update((stored) => [...stored])
     await failing.save(failing.load())
+
+    expect(before).toBeDefined()
+    expect(sealedKey()).toBe(before)
+
+    vi.stubGlobal("indexedDB", working)
+    const later = (await freshPage()).createAccountsStorageManager()
+    await later.prime()
+    const [loaded] = later.load()
+    expect(isSignedOutAccount(loaded)).toBe(false)
+    if (isSignedOutAccount(loaded)) return
+    expect(loaded.derivationKey).toBe(DERIVATION_KEY)
+  })
+
+  it("refuses a sign-in on a page that seals with its own key, keeping the keys a later page can open", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined)
+    const working = createFakeIndexedDB()
+    vi.stubGlobal("indexedDB", working)
+    await (await freshPage()).createAccountsStorageManager().save([account()])
+    const sealedKey = () =>
+      (JSON.parse(raw()) as { data: { derivationKey?: string }[] }).data[0]
+        .derivationKey
+    const before = sealedKey()
+
+    vi.stubGlobal("indexedDB", createUnopenableIndexedDB())
+    const standIn = (await freshPage()).createAccountsStorageManager()
+    await standIn.prime()
+    expect(isSignedOutAccount(standIn.load()[0])).toBe(true)
+    await expect(standIn.save([account()])).rejects.toThrow()
 
     expect(before).toBeDefined()
     expect(sealedKey()).toBe(before)
