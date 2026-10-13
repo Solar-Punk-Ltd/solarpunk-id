@@ -203,6 +203,65 @@ describe("VersionedStorageManager — a sealed write that fails", () => {
   })
 })
 
+describe("VersionedStorageManager — a Web Lock request that fails", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  function sealedManager(storage: StorageAdapter, seal: () => void) {
+    return new VersionedStorageManager<Item>({
+      key: "lock-failure-key",
+      currentVersion: 1,
+      storage,
+      parsers: { 1: createZodParser(ItemsSchema) },
+      sealing: {
+        seal: async (records) => {
+          seal()
+          return records
+        },
+        open: (data) => data,
+        prime: async () => undefined,
+      },
+    })
+  }
+
+  it("writes in the window's own queue when the lock request itself is refused", async () => {
+    vi.stubGlobal("navigator", {
+      locks: {
+        request: () =>
+          Promise.reject(new DOMException("refused", "SecurityError")),
+      },
+    })
+    const manager = sealedManager(new MemoryStorageAdapter(), () => undefined)
+
+    await manager.save([{ name: "x" }])
+
+    expect(manager.load()).toEqual([{ name: "x" }])
+  })
+
+  it("does not run a write again when it fails while holding the lock", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined)
+    vi.stubGlobal("navigator", {
+      locks: {
+        request: (
+          _name: string,
+          _options: unknown,
+          callback: () => Promise<void>,
+        ) => callback(),
+      },
+    })
+    const seal = vi.fn(() => {
+      throw new Error("seal failed")
+    })
+    const manager = sealedManager(new MemoryStorageAdapter(), seal)
+
+    await expect(manager.save([{ name: "x" }])).rejects.toThrow("seal failed")
+
+    expect(seal).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe("VersionedStorageManager — two windows over one storage", () => {
   afterEach(() => {
     vi.unstubAllGlobals()
