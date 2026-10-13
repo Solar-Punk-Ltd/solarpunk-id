@@ -16,6 +16,7 @@ const SECRET = "ab".repeat(32)
 /** A fresh module, as a page load gets: nothing opened in memory yet. */
 async function freshModule(): Promise<SealedValues> {
   vi.resetModules()
+  // eslint-disable-next-line no-restricted-syntax -- a fresh module per page load is the point
   return import("./sealed-values")
 }
 

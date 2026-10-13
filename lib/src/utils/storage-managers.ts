@@ -13,8 +13,15 @@ import { z } from "zod"
 import {
   VersionedStorageManager,
   createLocalStorageManager,
+  type RecordSealing,
   type VersionParser,
 } from "./versioned-storage"
+import {
+  isSealedValue,
+  openedValue,
+  primeSealedValues,
+  sealValue,
+} from "./sealed-values"
 import type {
   Account,
   SyncedAccount,
@@ -224,6 +231,135 @@ export function serializePostageStamp(
 }
 
 // ============================================================================
+// Keys at rest (review P2-2)
+// ============================================================================
+
+/**
+ * The key material in a stored account, each sealed with `sealValue`: the
+ * derivation key, every connected app's secret, and every stamp's signer key.
+ * A signed-out record holds none of them (its vault is already encrypted).
+ */
+type JsonRecord = Record<string, unknown>
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function recordsOf(value: unknown): JsonRecord[] {
+  return Array.isArray(value) ? value.filter(isRecord) : []
+}
+
+function holdsKeys(record: JsonRecord): boolean {
+  return record.signedOutAt === undefined
+}
+
+/** Every stored key of a serialized account, in a fixed order. */
+function storedKeys(record: JsonRecord): unknown[] {
+  if (!holdsKeys(record)) return []
+  return [
+    record.derivationKey,
+    ...recordsOf(record.connectedApps).map((app) => app.appSecret),
+    ...recordsOf(record.postageStamps).map((stamp) => stamp.signerKey),
+  ].filter((value) => value !== undefined)
+}
+
+/**
+ * Rewrite every key of a serialized account through `transform`, keeping the
+ * rest of the record as it is.
+ */
+async function mapStoredKeys(
+  record: JsonRecord,
+  transform: (value: string) => Promise<string>,
+): Promise<JsonRecord> {
+  const key = async (value: unknown) =>
+    typeof value === "string" ? transform(value) : value
+  return {
+    ...record,
+    derivationKey: await key(record.derivationKey),
+    connectedApps: await Promise.all(
+      recordsOf(record.connectedApps).map(async (app) =>
+        app.appSecret === undefined
+          ? app
+          : { ...app, appSecret: await key(app.appSecret) },
+      ),
+    ),
+    postageStamps: await Promise.all(
+      recordsOf(record.postageStamps).map(async (stamp) => ({
+        ...stamp,
+        signerKey: await key(stamp.signerKey),
+      })),
+    ),
+  }
+}
+
+/**
+ * The sign-out remnant of an account whose keys could not be opened: the
+ * vault survives, so the person signs back in with their access method, and
+ * nothing else is read. There is no `encryptedState` snapshot to keep, so the
+ * sign-in restores the account from Swarm.
+ */
+function signedOutForUnreadableKeys(record: JsonRecord): JsonRecord {
+  return {
+    id: record.id,
+    name: record.name,
+    createdAt: record.createdAt,
+    access: record.access,
+    encryptedSeed: record.encryptedSeed,
+    signedOutAt: Date.now(),
+  }
+}
+
+/**
+ * The opened account, or its sign-out remnant when any key in it is not a
+ * sealed value this page opened. A key stored in plain text counts as not
+ * opened: there is no plain-text way in.
+ */
+function openStoredKeys(record: JsonRecord): JsonRecord {
+  if (!holdsKeys(record)) return record
+  const opened = (value: unknown): string | undefined =>
+    isSealedValue(value) ? openedValue(value) : undefined
+  if (storedKeys(record).some((value) => opened(value) === undefined)) {
+    return signedOutForUnreadableKeys(record)
+  }
+  const open = (value: unknown) =>
+    value === undefined ? undefined : opened(value)
+  return {
+    ...record,
+    derivationKey: open(record.derivationKey),
+    connectedApps: recordsOf(record.connectedApps).map((app) =>
+      app.appSecret === undefined
+        ? app
+        : { ...app, appSecret: open(app.appSecret) },
+    ),
+    postageStamps: recordsOf(record.postageStamps).map((stamp) => ({
+      ...stamp,
+      signerKey: open(stamp.signerKey),
+    })),
+  }
+}
+
+const accountKeySealing: RecordSealing = {
+  seal: (records) =>
+    Promise.all(
+      records.map((record) =>
+        holdsKeys(record) ? mapStoredKeys(record, sealValue) : record,
+      ),
+    ),
+  open: (data) =>
+    Array.isArray(data)
+      ? data.map((record) =>
+          isRecord(record) ? openStoredKeys(record) : record,
+        )
+      : data,
+  prime: (data) =>
+    primeSealedValues(
+      recordsOf(data)
+        .flatMap(storedKeys)
+        .filter((value): value is string => isSealedValue(value)),
+    ),
+}
+
+// ============================================================================
 // Storage Manager Factories
 // ============================================================================
 
@@ -239,6 +375,7 @@ export function createAccountsStorageManager(): VersionedStorageManager<Account>
     },
     serializer: serializeAccount,
     loggerName: "AccountsStorage",
+    sealing: accountKeySealing,
   })
 }
 

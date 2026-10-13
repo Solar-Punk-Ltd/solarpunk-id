@@ -63,6 +63,18 @@ export type StorageChangeListener<T> = (
 ) => void
 
 /**
+ * Encryption of fields inside the stored records. Sealing is asynchronous and
+ * reading storage is not, so `prime` opens what is stored into memory and
+ * `open` then reads it synchronously. What `prime` could not open, `open`
+ * treats as absent.
+ */
+export interface RecordSealing {
+  seal(records: Record<string, unknown>[]): Promise<Record<string, unknown>[]>
+  open(data: unknown): unknown
+  prime(data: unknown): Promise<void>
+}
+
+/**
  * Options for versioned storage
  */
 export interface VersionedStorageOptions<T> {
@@ -83,6 +95,13 @@ export interface VersionedStorageOptions<T> {
 
   /** Logger name for error messages */
   loggerName?: string
+
+  /**
+   * Seals fields of every record on write. With it, writes are asynchronous
+   * and queued per key in this window, a load reads only what `prime` opened,
+   * and listeners hear of a change once it is primed.
+   */
+  sealing?: RecordSealing
 }
 
 // ============================================================================
@@ -149,6 +168,13 @@ export class MemoryStorageAdapter implements StorageAdapter {
  */
 const SAME_WINDOW_WRITE_EVENT = "swarm-id-storage-write"
 
+/**
+ * Writes to a sealed key wait for sealing, so they are queued per key across
+ * every manager instance in the window, in call order. Otherwise a write that
+ * started first could land last.
+ */
+const writeQueues = new Map<string, Promise<void>>()
+
 interface SameWindowWriteDetail {
   key: string
   /** The writing manager, so it can skip notifying itself. */
@@ -208,9 +234,7 @@ export class VersionedStorageManager<T> {
       // Only handle events for our specific key
       if (event.key !== this.options.key) return
 
-      // Reload data and notify listeners
-      const data = this.load()
-      this.notifyListeners(data)
+      this.reloadAndNotify()
     }
 
     window.addEventListener("storage", this.boundStorageHandler)
@@ -222,9 +246,7 @@ export class VersionedStorageManager<T> {
       if (!detail || detail.key !== this.options.key || detail.source === this)
         return
 
-      const data = this.load()
-      this.notifyListeners(
-        data,
+      this.reloadAndNotify(
         detail.noRepublish ? { noRepublish: true } : undefined,
       )
     }
@@ -263,6 +285,14 @@ export class VersionedStorageManager<T> {
         detail: { key: this.options.key, source: this, noRepublish },
       }),
     )
+  }
+
+  private reloadAndNotify(change?: StorageChange): void {
+    if (!this.options.sealing) {
+      this.notifyListeners(this.load(), change)
+      return
+    }
+    void this.prime().then(() => this.notifyListeners(this.load(), change))
   }
 
   /**
@@ -307,7 +337,10 @@ export class VersionedStorageManager<T> {
     // Try to parse as versioned data
     const versioned = VersionedStorageSchema.safeParse(parsed)
     const version = versioned.success ? versioned.data.version : 0
-    const data = versioned.success ? versioned.data.data : parsed
+    const stored = versioned.success ? versioned.data.data : parsed
+    const data = this.options.sealing
+      ? this.options.sealing.open(stored)
+      : stored
 
     // Find appropriate parser
     const parser = this.options.parsers[version]
@@ -323,20 +356,104 @@ export class VersionedStorageManager<T> {
   }
 
   /**
-   * Save data to storage
+   * Open the sealed fields of what is stored into memory, so `load` can read
+   * them. A no-op without sealing.
    */
-  save(data: T[], options?: { noRepublish?: boolean }): void {
+  async prime(): Promise<void> {
+    const sealing = this.options.sealing
+    if (!sealing) return
+    const stored = this.options.storage.getItem(this.options.key)
+    if (!stored) return
     try {
-      // Apply serializer if provided
-      const serialized = this.options.serializer
-        ? data.map(this.options.serializer)
-        : data
+      const parsed: unknown = JSON.parse(stored)
+      const versioned = VersionedStorageSchema.safeParse(parsed)
+      await sealing.prime(versioned.success ? versioned.data.data : parsed)
+    } catch (e) {
+      console.error(
+        `[${this.options.loggerName ?? "Storage"}] Prime failed:`,
+        e,
+      )
+    }
+  }
 
+  /**
+   * Save data to storage. Resolves once written, which with sealing is after
+   * every earlier write to this key in this window.
+   */
+  save(data: T[], options?: { noRepublish?: boolean }): Promise<void> {
+    let serialized: Record<string, unknown>[]
+    try {
+      // Serialized now, so a caller changing `data` after the call cannot
+      // change what is written.
+      serialized = this.serialize(data)
+    } catch (e) {
+      console.error(`[${this.options.loggerName ?? "Storage"}] Save failed:`, e)
+      return Promise.resolve()
+    }
+    if (!this.options.sealing) {
+      this.write(serialized, options)
+      return Promise.resolve()
+    }
+    return this.enqueue(async () => {
+      this.write(await this.seal(serialized), options)
+    })
+  }
+
+  /**
+   * Read, change and write back as one step: the change sees what is stored
+   * when its turn comes, after every earlier write to this key in this window.
+   * A change that returns `undefined` writes nothing.
+   */
+  update(
+    mutate: (stored: T[]) => T[] | undefined,
+    options?: { noRepublish?: boolean },
+  ): Promise<void> {
+    return this.enqueue(async () => {
+      await this.prime()
+      const next = mutate(this.load())
+      if (next === undefined) return
+      this.write(await this.seal(this.serialize(next)), options)
+    })
+  }
+
+  /**
+   * Clear data from storage
+   */
+  clear(): Promise<void> {
+    const remove = () => {
+      this.options.storage.removeItem(this.options.key)
+      this.notifySameWindow()
+    }
+    if (!this.options.sealing) {
+      remove()
+      return Promise.resolve()
+    }
+    return this.enqueue(async () => remove())
+  }
+
+  private serialize(data: T[]): Record<string, unknown>[] {
+    return (
+      this.options.serializer ? data.map(this.options.serializer) : data
+    ) as Record<string, unknown>[]
+  }
+
+  private seal(
+    records: Record<string, unknown>[],
+  ): Promise<Record<string, unknown>[]> {
+    return this.options.sealing
+      ? this.options.sealing.seal(records)
+      : Promise.resolve(records)
+  }
+
+  private write(
+    records: Record<string, unknown>[],
+    options?: { noRepublish?: boolean },
+  ): void {
+    try {
       const wrapped: VersionedStorage = {
         version: this.options.currentVersion,
-        data: serialized,
+        data: records,
       }
-
       this.options.storage.setItem(this.options.key, JSON.stringify(wrapped))
       this.notifySameWindow(options?.noRepublish)
     } catch (e) {
@@ -344,12 +461,14 @@ export class VersionedStorageManager<T> {
     }
   }
 
-  /**
-   * Clear data from storage
-   */
-  clear(): void {
-    this.options.storage.removeItem(this.options.key)
-    this.notifySameWindow()
+  private enqueue(task: () => Promise<void>): Promise<void> {
+    const key = this.options.key
+    const run = (writeQueues.get(key) ?? Promise.resolve()).then(task)
+    const settled = run.catch((e) => {
+      console.error(`[${this.options.loggerName ?? "Storage"}] Save failed:`, e)
+    })
+    writeQueues.set(key, settled)
+    return settled
   }
 }
 

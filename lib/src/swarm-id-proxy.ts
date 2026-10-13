@@ -51,8 +51,10 @@ import type {
   UploadUnavailableReason,
   AuthData,
   PartitionSession,
+  StoredPartitionSession,
 } from "./types"
 import {
+  AuthDataSchema,
   ParentToIframeMessageSchema,
   ParentIdentifyMessageSchema,
   PopupToIframeMessageSchema,
@@ -145,6 +147,12 @@ import {
   serializeSyncedAccount,
 } from "./utils/storage-managers"
 import { isStorageShared } from "./utils/storage-probe"
+import {
+  isSealedValue,
+  openedValue,
+  primeSealedValues,
+  sealValue,
+} from "./utils/sealed-values"
 import {
   deriveSecret,
   deriveSecretSync,
@@ -307,6 +315,12 @@ function deltaFoldView(snapshot: AccountStateSnapshot): DeviceStateSnapshot {
     ...accountStateToDeviceView(snapshot),
   }
 }
+
+/**
+ * Writes to a stored partitioned session, chained per storage key across every
+ * proxy in this window, in call order (see `writePartitionSession`).
+ */
+const partitionSessionWrites = new Map<string, Promise<void>>()
 
 function sessionEndedError(): SwarmIdError {
   return new SwarmIdError(
@@ -708,6 +722,9 @@ export class SwarmIdProxy {
       return
     }
 
+    // The keys in shared storage are sealed, and the reads below open them
+    // from memory (`utils/sealed-values.ts`).
+    await createAccountsStorageManager().prime()
     const connection = this.findConnectionForParent()
 
     if (connection) {
@@ -995,7 +1012,9 @@ export class SwarmIdProxy {
   }
 
   /**
-   * Write the handed-over session to this partition's own store.
+   * Write the handed-over session to this partition's own store, sealed
+   * (review P2-2): it holds the app secret, the derivation key and the stamp's
+   * signer key.
    *
    * The wire form, not the parsed one: `AuthDataSchema` revives `BatchId` and
    * `PrivateKey` instances, which do not survive `JSON.stringify`, so what goes
@@ -1008,31 +1027,22 @@ export class SwarmIdProxy {
    */
   private savePartitionSession(data: AuthData): void {
     if (!this.parentOrigin) return
+    const parentOrigin = this.parentOrigin
     const connection = this.partitionAccount?.connectedApps.find(
-      (app) => app.appUrl === this.parentOrigin,
+      (app) => app.appUrl === parentOrigin,
     )
-    const record: unknown = {
+    const connectedUntil =
+      connection?.connectedUntil ??
+      Date.now() + appSessionDuration(this.partitionAccount?.settings)
+    // The projection carries `BatchId`/`PrivateKey`/`EthAddress`; this is the
+    // same serializer the popup used to build it.
+    const wire = { ...data, account: serializeSyncedAccount(data.account) }
+    this.writePartitionSession(parentOrigin, async () => ({
       version: 1,
-      parentOrigin: this.parentOrigin,
-      connectedUntil:
-        connection?.connectedUntil ??
-        Date.now() + appSessionDuration(this.partitionAccount?.settings),
-      data: {
-        ...data,
-        // The projection carries `BatchId`/`PrivateKey`/`EthAddress`; this is
-        // the same serializer the popup used to build it.
-        account: serializeSyncedAccount(data.account),
-      },
-    }
-    try {
-      localStorage.setItem(
-        partitionSessionStorageKey(this.parentOrigin),
-        JSON.stringify(record),
-      )
-    } catch (error) {
-      // A session that cannot be stored still works for this page load.
-      console.warn("[Proxy] Could not persist the partitioned session:", error)
-    }
+      parentOrigin,
+      connectedUntil,
+      data: await sealValue(JSON.stringify(wire)),
+    }))
   }
 
   /**
@@ -1054,27 +1064,84 @@ export class SwarmIdProxy {
    */
   private refreshStoredPartitionAccount(): void {
     if (!this.partitionAccount || !this.parentOrigin) return
-    const key = partitionSessionStorageKey(this.parentOrigin)
-    try {
-      const raw = localStorage.getItem(key)
-      if (!raw) return
-      const record = JSON.parse(raw) as { data?: Record<string, unknown> }
-      if (!record.data) return
-      record.data.account = serializeSyncedAccount(this.partitionAccount)
-      localStorage.setItem(key, JSON.stringify(record))
-    } catch (error) {
-      // As on write: a session that cannot be stored still works for this load.
-      console.warn("[Proxy] Could not persist the folded session:", error)
-    }
+    const parentOrigin = this.parentOrigin
+    const account = serializeSyncedAccount(this.partitionAccount)
+    this.writePartitionSession(parentOrigin, async () => {
+      const stored = await this.openStoredPartitionSession(parentOrigin)
+      if (!stored) return undefined
+      return {
+        ...stored.record,
+        data: await sealValue(JSON.stringify({ ...stored.wire, account })),
+      }
+    })
   }
 
   /** Forget the stored session. Every path that ends one calls this. */
   private clearPartitionSession(): void {
     if (!this.parentOrigin) return
+    this.writePartitionSession(this.parentOrigin, async () => null)
+  }
+
+  /**
+   * Writes to the stored session wait for sealing, so they run one after
+   * another in call order. Otherwise a save that started before a clear could
+   * land after it and bring an ended session back. `build` answers the record
+   * to write, `null` to remove it, or `undefined` to leave it as it is.
+   */
+  private writePartitionSession(
+    parentOrigin: string,
+    build: () => Promise<StoredPartitionSession | null | undefined>,
+  ): void {
+    const key = partitionSessionStorageKey(parentOrigin)
+    const queued = (partitionSessionWrites.get(key) ?? Promise.resolve())
+      .then(async () => {
+        const record = await build()
+        if (record === undefined) return
+        if (record === null) localStorage.removeItem(key)
+        else localStorage.setItem(key, JSON.stringify(record))
+      })
+      .catch((error: unknown) => {
+        // A session that cannot be stored still works for this page load.
+        console.warn(
+          "[Proxy] Could not persist the partitioned session:",
+          error,
+        )
+      })
+    partitionSessionWrites.set(key, queued)
+  }
+
+  /** The stored record for this parent and its opened wire payload. */
+  private async openStoredPartitionSession(
+    parentOrigin: string,
+  ): Promise<
+    | { record: StoredPartitionSession; wire: Record<string, unknown> }
+    | undefined
+  > {
+    let raw: string | null = null
     try {
-      localStorage.removeItem(partitionSessionStorageKey(this.parentOrigin))
+      raw = localStorage.getItem(partitionSessionStorageKey(parentOrigin))
     } catch {
-      // Nothing to do: an unreadable store cannot hold a session either.
+      return undefined
+    }
+    if (!raw) return undefined
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      return undefined
+    }
+    const result = PartitionSessionSchemaV1.safeParse(parsed)
+    if (!result.success || !isSealedValue(result.data.data)) return undefined
+    await primeSealedValues([result.data.data])
+    const opened = openedValue(result.data.data)
+    if (opened === undefined) return undefined
+    try {
+      return {
+        record: result.data,
+        wire: JSON.parse(opened) as Record<string, unknown>,
+      }
+    } catch {
+      return undefined
     }
   }
 
@@ -1084,37 +1151,39 @@ export class SwarmIdProxy {
    * The key is per dApp origin, because the partition is not: it is scoped to
    * the top-level SITE, so same-site dApps share this store (#671). The
    * `parentOrigin` check below is now the belt to that pair of braces rather
-   * than the only thing keeping two dApps apart. An expired or malformed
-   * record is removed on the way past: it will never become valid again.
+   * than the only thing keeping two dApps apart. An expired, malformed or
+   * unopenable record is removed on the way past: it will never become valid
+   * again, and a record whose seal does not open is no session (review P2-2).
    */
-  private readPartitionSession(): PartitionSession | undefined {
+  private async readPartitionSession(): Promise<PartitionSession | undefined> {
     if (!this.parentOrigin) return undefined
+    const parentOrigin = this.parentOrigin
+    // Behind any write still in flight, so a reload sees its own last write.
+    await partitionSessionWrites.get(partitionSessionStorageKey(parentOrigin))
     let raw: string | null = null
     try {
-      raw = localStorage.getItem(partitionSessionStorageKey(this.parentOrigin))
+      raw = localStorage.getItem(partitionSessionStorageKey(parentOrigin))
     } catch {
       return undefined
     }
     if (!raw) return undefined
 
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
+    const stored = await this.openStoredPartitionSession(parentOrigin)
+    const data = stored && AuthDataSchema.safeParse(stored.wire)
+    if (!stored || !data?.success) {
       this.clearPartitionSession()
       return undefined
     }
-    const result = PartitionSessionSchemaV1.safeParse(parsed)
-    if (!result.success) {
+    if (stored.record.parentOrigin !== parentOrigin) return undefined
+    if (stored.record.connectedUntil <= Date.now()) {
       this.clearPartitionSession()
       return undefined
     }
-    if (result.data.parentOrigin !== this.parentOrigin) return undefined
-    if (result.data.connectedUntil <= Date.now()) {
-      this.clearPartitionSession()
-      return undefined
+    return {
+      parentOrigin: stored.record.parentOrigin,
+      connectedUntil: stored.record.connectedUntil,
+      data: data.data,
     }
-    return result.data
   }
 
   /**
@@ -2516,6 +2585,7 @@ export class SwarmIdProxy {
       return
     }
 
+    await createAccountsStorageManager().prime()
     const sharedData = this.lookupAppSecretFromSharedStorage()
 
     if (sharedData) {
@@ -2549,7 +2619,7 @@ export class SwarmIdProxy {
     // partitioned. A session kept from a previous load answers that (#635) —
     // the same deadline the unpartitioned branch above enforces out of shared
     // storage, enforced here out of this partition's own.
-    const session = this.readPartitionSession()
+    const session = await this.readPartitionSession()
     if (session) {
       await this.restorePartitionSession(session)
       return
@@ -2832,6 +2902,7 @@ export class SwarmIdProxy {
       // branch in `knownDeviceIdsForAccount`.
       const partitioned = this.partitionAccount?.id.toHex() === accountId
       const manager = partitioned ? undefined : createAccountsStorageManager()
+      await manager?.prime()
       const accounts = manager?.load() ?? []
       const account = partitioned
         ? this.partitionAccount
@@ -2875,8 +2946,10 @@ export class SwarmIdProxy {
           // is re-read from Swarm on the next load anyway.
           this.partitionAccount = { ...account, devices: mergedDevices }
         } else {
-          manager!.save(
-            accounts.map((a) =>
+          // Applied to what is stored when the write's turn comes, not to the
+          // copy read before the roster round trip.
+          void manager!.update((stored) =>
+            stored.map((a) =>
               a.id.toHex() === accountId ? { ...a, devices: mergedDevices } : a,
             ),
           )
@@ -3326,14 +3399,13 @@ export class SwarmIdProxy {
     // is simply the value that loses every merge, so the entry's old timestamp
     // came back on the next fold and a dApp-initiated Disconnect never reached
     // a peer the way the identity UI's does.
-    try {
-      const manager = createAccountsStorageManager()
-      const accounts = manager.load()
+    const parentOrigin = this.parentOrigin
+    void createAccountsStorageManager().update((accounts) => {
       let changed = false
       const updated = accounts.map((account) => {
         if (isSignedOutAccount(account)) return account
         const connectedApps = account.connectedApps.map((app) => {
-          if (app.appUrl === this.parentOrigin) {
+          if (app.appUrl === parentOrigin) {
             changed = true
             return {
               ...app,
@@ -3346,13 +3418,8 @@ export class SwarmIdProxy {
         })
         return { ...account, connectedApps }
       })
-      if (changed) manager.save(updated)
-    } catch (error) {
-      console.error(
-        "[Proxy] Error invalidating connected app in shared storage:",
-        error,
-      )
-    }
+      return changed ? updated : undefined
+    })
 
     // Reset auth state
     this.authenticated = false

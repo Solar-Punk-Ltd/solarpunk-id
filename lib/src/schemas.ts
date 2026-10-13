@@ -362,8 +362,9 @@ const SignedInAccountSchemaV1 = SyncedAccountSchemaV1.extend({
  * the secret `derivationKey`) is stripped from disk as PLAINTEXT but kept as
  * `encryptedState`: an AES-GCM snapshot keyed off the derivation-key chain,
  * decrypted and restored on sign-back-in so a sign-out can never lose data —
- * even offline or when the Swarm copy is gone. Required: a signed-out record
- * without the snapshot is malformed and quarantined at load. The display
+ * even offline or when the Swarm copy is gone. Absent only on a record signed
+ * out because its sealed keys could not be opened on this device (the
+ * wrapping key was lost), where sign-back-in restores from Swarm. The display
  * fields (`name`, `createdAt`) stay so the account chooser can list the row.
  * Being a plain object (not a `SyncedAccountSchemaV1` extension), parsing a
  * pre-shrink record under this arm strips its plaintext synced fields.
@@ -373,7 +374,7 @@ const SignedOutAccountSchemaV1 = z.object({
   name: z.string(),
   createdAt: z.number(),
   ...LocalVaultSchemaV1.shape,
-  encryptedState: z.string(),
+  encryptedState: z.string().optional(),
   // Storage-warning remnant, captured at sign-out (the stamps themselves are
   // only in the encrypted snapshot): whether any drive already needed
   // attention, and the soonest estimated drive expiry (epoch ms) so the

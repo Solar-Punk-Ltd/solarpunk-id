@@ -2006,7 +2006,7 @@ export type AuthData = z.infer<typeof AuthDataSchema>
  *
  * The popup hands all of it over on every load today; keeping it changes the
  * window from the life of the page to the life of the session, in a store only
- * this (SwarmID origin, dApp origin) pair can read.
+ * this (SwarmID origin, dApp origin) pair can read, and sealed there.
  *
  * `connectedUntil` is the same clock the unpartitioned path enforces from
  * shared storage, so both modes end a session on the same rule. What the
@@ -2017,10 +2017,23 @@ export const PartitionSessionSchemaV1 = z.object({
   version: z.literal(1),
   parentOrigin: z.string(),
   connectedUntil: z.number(),
-  data: AuthDataSchema,
+  /**
+   * The handed-over payload's wire form, as JSON, sealed with this
+   * partition's wrapping key (`utils/sealed-values.ts`, review P2-2). Only
+   * the parts that say nothing secret, whose session this is and when it
+   * ends, stay readable.
+   */
+  data: z.string(),
 })
 
-export type PartitionSession = z.infer<typeof PartitionSessionSchemaV1>
+export type StoredPartitionSession = z.infer<typeof PartitionSessionSchemaV1>
+
+/** A stored session once opened, with its payload parsed. */
+export interface PartitionSession {
+  parentOrigin: string
+  connectedUntil: number
+  data: AuthData
+}
 
 export const SetSecretMessageSchema = z.object({
   type: z.literal("setSecret"),

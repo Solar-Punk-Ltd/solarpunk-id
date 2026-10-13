@@ -20,6 +20,7 @@ import {
   createPostageStamp,
 } from "../test-fixtures"
 import { createFakeIndexedDB } from "../test-indexeddb"
+import { sealValue } from "./sealed-values"
 
 describe("serializeAccount — device-local seed vault", () => {
   it("round-trips a seed-vault account through serialize + Zod parse", () => {
@@ -142,7 +143,33 @@ describe("createAccountsStorageManager().load() — invalid records", () => {
     })
   }
 
-  it("skips an invalid record instead of dropping every account", () => {
+  /** A serialized account with its keys sealed, as the manager writes it. */
+  async function sealed(record: Record<string, unknown>) {
+    const key = (value: unknown) =>
+      typeof value === "string" ? sealValue(value) : value
+    return {
+      ...record,
+      derivationKey: await key(record.derivationKey),
+      connectedApps: await Promise.all(
+        (record.connectedApps as Record<string, unknown>[]).map(
+          async (app) => ({
+            ...app,
+            appSecret: await key(app.appSecret),
+          }),
+        ),
+      ),
+      postageStamps: await Promise.all(
+        (record.postageStamps as Record<string, unknown>[]).map(
+          async (stamp) => ({
+            ...stamp,
+            signerKey: await key(stamp.signerKey),
+          }),
+        ),
+      ),
+    }
+  }
+
+  it("skips an invalid record instead of dropping every account", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined)
     const good = createAccount()
     const other = createAccount({
@@ -156,7 +183,7 @@ describe("createAccountsStorageManager().load() — invalid records", () => {
     }
     stubLocalStorage({
       version: 1,
-      data: [serializeAccount(good), corrupt],
+      data: [await sealed(serializeAccount(good)), await sealed(corrupt)],
     })
 
     const loaded = createAccountsStorageManager().load()
@@ -169,7 +196,7 @@ describe("createAccountsStorageManager().load() — invalid records", () => {
   // ahead of `new EthAddress(s)` / `BigInt(s)`, one record with a 40-character
   // non-hex id or a non-decimal `amount` dropped the WHOLE document, and the
   // next read-merge-write erased the other accounts for real.
-  it("skips a record whose transform input is malformed, not the document", () => {
+  it("skips a record whose transform input is malformed, not the document", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined)
     const good = createAccount()
     const other = createAccount({
@@ -185,7 +212,11 @@ describe("createAccountsStorageManager().load() — invalid records", () => {
     }
     stubLocalStorage({
       version: 1,
-      data: [badId, serializeAccount(good), badAmount],
+      data: [
+        await sealed(badId),
+        await sealed(serializeAccount(good)),
+        await sealed(badAmount),
+      ],
     })
 
     const loaded = createAccountsStorageManager().load()
@@ -283,6 +314,7 @@ describe("the accounts document keeps its keys sealed", () => {
   /** A page load: fresh modules over the same storage. */
   async function freshPage(): Promise<StorageManagers> {
     vi.resetModules()
+    // eslint-disable-next-line no-restricted-syntax -- a fresh module per page load is the point
     return import("./storage-managers")
   }
 
