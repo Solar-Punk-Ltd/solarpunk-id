@@ -156,7 +156,7 @@ import {
 import { hexToUint8Array, uint8ArrayToHex } from "./utils/hex"
 import { generatedAvatar } from "./utils/avatar"
 import { connectionInfoEqual } from "./utils/connection-info"
-import { acceptedChatBinding } from "./utils/chat-binding"
+import { acceptedChatBinding, onlySiteChatBinding } from "./utils/chat-binding"
 import type { ChatBinding } from "./utils/chat-binding"
 import {
   activeDeviceIds,
@@ -1007,8 +1007,15 @@ export class SwarmIdProxy {
       data: {
         ...data,
         // The projection carries `BatchId`/`PrivateKey`/`EthAddress`; this is
-        // the same serializer the popup used to build it.
-        account: serializeSyncedAccount(data.account),
+        // the same serializer the popup used to build it. This parent's own
+        // chat binding is all it keeps, as in `hydratePartitionAccount`.
+        account: serializeSyncedAccount({
+          ...data.account,
+          connectedApps: onlySiteChatBinding(
+            data.account.connectedApps,
+            this.parentOrigin,
+          ),
+        }),
       },
     }
     try {
@@ -1140,10 +1147,16 @@ export class SwarmIdProxy {
     }
     this.partitionAccount = {
       ...account,
+      // Every other site's chat binding is dropped here, on the handover and
+      // on a restore alike: this frame runs inside its parent's page, and a
+      // binding links the account to its chat on that binding's site.
       connectedApps: [
         connection,
-        ...account.connectedApps.filter(
-          (app) => app.appUrl !== this.parentOrigin,
+        ...onlySiteChatBinding(
+          account.connectedApps.filter(
+            (app) => app.appUrl !== this.parentOrigin,
+          ),
+          this.parentOrigin!,
         ),
       ],
       access: { type: "password", kdfSalt: "", kdfIterations: 0 },
@@ -1757,9 +1770,12 @@ export class SwarmIdProxy {
           snapshot.metadata.lastModified,
         ),
       })
-      const connectedApps = restoreLocalSessionFields(
-        folded.connectedApps,
-        account.connectedApps,
+      // The bus schema already drops every chat binding. This holds the same
+      // line for the fold's output, so no path into this view can bring
+      // another site's binding in.
+      const connectedApps = onlySiteChatBinding(
+        restoreLocalSessionFields(folded.connectedApps, account.connectedApps),
+        connection.app.appUrl,
       )
       this.partitionAccount = {
         ...this.partitionAccount,

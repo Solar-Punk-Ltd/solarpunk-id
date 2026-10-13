@@ -323,3 +323,53 @@ export function acceptedChatBinding(
     normalizeAddress(verified.signer) === normalizeAddress(expected.signer)
   return matches ? binding : undefined
 }
+
+/**
+ * The connected apps with every chat binding removed except `site`'s own.
+ *
+ * Each site's binding publicly links the account to its chat on that site, and
+ * a proxy frame runs inside one site's page, where that page's scripts can
+ * reach what the frame holds. So everything handed to a frame keeps only the
+ * binding of the site it runs for. The account's own synced copy keeps all of
+ * them.
+ */
+export function onlySiteChatBinding<
+  App extends { appUrl: string; chatBinding?: ChatBinding },
+>(apps: readonly App[], site: string): App[] {
+  return apps.map((app) => {
+    if (app.appUrl === site || app.chatBinding === undefined) {
+      return app
+    }
+    const { chatBinding: _dropped, ...rest } = app
+    return rest as App
+  })
+}
+
+/** When a binding says it was signed, or minus infinity if it does not parse. */
+function signedAt(binding: ChatBinding): number {
+  try {
+    // Local http is a development site's, and which sites a binding may name
+    // is decided where it is signed, not where it is merged.
+    return Date.parse(
+      parseChatBindingMessage(binding.message, { allowLocalHttp: true }).date,
+    )
+  } catch {
+    return Number.NEGATIVE_INFINITY
+  }
+}
+
+/**
+ * Of two bindings for one site, the one with the later date, the first on a
+ * tie, and whichever is there when only one is. A binding is never withdrawn,
+ * only replaced by a newer one (docs/Chat-Binding.md), so this is the whole of
+ * how two copies of a connection merge theirs.
+ */
+export function newerChatBinding(
+  first: ChatBinding | undefined,
+  second: ChatBinding | undefined,
+): ChatBinding | undefined {
+  if (!first || !second) {
+    return first ?? second
+  }
+  return signedAt(second) > signedAt(first) ? second : first
+}

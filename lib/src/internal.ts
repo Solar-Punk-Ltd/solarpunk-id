@@ -121,7 +121,7 @@ export {
   mergeDevices,
 } from "./utils/device-id"
 
-export { createChatBinding } from "./utils/chat-binding"
+export { createChatBinding, onlySiteChatBinding } from "./utils/chat-binding"
 
 export {
   DEFAULT_SITE_ALLOW_LIST_ENS_NAME,
