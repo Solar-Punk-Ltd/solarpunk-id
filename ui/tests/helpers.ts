@@ -364,14 +364,17 @@ export async function fundPostageSigner(
  * truth this must match.
  */
 async function postageSignerAddress(page: Page): Promise<`0x${string}`> {
-  const signerKey = await page.evaluate(async () => {
+  const sealedDerivationKey = await page.evaluate(() => {
     const doc = JSON.parse(localStorage.getItem('swarm-id-accounts') ?? '{}') as {
       data?: { derivationKey?: string }[]
     }
-    const derivationKey = doc.data?.[0]?.derivationKey
-    if (!derivationKey) {
-      return undefined
-    }
+    return doc.data?.[0]?.derivationKey
+  })
+  if (!sealedDerivationKey) {
+    throw new Error('No account in storage — create one before funding its signer.')
+  }
+  const derivationKey = await openSealedInPage(page, sealedDerivationKey)
+  const signerKey = await page.evaluate(async (derivationKey) => {
     const keyBytes = Uint8Array.from(
       (derivationKey.match(/../g) ?? []).map((byte) => parseInt(byte, 16)),
     )
@@ -388,10 +391,7 @@ async function postageSignerAddress(page: Page): Promise<`0x${string}`> {
       new TextEncoder().encode('postage-signer'),
     )
     return [...new Uint8Array(signature)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
-  })
-  if (!signerKey) {
-    throw new Error('No account in storage — create one before funding its signer.')
-  }
+  }, derivationKey)
   return new PrivateKey(signerKey).publicKey().address().toChecksum() as `0x${string}`
 }
 
@@ -458,4 +458,59 @@ export async function beeReachable(beeUrl: string = BEE_API_URL): Promise<boolea
   } catch {
     return false
   }
+}
+
+/**
+ * Open or seal a key the way the app keeps it in storage: AES-GCM under the
+ * page's own non-extractable wrapping key in IndexedDB, written as `sealed:v1:`
+ * then the hex of the IV and the ciphertext (`lib/src/utils/sealed-values.ts`,
+ * the source of truth these must match). In the page, because only the page
+ * can use that key.
+ */
+export function openSealedInPage(page: Page, sealed: string): Promise<string> {
+  return page.evaluate(async (value) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('swarm-id-keys', 1)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    const key = await new Promise<CryptoKey>((resolve, reject) => {
+      const read = db.transaction('wrapping-keys').objectStore('wrapping-keys').get('at-rest-v1')
+      read.onsuccess = () => resolve(read.result as CryptoKey)
+      read.onerror = () => reject(read.error)
+    })
+    db.close()
+    const bytes = Uint8Array.from(
+      (value.slice('sealed:v1:'.length).match(/../g) ?? []).map((byte) => parseInt(byte, 16)),
+    )
+    const plain = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: bytes.slice(0, 12) },
+      key,
+      bytes.slice(12),
+    )
+    return new TextDecoder().decode(plain)
+  }, sealed)
+}
+
+export function sealInPage(page: Page, plain: string): Promise<string> {
+  return page.evaluate(async (value) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('swarm-id-keys', 1)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    const key = await new Promise<CryptoKey>((resolve, reject) => {
+      const read = db.transaction('wrapping-keys').objectStore('wrapping-keys').get('at-rest-v1')
+      read.onsuccess = () => resolve(read.result as CryptoKey)
+      read.onerror = () => reject(read.error)
+    })
+    db.close()
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+    const sealed = new Uint8Array(
+      await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(value)),
+    )
+    const hex = (bytes: Uint8Array) =>
+      Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+    return `sealed:v1:${hex(iv)}${hex(sealed)}`
+  }, plain)
 }

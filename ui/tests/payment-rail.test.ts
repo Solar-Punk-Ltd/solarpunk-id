@@ -28,7 +28,13 @@
 import { PrivateKey } from '@ethersphere/bee-js'
 import { type Page, expect, test } from '@playwright/test'
 
-import { CHAIN_RPC_URL, addDrive, chainReachable, completeCreateFlow } from './helpers'
+import {
+  CHAIN_RPC_URL,
+  addDrive,
+  chainReachable,
+  completeCreateFlow,
+  openSealedInPage,
+} from './helpers'
 
 /** Where `pnpm dev:source-chain` listens, and the id it reports. */
 const SOURCE_RPC_URL = process.env.SOURCE_RPC_URL ?? 'http://localhost:31337'
@@ -399,7 +405,8 @@ async function expectDriveOwnedBySigner(page: Page) {
   expect(drive).toBeDefined()
   const owner = await onChainOwner(drive!.batchID)
   expect(owner).toBeDefined()
-  const signerAddress = new PrivateKey(drive!.signerKey).publicKey().address().toHex()
+  const signerKey = await openSealedInPage(page, drive!.signerKey)
+  const signerAddress = new PrivateKey(signerKey).publicKey().address().toHex()
   expect(owner!.toLowerCase()).toBe(`0x${signerAddress}`.toLowerCase())
 }
 
