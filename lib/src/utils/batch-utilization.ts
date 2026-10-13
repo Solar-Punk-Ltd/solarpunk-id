@@ -72,6 +72,20 @@ export class ReservedSlotError extends Error {
   }
 }
 
+/**
+ * Thrown by `UtilizationAwareStamper.stampDataChunk()` when the chunk's bucket
+ * has no slot left in the app slice: the rest of that bucket's lane is kept
+ * for the account's own uploads.
+ */
+export class AppSliceFullError extends Error {
+  constructor(
+    message = "This bucket's share for app stamps is used up. The rest of it is kept for the account's own uploads.",
+  ) {
+    super(message)
+    this.name = "AppSliceFullError"
+  }
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -90,6 +104,16 @@ export const BUCKET_DEPTH = 16
  * See docs/Postage-Batch-Partitioning.md.
  */
 export const PARTITION_COUNT = 2
+
+/**
+ * Share of each bucket's data lane, counted from its top, that only the
+ * account's own uploads may use. An app stamp (`stampDataChunk`) is refused
+ * once the lane's counter reaches the rest, the app slice. Apps and the
+ * account draw from the one per-partition counter, so no slot is ever issued
+ * twice, and the slice needs no state of its own: it is read from the counter
+ * that is saved, published and handed over already.
+ */
+export const ACCOUNT_RESERVED_LANE_SHARE = 1 / 2
 
 /** First data slot index; reserved slots `[0, PARTITION_COUNT)` precede it. */
 export const DATA_COUNTER_START = PARTITION_COUNT
@@ -1810,9 +1834,12 @@ export class UtilizationAwareStamper implements Stamper, SlotAssigner {
    * Stamp a chunk an app will send through its own Swarm access. Always a
    * data slot: an address the stamper would route to a reserved slot is
    * refused, so an app can never be handed the stamp that overwrites the
-   * account's lock, counter, state or intent chunks.
+   * account's lock, counter, state or intent chunks. And always inside the
+   * bucket's app slice, so apps can never take the slots the account keeps
+   * for its own uploads.
    *
    * @throws ReservedSlotError for one of the account's own bookkeeping chunks
+   * @throws AppSliceFullError when the bucket's app slice is used up
    * @throws PartitionLeaseLostError when the bound partition's lease is gone
    */
   stampDataChunk(
@@ -1822,7 +1849,24 @@ export class UtilizationAwareStamper implements Stamper, SlotAssigner {
     if (this.reservedSlotFor(chunkAddress) !== undefined) {
       throw new ReservedSlotError()
     }
+    const bucket = toBucket(chunkAddress)
+    if (this.utilizationState.dataCounters[bucket] >= this.appSliceCapacity()) {
+      throw new AppSliceFullError()
+    }
     return this.stamp(chunkAddress, timestampMs)
+  }
+
+  /** How many data chunks this device's partition lane holds in one bucket */
+  laneCapacity(): number {
+    return partitionCapacity(this.depth, this.partitionCountValue)
+  }
+
+  /**
+   * How far up a bucket's lane an app stamp may go: the lane less the share
+   * {@link ACCOUNT_RESERVED_LANE_SHARE} keeps for the account's own uploads.
+   */
+  appSliceCapacity(): number {
+    return Math.floor(this.laneCapacity() * (1 - ACCOUNT_RESERVED_LANE_SHARE))
   }
 
   /**
