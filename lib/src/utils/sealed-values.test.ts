@@ -104,6 +104,18 @@ describe("sealed values", () => {
     expect(openedValue(sealed)).toBe(SECRET)
   })
 
+  it("counts an earlier page's value as unavailable, not lost, when indexedDB is null", async () => {
+    const sealed = await (await freshModule()).sealValue(SECRET)
+    vi.stubGlobal("indexedDB", null)
+    const { primeSealedValues, openedValue, isSealedValueUnavailable } =
+      await freshModule()
+
+    await primeSealedValues([sealed])
+
+    expect(openedValue(sealed)).toBeUndefined()
+    expect(isSealedValueUnavailable(sealed)).toBe(true)
+  })
+
   it("seals and opens for the page when IndexedDB cannot be opened", async () => {
     vi.stubGlobal("indexedDB", createUnopenableIndexedDB())
     const { sealValue, openedValue } = await freshModule()
