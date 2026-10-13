@@ -248,9 +248,9 @@ With the bus in place the partitioned iframe is a first-class writer:
   popup (#635). Its own record, not the accounts document: `LocalAccountSchemaV1`
   quarantines vault-less records and the hydrated view carries inert vault placeholders, so
   it could not be stored as an account. The deadline is the same `connectedUntil` the
-  unpartitioned path enforces out of shared storage — 30 days by default — and a restored
-  session reads the account's published state once, in the background, to catch a revoke made
-  while the tab was closed, which reaches it no other way. That read is a revocation check,
+  unpartitioned path enforces out of shared storage, 7 days by default, and a restored
+  session reads the account's published state before its first write, to catch a revoke made
+  while the tab was closed, which reaches it no other way ([Hardening](Hardening.md)). That read is a revocation check,
   not a fold: everything else still arrives over the bus, and a fold that lands re-persists
   the record so the next reload does not undo it. The iframe keeps its own
   `swarm-id-device-id` and lease cache — it _is_ a device, named after the dApp it belongs to
@@ -497,11 +497,12 @@ Not yet written:
   message.
 - A revocation made while a dApp partition is **closed** is not pushed to it: the room has no
   mailbox. Since #635 the popup re-handshake is no longer what catches it either — a restored
-  session reads the account's published state once instead, and ends itself on a tombstone.
-  Two holes remain, both fail-open by choice (failing closed would make every offline load a
-  logout): a session restored while the gateway is **unreachable** stays up, and an account
-  that has **never published** — no drive, so no feed to read — has nothing to check against.
-  Either way the revoke waits for the next live overlap on the bus.
+  session reads the account's published state before its first write instead, and ends itself
+  on a tombstone. A session restored while the gateway is **unreachable** stays signed in for
+  reads and refuses every write (`session-unconfirmed`) until a later check can read the
+  account, so an outage never lets a revoked session write. An account that has **never
+  published** (no drive, so no feed) cannot have published a revoke either: the check confirms
+  its roster is empty and allows it ([Hardening](Hardening.md)).
 - That check asks only whether the connection ENDED — a missing entry, a `revokedAt` (Remove), or
   a `disconnectedAt` newer than the connection the session came from (Disconnect). A **rotated
   signer key or moved default stamp** made while the tab was closed is not adopted on restore;

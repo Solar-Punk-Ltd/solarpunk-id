@@ -1796,6 +1796,19 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         vi.mocked(BatchWriteCoordinator).mock.results.at(-1)?.value as {
           startLease: ReturnType<typeof vi.fn>
         }
+      const coordinatorCount = () =>
+        vi.mocked(BatchWriteCoordinator).mock.results.length
+      /** No coordinator built since `from` claimed a lease. */
+      const noLeaseStartedSince = (from: number) => {
+        for (const result of vi
+          .mocked(BatchWriteCoordinator)
+          .mock.results.slice(from)) {
+          expect(
+            (result.value as { startLease: ReturnType<typeof vi.fn> })
+              .startLease,
+          ).not.toHaveBeenCalled()
+        }
+      }
 
       afterEach(() => {
         restoredSessionVerdict.value = Promise.resolve("allowed")
@@ -1804,7 +1817,9 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       it("holds a restored session's writes until the check allows them", async () => {
         await connectPartitioned()
         const settle = deferredVerdict()
+        const before = coordinatorCount()
         await reload()
+        expect(coordinatorCount()).toBeGreaterThan(before)
 
         let written = false
         const write = gate()
@@ -1841,6 +1856,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       it("ends a restored session the check says was ended", async () => {
         await connectPartitioned()
         restoredSessionVerdict.value = Promise.resolve("ended")
+        const before = coordinatorCount()
 
         await reload()
 
@@ -1850,7 +1866,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
           expect(infos[infos.length - 1]?.canUpload).toBe(false)
         })
         expect(storedSession()).toBeUndefined()
-        expect(lastCoordinator().startLease).not.toHaveBeenCalled()
+        noLeaseStartedSince(before)
       })
 
       // An unreachable Swarm says nothing about a revoke, so it can neither
@@ -1859,6 +1875,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       it("refuses writes, and says so, when the check cannot complete", async () => {
         await connectPartitioned()
         restoredSessionVerdict.value = Promise.resolve("unconfirmed")
+        const before = coordinatorCount()
 
         await reload()
 
@@ -1869,7 +1886,8 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         expect(info.canUpload).toBe(false)
         expect(info.uploadUnavailableReason).toBe("session-unconfirmed")
         expect(storedSession()).toBeTruthy()
-        expect(lastCoordinator().startLease).not.toHaveBeenCalled()
+        expect(coordinatorCount()).toBeGreaterThan(before)
+        noLeaseStartedSince(before)
       })
 
       it("asks again on the next write after a check that could not complete", async () => {

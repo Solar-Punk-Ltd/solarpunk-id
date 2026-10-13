@@ -190,6 +190,14 @@ function writerPath(input: CheckInput): CheckResult {
         detail:
           'The account’s drive record says the node lacks or cannot use it, so the session refuses to stamp and the writer path was never exercised. Open the drive on the identity site to refresh its record, or add another, then run this again.',
       }
+    case 'session-unconfirmed':
+      return {
+        id,
+        title,
+        verdict: 'unknown',
+        detail:
+          'The session came back from storage and could not yet check with Swarm that it is still allowed, so it refuses to write. Check the connection, then upload again: the next upload checks again.',
+      }
     default:
       // Not red: `uploadUnavailableReason` is optional on the wire, so an older
       // identity deployment sends `unavailable` without one and this branch is

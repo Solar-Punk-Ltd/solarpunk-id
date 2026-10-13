@@ -697,12 +697,17 @@ export type UploadMode = z.infer<typeof UploadModeSchema>
  *   stored record says the node does not have the batch (`exists: false`) or
  *   cannot use it (`usable: false`). Opening the drive in the identity UI
  *   refreshes the record from the chain (#765).
+ * - `session-unconfirmed` — the session was restored from storage and the
+ *   check that it was not ended while no page was open could not read the
+ *   account's published state. Writes stay refused until a later check, made
+ *   on the next write, can.
  */
 export const UploadUnavailableReasonSchema = z.enum([
   "no-stamp",
   "stamper-failed",
   "stamp-expired",
   "stamp-not-usable",
+  "session-unconfirmed",
 ])
 
 export type UploadUnavailableReason = z.infer<

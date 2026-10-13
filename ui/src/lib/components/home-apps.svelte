@@ -7,6 +7,7 @@
   import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical'
   import Trash2 from '@lucide/svelte/icons/trash-2'
   import Unlink from '@lucide/svelte/icons/unlink'
+  import { appSessionDuration } from '@snaha/swarm-id/internal'
 
   import AppIcon from '$lib/components/app-icon.svelte'
   import { Button } from '$lib/components/ui/button'
@@ -15,7 +16,6 @@
   import { msToDays } from '$lib/duration'
   import type { Account } from '$lib/types'
 
-  const DEFAULT_CONNECTION_DAYS = 30
   const DURATION_OPTIONS = [
     { value: '1', label: '1 day' },
     { value: '7', label: '7 days' },
@@ -29,13 +29,7 @@
 
   let { account }: Props = $props()
 
-  let connectionDays = $derived(
-    String(
-      account.settings?.appSessionDuration !== undefined
-        ? msToDays(account.settings.appSessionDuration)
-        : DEFAULT_CONNECTION_DAYS,
-    ),
-  )
+  let connectionDays = $derived(String(msToDays(appSessionDuration(account.settings))))
   // Revoked tombstones stay in the record for sync; only show live entries.
   const activeApps = $derived(account.activeApps)
 
