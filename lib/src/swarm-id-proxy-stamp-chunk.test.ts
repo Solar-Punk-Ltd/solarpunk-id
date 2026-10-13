@@ -7,10 +7,25 @@
  * back only once the counter it spent is saved.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 // Rollup-only virtual module (see rollup.config.js), not resolvable in vitest
 vi.mock("virtual:stamp-worker-code", () => ({ default: "" }))
+
+/**
+ * What the published account answers a restored session's check. Left
+ * answering "allowed" so the tests that do not restore a session are not
+ * steered by it.
+ */
+const restoredSessionVerdict = vi.hoisted(
+  () =>
+    ({ value: Promise.resolve("allowed") }) as {
+      value: Promise<"allowed" | "ended" | "unconfirmed">
+    },
+)
+vi.mock("./sync/session-check", () => ({
+  checkRestoredSession: vi.fn(() => restoredSessionVerdict.value),
+}))
 
 import { BatchId, EthAddress, PrivateKey, Signature } from "@ethersphere/bee-js"
 import { Binary } from "cafe-utility"
@@ -59,8 +74,12 @@ type ProxyInternals = {
   postageBatchId?: string
   signerKey?: string
   stamper?: UtilizationAwareStamper
-  coordinator?: { withWrite: (op: (target: unknown) => unknown) => unknown }
+  coordinator?: {
+    withWrite: (op: (target: unknown) => unknown) => unknown
+    teardown: () => void
+  }
   findConnectionForParent: () => unknown
+  startRestoredSessionCheck: (input: unknown) => void
 }
 
 const internals = (p: SwarmIdProxy): ProxyInternals =>
@@ -235,6 +254,8 @@ describe("SwarmIdProxy stampChunk", () => {
         order.push("counter published and flushed")
         return result
       }),
+      // An ended session tears the write path down.
+      teardown: vi.fn(),
     }
     vi.spyOn(p, "findConnectionForParent").mockReturnValue({
       account: {
@@ -829,6 +850,88 @@ describe("SwarmIdProxy stampChunk", () => {
         reason: "app-slice-full",
         error: expect.stringContaining("own uploads"),
       })
+      expect(storedUsage().count).toBe(0)
+    })
+  })
+
+  // A session restored from storage writes only once the published account
+  // says it was not ended while no page was open, and a stamp is a write.
+  describe("a restored session", () => {
+    function deferredVerdict() {
+      let settle!: (verdict: "allowed" | "ended" | "unconfirmed") => void
+      restoredSessionVerdict.value = new Promise((resolve) => {
+        settle = resolve
+      })
+      return (verdict: "allowed" | "ended" | "unconfirmed") => settle(verdict)
+    }
+
+    async function restoredUserStampMode(): Promise<void> {
+      await identify()
+      await userStampMode()
+      internals(proxy).startRestoredSessionCheck({
+        bee: {},
+        derivationKey: DERIVATION_KEY,
+        accountId: ACCOUNT_ADDRESS,
+        appOrigin: PARENT_ORIGIN,
+        connectedAt: Date.now() - 1000,
+      })
+    }
+
+    afterEach(() => {
+      restoredSessionVerdict.value = Promise.resolve("allowed")
+    })
+
+    it("stamps only once the check allows it", async () => {
+      const settle = deferredVerdict()
+      await restoredUserStampMode()
+
+      const stamping = stampChunk({
+        kind: "content",
+        data: spanAndPayload("after the check"),
+      })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(replies()).toEqual([])
+      expect(order).not.toContain("lock")
+
+      settle("allowed")
+      await stamping
+
+      expect(lastReply()).toMatchObject({ type: "stampChunkResponse" })
+    })
+
+    it("refuses, with no stamp, when the check says the session was ended", async () => {
+      restoredSessionVerdict.value = Promise.resolve("ended")
+      vi.spyOn(console, "info").mockImplementation(() => undefined)
+      await restoredUserStampMode()
+
+      await stampChunk({ kind: "content", data: spanAndPayload("ended") })
+
+      expect(lastReply()).toMatchObject({
+        type: "error",
+        requestId: "r1",
+        code: "not-authenticated",
+        error: expect.stringContaining("ended"),
+      })
+      expect(lastReply().stamp).toBeUndefined()
+      expect(order).not.toContain("lock")
+      expect(storedUsage().count).toBe(0)
+    })
+
+    it("refuses, with no stamp, when the check could not be completed", async () => {
+      restoredSessionVerdict.value = Promise.resolve("unconfirmed")
+      vi.spyOn(console, "warn").mockImplementation(() => undefined)
+      await restoredUserStampMode()
+
+      await stampChunk({ kind: "content", data: spanAndPayload("unconfirmed") })
+
+      expect(lastReply()).toMatchObject({
+        type: "error",
+        requestId: "r1",
+        code: "upload-unavailable",
+        reason: "session-unconfirmed",
+      })
+      expect(lastReply().stamp).toBeUndefined()
+      expect(order).not.toContain("lock")
       expect(storedUsage().count).toBe(0)
     })
   })
