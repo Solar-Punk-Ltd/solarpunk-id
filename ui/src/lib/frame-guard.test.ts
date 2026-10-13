@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { refusesToRunFramed } from './frame-guard'
+import { LAYOUT_VIEW, layoutView, refusesToRunFramed } from './frame-guard'
 import routes from './routes'
 
 const PAGES_A_PERSON_USES = [
@@ -57,5 +57,32 @@ describe('refusesToRunFramed', () => {
 
   it('refuses the proxy path outside the base path', () => {
     expect(refusesToRunFramed({ pathname: '/proxy', base: '/id', framed: true })).toBe(true)
+  })
+})
+
+describe('layoutView', () => {
+  const base = '/id'
+
+  it('shows a page a person uses with its prompts as the top window', () => {
+    expect(layoutView({ pathname: `${base}/`, base, framed: false })).toBe(
+      LAYOUT_VIEW.PAGE_WITH_PROMPTS,
+    )
+  })
+
+  it('shows the framed proxy page without the prompts, which would navigate the frame', () => {
+    expect(layoutView({ pathname: `${base}/proxy`, base, framed: true })).toBe(LAYOUT_VIEW.PAGE)
+  })
+
+  it('refuses a page a person uses inside a frame', () => {
+    expect(layoutView({ pathname: `${base}/`, base, framed: true })).toBe(LAYOUT_VIEW.REFUSAL)
+  })
+
+  it('refuses once a framed proxy page navigates to a page a person uses', () => {
+    const framed = true
+    const before = layoutView({ pathname: `${base}/proxy`, base, framed })
+    const after = layoutView({ pathname: `${base}/`, base, framed })
+
+    expect(before).toBe(LAYOUT_VIEW.PAGE)
+    expect(after).toBe(LAYOUT_VIEW.REFUSAL)
   })
 })
