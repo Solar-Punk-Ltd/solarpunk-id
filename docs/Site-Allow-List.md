@@ -87,8 +87,14 @@ be read.
 
 ## Settings
 
-All are build-time settings of the identity UI, read from its public env like
+All are public env settings of the identity UI, like
 `PUBLIC_WALLETCONNECT_PROJECT_ID` (see `ui/.env.example`). None is secret.
+`ui/src/lib/accepted-site.ts` reads them at run time, through SvelteKit's
+`$env/dynamic/public`, not as values compiled into the code. The identity UI is
+a static build, so SvelteKit writes their values from the build's environment
+into `_app/env.js`, and the page loads that file when it starts. A deployed copy
+therefore takes new settings from a new `_app/env.js`, without rebuilding the
+code.
 
 | Setting                              | Default                                   | What it does                                                                                                   |
 | ------------------------------------ | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
