@@ -52,6 +52,7 @@ export const STORAGE_KEY_ACCOUNTS = "swarm-id-accounts"
 export const STORAGE_KEY_NETWORK_SETTINGS = "swarm-id-network-settings"
 export const STORAGE_CHALLENGE_KEY = "swarm-storage-challenge"
 export const STORAGE_KEY_LEASE_CACHE_PREFIX = "swarm-id-lease-v2"
+export const STORAGE_KEY_APP_STAMP_USAGE_PREFIX = "swarm-id-app-stamp-usage"
 
 /**
  * Key PREFIX for the handed-over session a PARTITIONED proxy keeps, so a reload
@@ -91,6 +92,18 @@ export function leaseCacheStorageKey(
   batchId: string,
 ): string {
   return `${STORAGE_KEY_LEASE_CACHE_PREFIX}:${accountId.toLowerCase()}:${batchId.toLowerCase()}`
+}
+
+/**
+ * Where the frame counts what one app has stamped with one of the account's
+ * stamps (`proxy/app-stamp-limits.ts`), per app origin and per batch, so the
+ * limits survive a reload and a new stamp starts a new count.
+ */
+export function appStampUsageStorageKey(
+  appOrigin: string,
+  batchId: string,
+): string {
+  return `${STORAGE_KEY_APP_STAMP_USAGE_PREFIX}:${appOrigin}:${batchId.toLowerCase()}`
 }
 
 /**
@@ -727,6 +740,13 @@ export type UploadMode = z.infer<typeof UploadModeSchema>
  * - `subsidised`: only in a refused `stampChunk`, never in ConnectionInfo.
  *   The account is in subsidised mode, the gateway stamps every upload, so
  *   there is no stamp of the person's to hand back.
+ * - `app-stamp-count`, `app-stamp-rate`, `app-bucket-share`: only in a refused
+ *   `stampChunk`. The app reached one of its own limits on the account's
+ *   stamp (`proxy/app-stamp-limits.ts`): its count on this stamp, its rate,
+ *   or its share of the chunk's bucket.
+ * - `app-slice-full`: only in a refused `stampChunk`. The chunk's bucket has
+ *   no slot left for app stamps, the rest is kept for the account's own
+ *   uploads (`ACCOUNT_RESERVED_LANE_SHARE`).
  */
 export const UploadUnavailableReasonSchema = z.enum([
   "no-stamp",
@@ -734,6 +754,10 @@ export const UploadUnavailableReasonSchema = z.enum([
   "stamp-expired",
   "stamp-not-usable",
   "subsidised",
+  "app-stamp-count",
+  "app-stamp-rate",
+  "app-bucket-share",
+  "app-slice-full",
 ])
 
 export type UploadUnavailableReason = z.infer<

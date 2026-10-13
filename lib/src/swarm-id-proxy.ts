@@ -62,6 +62,7 @@ import {
   partitionSessionStorageKey,
   PartitionSessionSchemaV1,
   leaseCacheStorageKey,
+  appStampUsageStorageKey,
 } from "./types"
 import type { PopupToIframeMessage } from "./types"
 import {
@@ -94,6 +95,11 @@ import {
   marshalStamp,
   prepareChunkToStamp,
 } from "./proxy/stamp-chunk"
+import {
+  appStampRefusal,
+  parseAppStampUsage,
+  recordAppStamp,
+} from "./proxy/app-stamp-limits"
 import {
   downloadDataWithChunkAPI,
   downloadSOC,
@@ -135,7 +141,7 @@ import {
   accountDeltaFromSnapshot,
   restoreLocalSessionFields,
 } from "./bus/account-delta"
-import { UtilizationAwareStamper } from "./utils/batch-utilization"
+import { UtilizationAwareStamper, toBucket } from "./utils/batch-utilization"
 import { UtilizationStoreDB } from "./storage/utilization-store"
 import type { PartitionLeaseStateSnapshot } from "./sync/partition-lease"
 import { BatchWriteCoordinator } from "./sync/batch-write-coordinator"
@@ -4533,7 +4539,7 @@ export class SwarmIdProxy {
               "The write path has no utilization-aware stamper to stamp with.",
             )
           }
-          return marshalStamp(target.stamper.stampDataChunk(prepared.address))
+          return this.stampWithinAppLimits(target.stamper, prepared.address)
         },
       )
 
@@ -4548,6 +4554,45 @@ export class SwarmIdProxy {
     } catch (error) {
       this.sendErrorToParent(event, requestId, error, "stampChunk failed")
     }
+  }
+
+  /**
+   * Stamp for this app if its limits allow, and count the stamp. Synchronous
+   * from the read of the usage to its write, so two requests can never both
+   * take the last stamp an app is allowed. The usage is written before the
+   * stamp is returned, so a stamp that could not be counted is never handed
+   * out.
+   */
+  private stampWithinAppLimits(
+    stamper: UtilizationAwareStamper,
+    address: Uint8Array,
+  ): string {
+    if (!this.parentOrigin) {
+      throw new SwarmIdError(
+        "not-authenticated",
+        "No app has identified itself to this frame.",
+      )
+    }
+    const key = appStampUsageStorageKey(
+      this.parentOrigin,
+      stamper.batchId.toHex(),
+    )
+    const usage = parseAppStampUsage(localStorage.getItem(key))
+    const bucket = toBucket(address)
+    const now = Date.now()
+    const refusal = appStampRefusal(usage, {
+      bucket,
+      laneCapacity: stamper.laneCapacity(),
+      now,
+    })
+    if (refusal) throw refusal
+
+    const stamp = marshalStamp(stamper.stampDataChunk(address))
+    localStorage.setItem(
+      key,
+      JSON.stringify(recordAppStamp(usage, bucket, now)),
+    )
+    return stamp
   }
 
   /**
