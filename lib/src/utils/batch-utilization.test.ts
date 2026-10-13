@@ -1489,6 +1489,102 @@ describe("UtilizationAwareStamper.stampDataChunk (a stamp handed to an app)", ()
   })
 })
 
+describe("UtilizationAwareStamper.restampDataChunk (one single-owner chunk stamped again)", () => {
+  const SIGNER_KEY = new PrivateKey(
+    new Uint8Array(32).map((_, i) => (i + 13) & 0xff),
+  ).toHex()
+  const OWNER = new EthAddress("00".repeat(20))
+  const ENCRYPTION_KEY = new Uint8Array(32).map((_, i) => (i * 7 + 5) & 0xff)
+  const DEPTH = 20
+  const BUCKET = 0x0bcd
+  const SLOT_OFFSET = 4
+  const TIMESTAMP_MS = 1_700_000_000_000
+
+  const cache = {
+    getAllChunks: async () => [],
+    putChunk: async () => undefined,
+  } as unknown as UtilizationStoreDB
+
+  async function boundStamper(): Promise<UtilizationAwareStamper> {
+    const stamper = await UtilizationAwareStamper.create(
+      SIGNER_KEY,
+      TEST_BATCH_ID,
+      DEPTH,
+      cache,
+      OWNER,
+      ENCRYPTION_KEY,
+    )
+    stamper.bindPartition({
+      partition: 1,
+      partitionCount: PARTITION_COUNT,
+      localCounter: new Uint32Array(NUM_BUCKETS),
+    })
+    return stamper
+  }
+
+  const slotOf = (index: Uint8Array): number =>
+    new DataView(index.buffer, index.byteOffset, index.byteLength).getUint32(
+      SLOT_OFFSET,
+      false,
+    )
+
+  it("stamps again at a slot this lane took, with the new timestamp, spending no slot", async () => {
+    const stamper = await boundStamper()
+    const address = makeAddressInBucket(BUCKET, 1)
+    const slot = slotOf(stamper.stampDataChunk(address, TIMESTAMP_MS).index)
+    const counter = stamper.getLocalCounter()?.[BUCKET]
+
+    expect(stamper.isOwnDataSlot(address, slot)).toBe(true)
+    const again = stamper.restampDataChunk(address, slot, TIMESTAMP_MS + 1)
+
+    expect(slotOf(again.index)).toBe(slot)
+    expect(new DataView(again.timestamp.buffer).getBigUint64(0, false)).toBe(
+      BigInt(TIMESTAMP_MS + 1) * 1_000_000n,
+    )
+    expect(stamper.getLocalCounter()?.[BUCKET]).toBe(counter)
+  })
+
+  it("counts only slots this lane has taken as its own", async () => {
+    const stamper = await boundStamper()
+    const address = makeAddressInBucket(BUCKET, 2)
+
+    expect(
+      stamper.isOwnDataSlot(address, dataSlot(1, 0, PARTITION_COUNT)),
+    ).toBe(false)
+    stamper.stampDataChunk(address)
+    expect(
+      stamper.isOwnDataSlot(address, dataSlot(1, 0, PARTITION_COUNT)),
+    ).toBe(true)
+    expect(
+      stamper.isOwnDataSlot(address, dataSlot(1, 1, PARTITION_COUNT)),
+    ).toBe(false)
+    expect(
+      stamper.isOwnDataSlot(address, dataSlot(0, 0, PARTITION_COUNT)),
+    ).toBe(false)
+    expect(stamper.isOwnDataSlot(address, 1)).toBe(false)
+    expect(() =>
+      stamper.restampDataChunk(address, dataSlot(1, 1, PARTITION_COUNT)),
+    ).toThrow(/not a slot this device took/)
+  })
+
+  it("refuses a reserved chunk, and refuses once the lease is lost", async () => {
+    const stamper = await boundStamper()
+    const counterChunk = makeAddressInBucket(BUCKET, 3)
+    const address = makeAddressInBucket(BUCKET, 4)
+    const slot = slotOf(stamper.stampDataChunk(address).index)
+    stamper.markReservedUtilizationChunk(counterChunk)
+
+    expect(stamper.isOwnDataSlot(counterChunk, slot)).toBe(false)
+    expect(() => stamper.restampDataChunk(counterChunk, slot)).toThrow(
+      expect.objectContaining({ name: "ReservedSlotError" }),
+    )
+    stamper.invalidateLease()
+    expect(() => stamper.restampDataChunk(address, slot)).toThrow(
+      PartitionLeaseLostError,
+    )
+  })
+})
+
 describe("UtilizationAwareStamper app slice (app stamps and the account's own uploads)", () => {
   const SIGNER_KEY = new PrivateKey(
     new Uint8Array(32).map((_, i) => (i + 11) & 0xff),

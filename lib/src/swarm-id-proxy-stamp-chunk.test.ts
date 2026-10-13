@@ -27,7 +27,12 @@ import {
   emptyAppStampUsage,
   parseAppStampUsage,
 } from "./proxy/app-stamp-limits"
-import { appStampUsageStorageKey } from "./types"
+import {
+  SOC_RESTAMP_SLOT_LIMIT,
+  emptySocRestampSlots,
+  recordSocSlot,
+} from "./proxy/soc-restamp-slots"
+import { appStampUsageStorageKey, socRestampSlotsStorageKey } from "./types"
 import type { UtilizationStoreDB } from "./storage/utilization-store"
 import {
   BACKUP_KEY_LABEL,
@@ -60,6 +65,7 @@ const internals = (p: SwarmIdProxy): ProxyInternals =>
   p as unknown as ProxyInternals
 
 const PARENT_ORIGIN = "https://dapp.example.com"
+const OTHER_ORIGIN = "https://other-dapp.example.com"
 const GATEWAY_URL = "https://gateway.example.com/"
 const APP_SECRET = "11".repeat(32)
 const BATCH_ID = "22".repeat(32)
@@ -68,6 +74,8 @@ const SIGNER_KEY = "33".repeat(32)
 const DERIVATION_KEY = "44".repeat(32)
 const ACCOUNT_ADDRESS = "55".repeat(20)
 const IDENTIFIER = "66".repeat(32)
+const OTHER_IDENTIFIER = "67".repeat(32)
+const INBOX_KEY = "88".repeat(32)
 const DEPTH = 20
 const SPAN_SIZE = 8
 
@@ -84,6 +92,7 @@ function unmarshalStamp(hex: string): {
   signature: Uint8Array
   slot: number
   bucket: number
+  timestampNs: bigint
 } {
   const bytes = hexToUint8Array(hex)
   const indexStart = BATCH_ID_BYTES
@@ -98,6 +107,11 @@ function unmarshalStamp(hex: string): {
     signature: bytes.slice(signatureStart),
     bucket: view.getUint32(0, false),
     slot: view.getUint32(SLOT_OFFSET, false),
+    timestampNs: new DataView(
+      bytes.buffer,
+      bytes.byteOffset + timestampStart,
+      TIMESTAMP_BYTES,
+    ).getBigUint64(0, false),
   }
 }
 
@@ -138,13 +152,17 @@ describe("SwarmIdProxy stampChunk", () => {
     source.postMessage.mock.calls.map(([message]) => message)
   const lastReply = () => replies()[replies().length - 1]
 
-  const stampChunk = (chunk: unknown, requestId = "r1") =>
+  const stampChunk = (
+    chunk: unknown,
+    requestId = "r1",
+    origin = PARENT_ORIGIN,
+  ) =>
     internals(proxy).handleStampChunk(
       { type: "stampChunk", requestId, chunk },
-      { source, origin: PARENT_ORIGIN } as unknown as MessageEvent,
+      { source, origin } as unknown as MessageEvent,
     )
 
-  const identify = (subsidisedGatewayUrl?: string) =>
+  const identify = (subsidisedGatewayUrl?: string, origin = PARENT_ORIGIN) =>
     messageListener({
       data: {
         type: "parentIdentify",
@@ -152,7 +170,7 @@ describe("SwarmIdProxy stampChunk", () => {
         metadata: { name: "Test App" },
         subsidisedGatewayUrl,
       },
-      origin: PARENT_ORIGIN,
+      origin,
       source: parentWindow,
     } as unknown as MessageEvent)
 
@@ -171,6 +189,8 @@ describe("SwarmIdProxy stampChunk", () => {
     batchId = BATCH_ID,
     localCounter = new Uint32Array(NUM_BUCKETS),
     saveFails = false,
+    partition = 0,
+    origin = PARENT_ORIGIN,
   } = {}): Promise<UtilizationAwareStamper> {
     const cache = {
       getAllChunks: async () => [],
@@ -191,7 +211,7 @@ describe("SwarmIdProxy stampChunk", () => {
       hexToUint8Array(swarmEncryptionKey),
     )
     stamper.bindPartition({
-      partition: 0,
+      partition,
       partitionCount: PARTITION_COUNT,
       localCounter,
     })
@@ -217,7 +237,7 @@ describe("SwarmIdProxy stampChunk", () => {
         id: new EthAddress(ACCOUNT_ADDRESS),
         derivationKey: DERIVATION_KEY,
       },
-      app: { appUrl: PARENT_ORIGIN },
+      app: { appUrl: origin },
     })
     return stamper
   }
@@ -432,6 +452,147 @@ describe("SwarmIdProxy stampChunk", () => {
     )
     expect(answered).toHaveLength(0)
     expect(internals(proxy).coordinator?.withWrite).not.toHaveBeenCalled()
+  })
+
+  describe("the same single-owner chunk stamped again", () => {
+    const inbox = (text: string, identifier = IDENTIFIER) => ({
+      kind: "soc",
+      identifier,
+      data: spanAndPayload(text),
+      signer: { privateKey: INBOX_KEY },
+    })
+    const inboxAddress = (identifier = IDENTIFIER) =>
+      Binary.keccak256(
+        Binary.concatBytes(
+          hexToUint8Array(identifier),
+          new PrivateKey(INBOX_KEY).publicKey().address().toUint8Array(),
+        ),
+      )
+    const counterCopy = (stamper: UtilizationAwareStamper) =>
+      new Uint32Array(stamper.getLocalCounter() ?? new Uint32Array(NUM_BUCKETS))
+
+    it("reuses the slot with a newer timestamp, spending no slot and no bucket share", async () => {
+      await identify()
+      const stamper = await userStampMode()
+      const address = inboxAddress()
+      const bucket = (address[0] << 8) | address[1]
+
+      await stampChunk(inbox("first message"), "r1")
+      const first = unmarshalStamp(lastReply().stamp)
+      await stampChunk(inbox("second message"), "r2")
+      const second = lastReply()
+      const restamped = unmarshalStamp(second.stamp)
+
+      expect(second).toMatchObject({
+        type: "stampChunkResponse",
+        address: Binary.uint8ArrayToHex(address),
+      })
+      expect(restamped.index).toEqual(first.index)
+      expect(restamped.timestampNs).toBeGreaterThan(first.timestampNs)
+      expect(stampSigner(second.stamp, address)).toBe(
+        new PrivateKey(SIGNER_KEY).publicKey().address().toHex(),
+      )
+      expect(stamper.getLocalCounter()?.[bucket]).toBe(1)
+      expect(storedUsage().count).toBe(2)
+      expect(storedUsage().buckets[bucket]).toBe(1)
+    })
+
+    it("keeps the slot across a frame reload", async () => {
+      await identify()
+      const stamper = await userStampMode()
+      await stampChunk(inbox("before reload"), "r1")
+      const first = unmarshalStamp(lastReply().stamp)
+
+      reloadProxy()
+      await identify()
+      await userStampMode({ localCounter: counterCopy(stamper) })
+      await stampChunk(inbox("after reload"), "r2")
+
+      expect(unmarshalStamp(lastReply().stamp).index).toEqual(first.index)
+    })
+
+    it("does not share the slot with another site or another stamp", async () => {
+      await identify()
+      const stamper = await userStampMode()
+      await stampChunk(inbox("this site"), "r1")
+      const first = unmarshalStamp(lastReply().stamp)
+      const counter = counterCopy(stamper)
+
+      reloadProxy()
+      await identify(undefined, OTHER_ORIGIN)
+      await userStampMode({ localCounter: counter, origin: OTHER_ORIGIN })
+      await stampChunk(inbox("other site"), "r2", OTHER_ORIGIN)
+      expect(unmarshalStamp(lastReply().stamp).slot).not.toBe(first.slot)
+
+      reloadProxy()
+      await identify()
+      await userStampMode({ batchId: OTHER_BATCH_ID, localCounter: counter })
+      await stampChunk(inbox("other stamp"), "r3")
+      expect(unmarshalStamp(lastReply().stamp).slot).not.toBe(first.slot)
+    })
+
+    it("takes a new slot for another address", async () => {
+      await identify()
+      await userStampMode()
+
+      await stampChunk(inbox("one inbox"), "r1")
+      const first = unmarshalStamp(lastReply().stamp)
+      await stampChunk(inbox("another inbox", OTHER_IDENTIFIER), "r2")
+      const other = unmarshalStamp(lastReply().stamp)
+
+      expect(other.index).not.toEqual(first.index)
+    })
+
+    it("takes a new slot once this device holds another lane", async () => {
+      await identify()
+      const stamper = await userStampMode()
+      await stampChunk(inbox("partition 0"), "r1")
+      const first = unmarshalStamp(lastReply().stamp)
+
+      await userStampMode({ partition: 1, localCounter: counterCopy(stamper) })
+      await stampChunk(inbox("partition 1"), "r2")
+
+      expect(unmarshalStamp(lastReply().stamp).slot).not.toBe(first.slot)
+    })
+
+    it("takes a new slot each time when the record is full", async () => {
+      let full = emptySocRestampSlots({
+        partition: 0,
+        partitionCount: PARTITION_COUNT,
+      })
+      for (let i = 0; i < SOC_RESTAMP_SLOT_LIMIT; i++) {
+        full = recordSocSlot(full, i.toString(16).padStart(64, "0"), i, 0)
+      }
+      store.set(
+        socRestampSlotsStorageKey(PARENT_ORIGIN, BATCH_ID),
+        JSON.stringify(full),
+      )
+      await identify()
+      await userStampMode()
+
+      await stampChunk(inbox("full one"), "r1")
+      const first = unmarshalStamp(lastReply().stamp)
+      await stampChunk(inbox("full two"), "r2")
+
+      expect(unmarshalStamp(lastReply().stamp).slot).not.toBe(first.slot)
+    })
+
+    it("stamps one millisecond past the last when the clock went back", async () => {
+      const now = 1_800_000_000_000
+      const clock = vi.spyOn(Date, "now").mockReturnValue(now)
+      await identify()
+      await userStampMode()
+      await stampChunk(inbox("on time"), "r1")
+      const first = unmarshalStamp(lastReply().stamp)
+
+      clock.mockReturnValue(now - 60_000)
+      await stampChunk(inbox("clock went back"), "r2")
+      const again = unmarshalStamp(lastReply().stamp)
+
+      expect(again.index).toEqual(first.index)
+      expect(first.timestampNs).toBe(BigInt(now) * 1_000_000n)
+      expect(again.timestampNs).toBe(BigInt(now + 1) * 1_000_000n)
+    })
   })
 
   describe("limits per app", () => {

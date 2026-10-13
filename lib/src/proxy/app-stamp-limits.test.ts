@@ -13,9 +13,11 @@ import {
   APP_STAMP_RATE_LIMIT,
   APP_STAMP_RATE_WINDOW_MS,
   appBucketCap,
+  appRestampRefusal,
   appStampRefusal,
   emptyAppStampUsage,
   parseAppStampUsage,
+  recordAppRestamp,
   recordAppStamp,
   type AppStampUsage,
 } from "./app-stamp-limits"
@@ -133,6 +135,48 @@ describe("app stamp limits", () => {
       count: 1,
       windowStart: NOW,
       windowCount: 1,
+      buckets: { [BUCKET]: 1 },
+    })
+  })
+
+  it("lets a stamp again at a slot already taken past the bucket share, but not past the count or the rate", () => {
+    let full = emptyAppStampUsage()
+    for (let i = 0; i < appBucketCap(LANE_CAPACITY); i++) {
+      full = recordAppStamp(full, BUCKET, NOW)
+    }
+    expect(appStampRefusal(full, at())).toMatchObject({
+      reason: "app-bucket-share",
+    })
+    expect(appRestampRefusal(full, NOW)).toBeUndefined()
+
+    expect(
+      appRestampRefusal(
+        { ...emptyAppStampUsage(), count: APP_STAMP_COUNT_LIMIT },
+        NOW,
+      ),
+    ).toMatchObject({ reason: "app-stamp-count" })
+    expect(
+      appRestampRefusal(
+        {
+          ...emptyAppStampUsage(),
+          windowStart: NOW,
+          windowCount: APP_STAMP_RATE_LIMIT,
+        },
+        NOW,
+      ),
+    ).toMatchObject({ reason: "app-stamp-rate" })
+  })
+
+  it("records a stamp again in the count and the window, never in a bucket", () => {
+    const usage = recordAppRestamp(
+      recordAppStamp(emptyAppStampUsage(), BUCKET, NOW),
+      NOW + 1,
+    )
+
+    expect(usage).toEqual({
+      count: 2,
+      windowStart: NOW,
+      windowCount: 2,
       buckets: { [BUCKET]: 1 },
     })
   })
