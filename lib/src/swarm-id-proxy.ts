@@ -338,6 +338,13 @@ function subsidisedStampRefusal(): SwarmIdError {
   )
 }
 
+/** A stamp made for an app, before it is committed */
+interface StampedForApp {
+  marshaled: string
+  /** Remembers a single-owner chunk's slot. Run only once the stamp is committed */
+  recordSlot?: () => void
+}
+
 /**
  * Swarm ID Proxy - Runs inside the iframe
  *
@@ -4549,7 +4556,7 @@ export class SwarmIdProxy {
         internalOwners: this.accountInternalOwners(),
       })
 
-      const stamp = await this.withModeAwareWriteLock(
+      const stamped = await this.withModeAwareWriteLock(
         undefined,
         async (target) => {
           // The mode can change while the write waits on the lock.
@@ -4560,17 +4567,18 @@ export class SwarmIdProxy {
               "The write path has no utilization-aware stamper to stamp with.",
             )
           }
-          const stamped = this.stampWithinAppLimits(target.stamper, prepared)
+          const result = this.stampWithinAppLimits(target.stamper, prepared)
           await this.persistStamperStateForStamp()
-          return stamped
+          return result
         },
       )
+      stamped.recordSlot?.()
 
       this.postMessage(event, {
         type: "stampChunkResponse",
         requestId,
         address: uint8ArrayToHex(prepared.address),
-        stamp,
+        stamp: stamped.marshaled,
         owner: prepared.owner?.toHex(),
         signature: prepared.signature?.toHex(),
       })
@@ -4600,19 +4608,25 @@ export class SwarmIdProxy {
   /**
    * Stamp for this app if its limits allow, and count the stamp. Synchronous
    * from the read of the usage to its write, so two requests can never both
-   * take the last stamp an app is allowed. The usage, and for a single-owner
-   * chunk the slot it went to, are written before the stamp is returned, so a
-   * stamp that could not be counted is never handed out.
+   * take the last stamp an app is allowed. The usage is written before the
+   * stamp is returned, so a stamp that could not be counted is never handed
+   * out.
    *
    * A single-owner chunk this app had stamped before in this device's lane is
    * stamped again at the same slot with a newer timestamp, which a mutable
    * batch takes as a replacement. That spends no slot, so only the count and
    * the rate apply. A content chunk always takes a new slot.
+   *
+   * The slot a single-owner chunk went to is not written here. The caller
+   * runs `recordSlot` only once the counter that spent it is saved and
+   * published: a record left by a stamp that failed to commit would outlive
+   * the counter, the slot would go to another chunk after a reload, and the
+   * next stamp of this address would replace that chunk on Bee.
    */
   private stampWithinAppLimits(
     stamper: UtilizationAwareStamper,
     chunk: ChunkToStamp,
-  ): string {
+  ): StampedForApp {
     if (!this.parentOrigin) {
       throw new SwarmIdError(
         "not-authenticated",
@@ -4627,14 +4641,15 @@ export class SwarmIdProxy {
     if (!chunk.owner) {
       const stamp = this.stampNewSlot(stamper, chunk.address, usage, now)
       localStorage.setItem(usageKey, JSON.stringify(stamp.usage))
-      return stamp.marshaled
+      return { marshaled: stamp.marshaled }
     }
 
     const slotsKey = socRestampSlotsStorageKey(this.parentOrigin, batchId)
-    const slots = parseSocRestampSlots(localStorage.getItem(slotsKey), {
+    const lane = {
       partition: stamper.currentPartition ?? 0,
       partitionCount: stamper.partitionCount,
-    })
+    }
+    const slots = parseSocRestampSlots(localStorage.getItem(slotsKey), lane)
     const addressHex = uint8ArrayToHex(chunk.address)
     const held = slots.slots[addressHex]
 
@@ -4659,11 +4674,15 @@ export class SwarmIdProxy {
       nextUsage = stamp.usage
     }
     localStorage.setItem(usageKey, JSON.stringify(nextUsage))
-    localStorage.setItem(
-      slotsKey,
-      JSON.stringify(recordSocSlot(slots, addressHex, slot, timestampMs)),
-    )
-    return marshaled
+    // Read again when recording, so a stamp committed meanwhile keeps its entry.
+    const recordSlot = () => {
+      const latest = parseSocRestampSlots(localStorage.getItem(slotsKey), lane)
+      localStorage.setItem(
+        slotsKey,
+        JSON.stringify(recordSocSlot(latest, addressHex, slot, timestampMs)),
+      )
+    }
+    return { marshaled, recordSlot }
   }
 
   /** Stamp at a new slot within the app's limits, and the usage that counts it */
