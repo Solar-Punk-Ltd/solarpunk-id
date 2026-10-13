@@ -72,7 +72,9 @@ A failure to read the wrapping key at all, because IndexedDB returned an
 error, is not the same as a key that is gone. The account then reads as
 signed out for that page only: its stored record is left exactly as it is,
 no write in that page replaces it with the signed-out copy, and a later load
-that can read IndexedDB opens the keys again (`isSealedValueUnavailable`).
+that can read IndexedDB opens the keys again (`isSealedValueUnavailable`). A
+partitioned session in that state is no session for that page only, and its
+stored record is kept for a later load to open.
 
 Without IndexedDB, where `indexedDB` is missing or null, there is nowhere to
 keep the key beside the data, so it lasts as long as the page and the next

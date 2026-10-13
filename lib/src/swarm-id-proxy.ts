@@ -173,6 +173,7 @@ import {
 import { isStorageShared } from "./utils/storage-probe"
 import {
   isSealedValue,
+  isSealedValueUnavailable,
   openedValue,
   primeSealedValues,
   sealValue,
@@ -1135,7 +1136,7 @@ export class SwarmIdProxy {
     const account = serializeSyncedAccount(this.partitionAccount)
     this.writePartitionSession(parentOrigin, async () => {
       const stored = await this.openStoredPartitionSession(parentOrigin)
-      if (!stored) return undefined
+      if (!stored || stored === "unavailable") return undefined
       return {
         ...stored.record,
         data: await sealValue(JSON.stringify({ ...stored.wire, account })),
@@ -1177,11 +1178,16 @@ export class SwarmIdProxy {
     partitionSessionWrites.set(key, queued)
   }
 
-  /** The stored record for this parent and its opened wire payload. */
+  /**
+   * The stored record for this parent and its opened wire payload, or
+   * `"unavailable"` when this page could not read the wrapping key, so the
+   * record may still open on a later load.
+   */
   private async openStoredPartitionSession(
     parentOrigin: string,
   ): Promise<
     | { record: StoredPartitionSession; wire: Record<string, unknown> }
+    | "unavailable"
     | undefined
   > {
     let raw: string | null = null
@@ -1201,7 +1207,11 @@ export class SwarmIdProxy {
     if (!result.success || !isSealedValue(result.data.data)) return undefined
     await primeSealedValues([result.data.data])
     const opened = openedValue(result.data.data)
-    if (opened === undefined) return undefined
+    if (opened === undefined) {
+      return isSealedValueUnavailable(result.data.data)
+        ? "unavailable"
+        : undefined
+    }
     try {
       return {
         record: result.data,
@@ -1220,7 +1230,9 @@ export class SwarmIdProxy {
    * `parentOrigin` check below is now the belt to that pair of braces rather
    * than the only thing keeping two dApps apart. An expired, malformed or
    * unopenable record is removed on the way past: it will never become valid
-   * again, and a record whose seal does not open is no session.
+   * again, and a record whose seal does not open is no session. A record whose
+   * wrapping key this page could not read is no session for this page only,
+   * and stays stored for a later load to open.
    */
   private async readPartitionSession(): Promise<PartitionSession | undefined> {
     if (!this.parentOrigin) return undefined
@@ -1236,6 +1248,7 @@ export class SwarmIdProxy {
     if (!raw) return undefined
 
     const stored = await this.openStoredPartitionSession(parentOrigin)
+    if (stored === "unavailable") return undefined
     const data = stored && AuthDataSchema.safeParse(stored.wire)
     if (!stored || !data?.success) {
       this.clearPartitionSession()
