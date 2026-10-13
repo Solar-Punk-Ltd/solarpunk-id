@@ -202,3 +202,76 @@ describe("VersionedStorageManager — a sealed write that fails", () => {
     )
   })
 })
+
+describe("VersionedStorageManager — two windows over one storage", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  type VersionedStorageModule = typeof import("./versioned-storage")
+
+  /** Another window of the site: its own copy of the module and its queue. */
+  async function freshWindow(): Promise<VersionedStorageModule> {
+    vi.resetModules()
+    // eslint-disable-next-line no-restricted-syntax -- a fresh module per window is the point
+    return import("./versioned-storage")
+  }
+
+  /** Exclusive locks shared by every window, granted in request order. */
+  function sharedLockManager() {
+    const tails = new Map<string, Promise<unknown>>()
+    return {
+      request<T>(
+        name: string,
+        _options: unknown,
+        callback: () => Promise<T>,
+      ): Promise<T> {
+        const run = (tails.get(name) ?? Promise.resolve()).then(callback)
+        tails.set(
+          name,
+          run.catch(() => undefined),
+        )
+        return run
+      },
+    }
+  }
+
+  function slowSealingManager(
+    module: VersionedStorageModule,
+    storage: StorageAdapter,
+  ): VersionedStorageManager<Item> {
+    return new module.VersionedStorageManager<Item>({
+      key: "two-window-key",
+      currentVersion: 1,
+      storage,
+      parsers: { 1: createZodParser(ItemsSchema) },
+      sealing: {
+        seal: async (records) => {
+          await new Promise((resolve) => setTimeout(resolve, 5))
+          return records
+        },
+        open: (data) => data,
+        prime: async () => undefined,
+      },
+    })
+  }
+
+  it("keeps both windows' updates when they overlap", async () => {
+    vi.stubGlobal("navigator", { locks: sharedLockManager() })
+    const storage = new MemoryStorageAdapter()
+    const identityTab = slowSealingManager(await freshWindow(), storage)
+    const frame = slowSealingManager(await freshWindow(), storage)
+
+    await Promise.all([
+      identityTab.update((stored) => [...stored, { name: "from the tab" }]),
+      frame.update((stored) => [...stored, { name: "from the frame" }]),
+    ])
+
+    expect(
+      identityTab
+        .load()
+        .map((item) => item.name)
+        .sort(),
+    ).toEqual(["from the frame", "from the tab"])
+  })
+})
