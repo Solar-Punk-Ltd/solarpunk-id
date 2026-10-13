@@ -30,6 +30,7 @@ import {
 import {
   SOC_RESTAMP_SLOT_LIMIT,
   emptySocRestampSlots,
+  parseSocRestampSlots,
   recordSocSlot,
 } from "./proxy/soc-restamp-slots"
 import { appStampUsageStorageKey, socRestampSlotsStorageKey } from "./types"
@@ -529,6 +530,74 @@ describe("SwarmIdProxy stampChunk", () => {
       await userStampMode({ batchId: OTHER_BATCH_ID, localCounter: counter })
       await stampChunk(inbox("other stamp"), "r3")
       expect(unmarshalStamp(lastReply().stamp).slot).not.toBe(first.slot)
+    })
+
+    const storedSlot = (address: Uint8Array) =>
+      parseSocRestampSlots(
+        store.get(socRestampSlotsStorageKey(PARENT_ORIGIN, BATCH_ID)) ?? null,
+        { partition: 0, partitionCount: PARTITION_COUNT },
+      ).slots[Binary.uint8ArrayToHex(address)]
+
+    it("records the slot before it replies", async () => {
+      await identify()
+      await userStampMode()
+      const address = inboxAddress()
+      let recordedAtReply: unknown
+      source.postMessage.mockImplementation(() => {
+        recordedAtReply = storedSlot(address)
+      })
+
+      await stampChunk(inbox("recorded"), "r1")
+
+      expect(lastReply()).toMatchObject({ type: "stampChunkResponse" })
+      expect(recordedAtReply).toEqual({
+        slot: unmarshalStamp(lastReply().stamp).slot,
+        timestampMs: expect.any(Number),
+      })
+    })
+
+    it("records no slot when the counter could not be saved, and the next stamp takes a new slot", async () => {
+      await identify()
+      const stamper = await userStampMode({ saveFails: true })
+      vi.spyOn(console, "error").mockImplementation(() => undefined)
+      const address = inboxAddress()
+      const bucket = (address[0] << 8) | address[1]
+
+      await stampChunk(inbox("unsaved"), "r1")
+      expect(lastReply()).toMatchObject({ type: "error", requestId: "r1" })
+      expect(storedSlot(address)).toBeUndefined()
+
+      const next = await userStampMode({ localCounter: counterCopy(stamper) })
+      const spentBefore = next.getLocalCounter()?.[bucket] ?? 0
+      await stampChunk(inbox("saved"), "r2")
+
+      expect(lastReply()).toMatchObject({ type: "stampChunkResponse" })
+      expect(next.getLocalCounter()?.[bucket]).toBe(spentBefore + 1)
+    })
+
+    it("records no slot when the counter could not be published, and the next stamp takes a new slot", async () => {
+      await identify()
+      const stamper = await userStampMode()
+      const target = { mode: "stamper", bee: {}, stamper }
+      internals(proxy).coordinator = {
+        withWrite: vi.fn(async (op: (target: unknown) => unknown) => {
+          await op(target)
+          throw new Error("partition state publish failed")
+        }),
+      }
+      const address = inboxAddress()
+      const bucket = (address[0] << 8) | address[1]
+
+      await stampChunk(inbox("unpublished"), "r1")
+      expect(lastReply()).toMatchObject({ type: "error", requestId: "r1" })
+      expect(storedSlot(address)).toBeUndefined()
+
+      const next = await userStampMode({ localCounter: counterCopy(stamper) })
+      const spentBefore = next.getLocalCounter()?.[bucket] ?? 0
+      await stampChunk(inbox("published"), "r2")
+
+      expect(lastReply()).toMatchObject({ type: "stampChunkResponse" })
+      expect(next.getLocalCounter()?.[bucket]).toBe(spentBefore + 1)
     })
 
     it("takes a new slot for another address", async () => {
