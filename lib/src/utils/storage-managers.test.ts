@@ -19,7 +19,10 @@ import {
   createSignedOutAccount,
   createPostageStamp,
 } from "../test-fixtures"
-import { createFakeIndexedDB } from "../test-indexeddb"
+import {
+  createFakeIndexedDB,
+  createUnreadableIndexedDB,
+} from "../test-indexeddb"
 import { sealValue } from "./sealed-values"
 
 describe("serializeAccount — device-local seed vault", () => {
@@ -396,6 +399,35 @@ describe("the accounts document keeps its keys sealed", () => {
     expect(loaded.id.equals(original.id)).toBe(true)
     expect(loaded.encryptedSeed).toBe(original.encryptedSeed)
     expect(loaded.access).toEqual(original.access)
+  })
+
+  it("keeps the sealed keys through a page whose IndexedDB read fails, and reads them once it works", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined)
+    const working = createFakeIndexedDB()
+    vi.stubGlobal("indexedDB", working)
+    await (await freshPage()).createAccountsStorageManager().save([account()])
+    const sealedKey = () =>
+      (JSON.parse(raw()) as { data: { derivationKey?: string }[] }).data[0]
+        .derivationKey
+    const before = sealedKey()
+
+    vi.stubGlobal("indexedDB", createUnreadableIndexedDB())
+    const failing = (await freshPage()).createAccountsStorageManager()
+    await failing.prime()
+    expect(isSignedOutAccount(failing.load()[0])).toBe(true)
+    await failing.update((stored) => [...stored])
+    await failing.save(failing.load())
+
+    expect(before).toBeDefined()
+    expect(sealedKey()).toBe(before)
+
+    vi.stubGlobal("indexedDB", working)
+    const later = (await freshPage()).createAccountsStorageManager()
+    await later.prime()
+    const [loaded] = later.load()
+    expect(isSignedOutAccount(loaded)).toBe(false)
+    if (isSignedOutAccount(loaded)) return
+    expect(loaded.derivationKey).toBe(DERIVATION_KEY)
   })
 
   it("does not read a key stored in plain text", async () => {

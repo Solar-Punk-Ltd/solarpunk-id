@@ -145,3 +145,66 @@ export function createFakeIndexedDB() {
     },
   }
 }
+
+function failedRequest<T>(message: string): FakeRequest<T> {
+  const req = request<T>()
+  later(() => {
+    req.error = new Error(message)
+    req.onerror?.({ target: req })
+  })
+  return req
+}
+
+/**
+ * An IndexedDB that opens and then fails every read and write, as a transient
+ * error does. Install it with `vi.stubGlobal("indexedDB", ...)`.
+ */
+export function createUnreadableIndexedDB() {
+  const database = {
+    objectStoreNames: { contains: () => true },
+    createObjectStore: () => undefined,
+    transaction: () => {
+      const tx = {
+        oncomplete: null as Handler,
+        onerror: null as Handler,
+        onabort: null as Handler,
+        error: null as unknown,
+        objectStore: () => {
+          const fail = <T>() => {
+            const req = failedRequest<T>("IndexedDB read failed")
+            later(() =>
+              later(() => {
+                tx.error = req.error
+                tx.onerror?.({})
+              }),
+            )
+            return req
+          }
+          return { get: fail, add: fail }
+        },
+      }
+      return tx
+    },
+    close: () => undefined,
+  }
+  return {
+    open() {
+      const req = request<typeof database>()
+      later(() => {
+        req.result = database
+        req.onsuccess?.({ target: req })
+      })
+      return req
+    },
+  }
+}
+
+/**
+ * An IndexedDB that cannot be opened, as when the browser blocks it. Install
+ * it with `vi.stubGlobal("indexedDB", ...)`.
+ */
+export function createUnopenableIndexedDB() {
+  return {
+    open: () => failedRequest<never>("IndexedDB could not be opened"),
+  }
+}
