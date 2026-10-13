@@ -7,6 +7,7 @@ import type {
   Topic as BeeTopic,
 } from "@ethersphere/bee-js"
 import {
+  ChatBindingSchema,
   NetworkSettingsSchemaV1,
   SyncedAccountSchemaV1,
   ReferenceSchema,
@@ -804,6 +805,14 @@ export const ConnectionInfoSchema = z.object({
       publicKey: CompressedPublicKeySchema,
     })
     .optional(),
+  /**
+   * The account's signed statement that `appKey.address` on this site is its
+   * own (docs/Chat-Binding.md). For the dApp to publish beside its chat, so a
+   * reader can check it with `verifyChatBinding`. Present only on a session
+   * the connect popup handed over, and only when it names this site, this app
+   * key and this account. A reader trusts the newest binding per site.
+   */
+  chatBinding: ChatBindingSchema.optional(),
 })
 
 export type ConnectionInfo = z.infer<typeof ConnectionInfoSchema>
@@ -1557,6 +1566,7 @@ export const ConnectionInfoChangedMessageSchema = z.object({
     })
     .optional(),
   partition: z.number().int().min(0).optional(),
+  chatBinding: ChatBindingSchema.optional(),
 })
 
 export const ConnectResponseMessageSchema = z.object({
@@ -1974,6 +1984,13 @@ export const AuthDataSchema = z.object({
    * there are no separate `identity*` fields.
    */
   account: SyncedAccountSchemaV1,
+  /**
+   * The chat binding for this origin, signed in the popup with the account's
+   * own key (docs/Chat-Binding.md). The handover is the one way it reaches a
+   * dApp, and the proxy passes it on only when it names this parent origin,
+   * this secret's address and this account.
+   */
+  chatBinding: ChatBindingSchema.optional(),
 })
 
 export type AuthData = z.infer<typeof AuthDataSchema>

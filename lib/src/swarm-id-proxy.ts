@@ -156,6 +156,8 @@ import {
 import { hexToUint8Array, uint8ArrayToHex } from "./utils/hex"
 import { generatedAvatar } from "./utils/avatar"
 import { connectionInfoEqual } from "./utils/connection-info"
+import { acceptedChatBinding } from "./utils/chat-binding"
+import type { ChatBinding } from "./utils/chat-binding"
 import {
   activeDeviceIds,
   KNOWN_DEVICE_MAX_AGE_MS,
@@ -322,6 +324,13 @@ export class SwarmIdProxy {
   private authenticated: boolean = false
   private authLoading: boolean = true // Start in loading state
   private appSecret: string | undefined
+  /**
+   * The chat binding the popup handed over with this session, already checked
+   * against it (`acceptHandedOverChatBinding`). Only a handover sets it: an
+   * unpartitioned session reads its connection out of shared storage and
+   * reports none.
+   */
+  private chatBinding: ChatBinding | undefined
   private postageBatchId: string | undefined
   private signerKey: string | undefined
   private stamper: UtilizationAwareStamper | undefined
@@ -802,6 +811,7 @@ export class SwarmIdProxy {
     connectedApp: ConnectedApp,
   ): Promise<void> {
     this.appSecret = connectedApp.appSecret
+    this.chatBinding = undefined
     this.authenticated = true
     this.storagePartitioned = false
     this.partitionAccount = undefined
@@ -875,6 +885,7 @@ export class SwarmIdProxy {
 
       // Authenticate in storage-partitioned mode (no stamps available via postMessage)
       this.appSecret = message.data.secret
+      this.chatBinding = this.acceptHandedOverChatBinding(message.data)
       this.authenticated = true
       this.storagePartitioned = true
       this.authLoading = false
@@ -936,6 +947,29 @@ export class SwarmIdProxy {
     this.isConnecting = false
     this.authLoading = false
     this.showAuthButton()
+  }
+
+  /**
+   * The handed-over chat binding, if it names exactly this parent origin, the
+   * address of the secret it came with and the account it came with, so the
+   * dApp is never shown a statement about another site, key or account.
+   *
+   * Local http is allowed in the parse because the comparison with
+   * `parentOrigin`, which the browser reported, is the check here. Which sites
+   * a binding may name at all is the popup's to decide, and a production popup
+   * refuses local http.
+   */
+  private acceptHandedOverChatBinding(data: AuthData): ChatBinding | undefined {
+    if (!this.parentOrigin) return undefined
+    return acceptedChatBinding(
+      data.chatBinding,
+      {
+        site: this.parentOrigin,
+        chatAddress: new PrivateKey(data.secret).publicKey().address().toHex(),
+        signer: data.account.id.toHex(),
+      },
+      { allowLocalHttp: true },
+    )
   }
 
   /**
@@ -2446,6 +2480,7 @@ export class SwarmIdProxy {
 
     if (sharedData) {
       this.appSecret = sharedData.secret
+      this.chatBinding = undefined
       this.authenticated = true
       this.authLoading = false
       this.showAuthButton()
@@ -2491,6 +2526,7 @@ export class SwarmIdProxy {
   ): Promise<void> {
     const { data } = session
     this.appSecret = data.secret
+    this.chatBinding = this.acceptHandedOverChatBinding(data)
     this.authenticated = true
     this.storagePartitioned = true
     this.authLoading = false
@@ -3257,6 +3293,7 @@ export class SwarmIdProxy {
     this.authenticated = false
     this.authLoading = false
     this.appSecret = undefined
+    this.chatBinding = undefined
     // Before dropping `deviceId` — the release announcement is sent as us.
     this.setResolvedStamp(undefined)
     this.deviceId = undefined
@@ -3512,6 +3549,7 @@ export class SwarmIdProxy {
       identity,
       appKey,
       partition: this.coordinator?.currentPartition,
+      chatBinding: this.authenticated ? this.chatBinding : undefined,
     }
   }
 
@@ -3558,6 +3596,7 @@ export class SwarmIdProxy {
       identity: info.identity,
       appKey: info.appKey,
       partition: info.partition,
+      chatBinding: info.chatBinding,
     })
   }
 

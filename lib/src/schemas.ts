@@ -119,6 +119,28 @@ export const DeviceSchemaV1 = z.object({
 })
 
 // ============================================================================
+// Chat Binding Schema
+// ============================================================================
+
+/**
+ * Longer than any binding message can be: four short lines around a site
+ * origin, whose host is at most 253 characters. A bound on what is stored and
+ * carried, not a check of the format, which `verifyChatBinding` does.
+ */
+export const CHAT_BINDING_MAX_LENGTH = 512
+
+/**
+ * The account's signed statement that the chat address on one site is its
+ * own (`utils/chat-binding.ts`, docs/Chat-Binding.md). Public, and true on
+ * every device of the account, so it travels with its connection rather than
+ * staying device-local like the app secret.
+ */
+export const ChatBindingSchema = z.object({
+  message: z.string().max(CHAT_BINDING_MAX_LENGTH),
+  signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/),
+})
+
+// ============================================================================
 // Connected App Schema
 // ============================================================================
 
@@ -156,6 +178,10 @@ export const ConnectedAppSchemaV1 = z.object({
   // this marker a peer re-installs its own secret after the merge and keeps
   // uploading (see `restoreLocalSessionFields`). A reconnect clears it.
   disconnectedAt: z.number().optional(),
+  // The newest chat binding signed for this site. A new one replaces it, and
+  // a revoke or disconnect leaves it: it stays true for as long as the
+  // account and the site do, and is what spares a reconnect a second one.
+  chatBinding: ChatBindingSchema.optional(),
 })
 
 // ============================================================================

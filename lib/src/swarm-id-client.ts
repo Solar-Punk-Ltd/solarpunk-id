@@ -536,6 +536,7 @@ export class SwarmIdClient {
           identity: message.identity,
           appKey: message.appKey,
           partition: message.partition,
+          chatBinding: message.chatBinding,
         }
         this.lastConnectionInfo = info
         if (this.firstConnectionInfoResolve) {
