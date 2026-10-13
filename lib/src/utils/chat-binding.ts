@@ -43,6 +43,12 @@ const ADDRESS_INPUT_PATTERN = /^(0x)?[0-9a-fA-F]{40}$/
 /** `Date.prototype.toISOString` exactly: UTC, milliseconds, a `Z`. */
 const ISO_UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 const HEX_RADIX = 16
+/**
+ * A host a DNS name can spell: letters, digits, hyphens and dots, in punycode
+ * form. The URL parser lets `*` and `_` through, and a site list must never
+ * hold a host that reads as a pattern.
+ */
+const DNS_HOST_PATTERN = /^[a-z0-9.-]+$/
 
 /** Hosts a development build may name over plain http. */
 const LOCAL_HOSTS: ReadonlySet<string> = new Set([
@@ -110,6 +116,9 @@ export function isCleanSiteOrigin(
     url.protocol === "http:" &&
     LOCAL_HOSTS.has(url.hostname)
   if (!secure && !localHttp) {
+    return false
+  }
+  if (!localHttp && !DNS_HOST_PATTERN.test(url.hostname)) {
     return false
   }
   return (
