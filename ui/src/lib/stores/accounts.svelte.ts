@@ -28,8 +28,9 @@ type AccountSettings = { appSessionDuration?: number }
  * union: the seed vault — which SURVIVES a sign-out so the user can sign back
  * in with the existing access method — plus, while signed out, the sign-out
  * marker and the encrypted snapshot of the synced state (restored on
- * sign-back-in). Held as ONE union-typed field so a signed-out state without
- * its snapshot is unrepresentable.
+ * sign-back-in). Held as ONE union-typed field. The snapshot is missing only
+ * when the account was signed out because its sealed keys could not be opened
+ * on this device, and sign-back-in then restores it from Swarm.
  */
 type DeviceAuth =
   | {
@@ -42,7 +43,7 @@ type DeviceAuth =
   | {
       vault: LocalVault
       signedOutAt: number
-      encryptedState: string
+      encryptedState?: string
       /** Any drive needed attention when the sign-out captured the state. */
       storageWarning?: boolean
       /** Soonest estimated drive expiry (epoch ms) captured at sign-out. */
@@ -631,20 +632,25 @@ let accounts = $state<Account[]>([])
  * Accepted edge: merging by id means a mutation racing another tab's remove of
  * the SAME account re-adds it — benign, last-writer-wins. No sync.
  */
-function persistAccount(account: Account, noRepublish = false): void {
+function persistAccount(account: Account, noRepublish = false): Promise<void> {
   const record = account.toRecord()
-  const stored = storageManager.load()
-  const merged = stored.some((existing) => existing.id.equals(account.id))
-    ? stored.map((existing) => (existing.id.equals(account.id) ? record : existing))
-    : [...stored, record]
   // `skipSync` means peers must not hear about this write: the proxy sharing
   // this window (inside the proxy iframe) must not publish it either (#707).
-  storageManager.save(merged, { noRepublish })
+  // An update rather than a load and a save: the keys are sealed on the way
+  // to storage, which is asynchronous, so the read has to happen in the
+  // write's own turn or a second persist reads before the first has landed.
+  return storageManager.update(
+    (stored) =>
+      stored.some((existing) => existing.id.equals(account.id))
+        ? stored.map((existing) => (existing.id.equals(account.id) ? record : existing))
+        : [...stored, record],
+    { noRepublish },
+  )
 }
 
 /** Remove one account from storage by read-merge-write (see `persistAccount`). */
 function persistRemoval(id: EthAddress): void {
-  storageManager.save(storageManager.load().filter((record) => !record.id.equals(id)))
+  void storageManager.update((stored) => stored.filter((record) => !record.id.equals(id)))
 }
 
 /**
@@ -654,8 +660,10 @@ function persistRemoval(id: EthAddress): void {
  * each `Account` as its `#commit`.
  */
 function commitAccount(account: Account, options?: { skipSync?: boolean }): void {
-  persistAccount(account, options?.skipSync)
-  if (!options?.skipSync) syncHook?.(account.id.toHex())
+  // Published once written, so a peer told of the change finds it in storage.
+  void persistAccount(account, options?.skipSync).then(() => {
+    if (!options?.skipSync) syncHook?.(account.id.toHex())
+  })
 }
 
 function hydrate(record: AccountRecord): Account {
@@ -667,7 +675,17 @@ function load(): Account[] {
   return storageManager.load().map(hydrate)
 }
 
-accounts = load()
+/**
+ * Resolves once the stored accounts are read with their keys opened
+ * (`@snaha/swarm-id`'s sealed storage, review P2-2). Until then the store is
+ * empty, and the root layout renders no page, because a page that changed an
+ * account before its keys were open would write it back without them.
+ */
+export const accountsLoaded: Promise<void> = browser
+  ? storageManager.prime().then(() => {
+      accounts = load()
+    })
+  : Promise.resolve()
 
 /**
  * Re-read the collection from storage, updating existing instances in place
@@ -719,12 +737,12 @@ export const accountsStore = {
     if (existing) {
       // Reuse the instance so references held elsewhere keep working.
       existing.applyRecord(record)
-      persistAccount(existing)
+      void persistAccount(existing)
       return existing
     }
     const account = hydrate(record)
     accounts = [...accounts, account]
-    persistAccount(account)
+    void persistAccount(account)
     return account
   },
 
@@ -745,7 +763,7 @@ export const accountsStore = {
   /** Wipe every account from this device (developer reset). */
   clear(): void {
     accounts = []
-    storageManager.clear()
+    void storageManager.clear()
   },
 }
 

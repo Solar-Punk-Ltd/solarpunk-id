@@ -19,7 +19,7 @@
   import { isFramed, refusesToRunFramed } from '$lib/frame-guard'
   import routes from '$lib/routes'
   import { accountBusStore } from '$lib/stores/account-bus'
-  import { accountsStore, setAccountsSyncHook } from '$lib/stores/accounts.svelte'
+  import { accountsLoaded, accountsStore, setAccountsSyncHook } from '$lib/stores/accounts.svelte'
   import { sessionStore } from '$lib/stores/session.svelte'
   import { themeStore } from '$lib/stores/theme.svelte'
   import { toastStore } from '$lib/stores/toast.svelte'
@@ -100,7 +100,9 @@
     This page cannot be shown inside another site. Open the Swarm ID site in its own tab.
   </p>
 {:else}
-  {@render children()}
+  {#await accountsLoaded then}
+    {@render children()}
+  {/await}
 
   <Toast message={toastStore.message} />
 {/if}
