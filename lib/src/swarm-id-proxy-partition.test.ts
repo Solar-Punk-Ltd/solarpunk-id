@@ -80,21 +80,20 @@ vi.mock("./utils/batch-utilization", async (importActual) => {
   }
 })
 /**
- * The background verify a restored session runs (#635). Left answering
- * `undefined` — "nothing published" — so the tests that do not care about it
- * are not steered by it; the one that does sets a folded account.
+ * The check a session restored from storage runs before its first write.
+ * Left answering "allowed", so the tests that do not care about it are not
+ * steered by it. Its rules are `sync/session-check.test.ts`'s, and the tests
+ * here set the verdict to see what the frame does with it.
  */
-const foldedFromSwarm = vi.hoisted(
-  () => ({ value: undefined }) as { value: unknown },
+const restoredSessionVerdict = vi.hoisted(
+  () =>
+    ({ value: Promise.resolve("allowed") }) as {
+      value: Promise<"allowed" | "ended" | "unconfirmed">
+    },
 )
-vi.mock("./sync/fold-account-from-swarm", async (importActual) => {
-  const actual =
-    await importActual<typeof import("./sync/fold-account-from-swarm")>()
-  return {
-    ...actual,
-    foldAccountFromSwarm: vi.fn(() => Promise.resolve(foldedFromSwarm.value)),
-  }
-})
+vi.mock("./sync/session-check", () => ({
+  checkRestoredSession: vi.fn(() => restoredSessionVerdict.value),
+}))
 
 vi.mock("./storage/utilization-store", () => ({
   UtilizationStoreDB: vi.fn(function () {
@@ -232,7 +231,8 @@ import {
 import { KNOWN_DEVICE_MAX_AGE_MS } from "./utils/active-devices"
 import { PRESENCE_INTERVAL_MS, PRESENCE_MAX_AGE_MS } from "./bus/presence"
 import { mergeDevicesList } from "./sync/merge-snapshot"
-import { foldAccountFromSwarm } from "./sync/fold-account-from-swarm"
+import { checkRestoredSession } from "./sync/session-check"
+import { openedValue, sealValue } from "./utils/sealed-values"
 import { DEFAULT_BEE_NODE_URL } from "./schemas"
 import type {
   ConnectedApp,
@@ -440,10 +440,10 @@ describe("SwarmIdProxy partitioned write enablement", () => {
    * different bus room — while staying connected to the same dApp, which is
    * what an account switch looks like from in here.
    */
-  function seedConnectedAccount(overrides?: {
+  async function seedConnectedAccount(overrides?: {
     account?: Partial<SyncedAccount>
     connectedApps?: ConnectedApp[]
-  }): SyncedAccount {
+  }): Promise<SyncedAccount> {
     const synced: SyncedAccount = {
       ...makeSyncedAccount(),
       ...overrides?.account,
@@ -467,12 +467,50 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       },
       encryptedSeed: "00".repeat(48),
     }
+    // Written straight to storage, as another window's write lands, so no
+    // same-window event reaches the proxy. The keys are sealed the way the
+    // accounts manager seals them: a plain-text key in storage reads as absent.
     localStorageFake.setItem(
       STORAGE_KEY_ACCOUNTS,
-      JSON.stringify({ version: 1, data: [serializeAccount(stored)] }),
+      JSON.stringify({
+        version: 1,
+        data: [await withSealedKeys(serializeAccount(stored))],
+      }),
     )
     return synced
   }
+
+  /** A serialized account with its keys sealed, as the manager stores it. */
+  async function withSealedKeys(
+    record: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const seal = (value: unknown) =>
+      typeof value === "string" ? sealValue(value) : value
+    return {
+      ...record,
+      derivationKey: await seal(record.derivationKey),
+      connectedApps: await Promise.all(
+        (record.connectedApps as Record<string, unknown>[]).map(
+          async (app) => ({
+            ...app,
+            appSecret: await seal(app.appSecret),
+          }),
+        ),
+      ),
+      postageStamps: await Promise.all(
+        (record.postageStamps as Record<string, unknown>[]).map(
+          async (stamp) => ({
+            ...stamp,
+            signerKey: await seal(stamp.signerKey),
+          }),
+        ),
+      ),
+    }
+  }
+
+  /** Wait for every queued write to the accounts document to land. */
+  const settleAccountWrites = () =>
+    createAccountsStorageManager().update(() => undefined)
 
   /** Run identify → connect → return the partition challenge the popup echoes. */
   async function startPartitionedConnect(
@@ -589,7 +627,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
   // the entry its old timestamp back and a dApp-initiated Disconnect never
   // travelled the way the identity UI's does.
   it("states a dApp-initiated disconnect on the entry", async () => {
-    seedConnectedAccount()
+    await seedConnectedAccount()
     await dispatch(
       { type: "parentIdentify", requestId: "r1", metadata: { name: "dApp" } },
       PARENT_ORIGIN,
@@ -603,6 +641,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       parentWindow,
     )
 
+    await settleAccountWrites()
     const stored = JSON.parse(
       localStorageFake.getItem(STORAGE_KEY_ACCOUNTS)!,
     ) as { data: { connectedApps: Record<string, unknown>[] }[] }
@@ -623,7 +662,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
   // in between, the coordinator was built for `batchId: undefined` and every
   // lease op on it threw (#804).
   it("drops a stamper init whose stamp was cleared while it awaited", async () => {
-    seedConnectedAccount()
+    await seedConnectedAccount()
     const coordinatorsBefore = vi.mocked(BatchWriteCoordinator).mock.results
       .length
     let finishCreate: (() => void) | undefined
@@ -679,7 +718,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
   ])(
     "keeps the superseding refresh's stamper for $drive when the stale init's create rejects",
     async ({ batch }) => {
-      seedConnectedAccount()
+      await seedConnectedAccount()
       let rejectCreate: ((error: Error) => void) | undefined
       vi.mocked(UtilizationAwareStamper.create).mockImplementationOnce(
         () =>
@@ -822,7 +861,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     }
 
     it("sends an upload to the gateway while the first stamper is being built", async () => {
-      seedConnectedAccount()
+      await seedConnectedAccount()
       const coordinatorsBefore = coordinatorCount()
       const create = holdNextCreate()
       const identified = identify(GATEWAY_URL)
@@ -846,7 +885,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     })
 
     it("drops the previous drive's coordinator before building the next one", async () => {
-      seedConnectedAccount()
+      await seedConnectedAccount()
       await identify()
       const previous = latestCoordinator()
 
@@ -876,7 +915,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     })
 
     it("refuses an upload once the drive is removed instead of writing through its coordinator", async () => {
-      seedConnectedAccount()
+      await seedConnectedAccount()
       await identify()
       const previous = latestCoordinator()
 
@@ -903,7 +942,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     })
 
     it("refuses an upload after the connection moves to an account with no drive", async () => {
-      seedConnectedAccount()
+      await seedConnectedAccount()
       await identify()
       const previous = latestCoordinator()
 
@@ -970,7 +1009,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         expect(internals().bee.url).toBe(GATEWAY_NODE_URL)
         const coordinatorsBefore = coordinatorCount()
 
-        seedConnectedAccount()
+        await seedConnectedAccount()
         const shell = createAccountsStorageManager()
         shell.save(shell.load())
         await vi.waitFor(() =>
@@ -983,7 +1022,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
 
       it("reads from the gateway once the drive's lifetime runs out in an open session", async () => {
         const [stamp] = makeSyncedAccount().postageStamps
-        seedConnectedAccount({
+        await seedConnectedAccount({
           account: {
             postageStamps: [
               { ...stamp, batchTTL: DRIVE_TTL_SECONDS, updatedAt: Date.now() },
@@ -1011,7 +1050,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       // state, it writes at the configured node, so it reads them back there.
       it("keeps the coordinator's roster reads at the configured node once the drive runs out", async () => {
         const [stamp] = makeSyncedAccount().postageStamps
-        seedConnectedAccount({
+        await seedConnectedAccount({
           account: {
             postageStamps: [
               { ...stamp, batchTTL: DRIVE_TTL_SECONDS, updatedAt: Date.now() },
@@ -1232,13 +1271,11 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     expect(String(createCalls[0][1])).toBe(BATCH_ID_HEX)
   })
 
-  // A partitioned session keeps its device id in the iframe's OWN (partitioned)
-  // storage, which nothing outside the iframe can read. Surfacing the id is what
-  // let a page answer whether that storage survives a reload — on real Safari it
-  // does (#584, measured on iOS 18.7 / Safari 26.6). What is still unmeasured is
-  // ITP's ~30-day eviction of a dormant account, which would make every session
-  // a new device in the roster (#570).
-  it("reports the proxy's device id in the connection info", async () => {
+  // The device id is the frame's own: the lease and the roster identify this
+  // device by it, and nothing an app does needs it. Handing it to every page
+  // that embeds the frame gave each of them a stable per-browser identifier, so
+  // it stays inside the frame (review P2-4).
+  it("keeps the device id inside the frame, out of the connection info", async () => {
     const challenge = await startPartitionedConnect()
     await sendSetSecret(challenge, {
       account: serializeSyncedAccount(makeSyncedAccount()),
@@ -1248,9 +1285,11 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     expect(storedId).toBeTruthy()
 
     const infos = messagesOfType("connectionInfoChanged")
-    const reported = infos.map((info) => info.deviceId).filter(Boolean)
-    expect(reported).not.toHaveLength(0)
-    for (const id of reported) expect(id).toBe(storedId)
+    expect(infos).not.toHaveLength(0)
+    for (const info of infos) {
+      expect(info).not.toHaveProperty("deviceId")
+      expect(JSON.stringify(info)).not.toContain(storedId)
+    }
   })
 
   it("answers a bus lease-request by yielding and announcing the release", async () => {
@@ -1691,13 +1730,54 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       expect(window.open).not.toHaveBeenCalled()
     })
 
+    // Review P2-2: the handed-over secret, the derivation key and the stamp's
+    // signer key are sealed at rest with this partition's own wrapping key.
+    it("keeps no key in plain text in the stored session", async () => {
+      await connectPartitioned()
+
+      const raw =
+        localStorageFake.getItem(partitionSessionStorageKey(PARENT_ORIGIN)) ??
+        ""
+      expect(raw).not.toBe("")
+      for (const secret of [
+        "33".repeat(32),
+        "11".repeat(32),
+        "22".repeat(32),
+      ]) {
+        expect(raw).not.toContain(secret)
+      }
+    })
+
+    // What a lost wrapping key looks like from here: a sealed session that
+    // does not open. It is no session, never one read some other way.
+    it("is signed out when the stored session cannot be opened", async () => {
+      await connectPartitioned()
+      const key = partitionSessionStorageKey(PARENT_ORIGIN)
+      const record = JSON.parse(localStorageFake.getItem(key)!) as {
+        data: string
+      }
+      const flipped =
+        record.data.slice(0, -1) + (record.data.endsWith("0") ? "1" : "0")
+      localStorageFake.setItem(
+        key,
+        JSON.stringify({ ...record, data: flipped }),
+      )
+
+      await reload()
+
+      const infos = messagesOfType("connectionInfoChanged")
+      expect(infos[infos.length - 1]?.canUpload).toBe(false)
+      expect(infos[infos.length - 1]?.identity).toBeUndefined()
+      await vi.waitFor(() => expect(storedSession()).toBeUndefined())
+    })
+
     it("keeps the deadline the session was given, not a fresh one", async () => {
       await connectPartitioned()
       const record = storedSession()!
-      // 30 days, give or take the test's own runtime.
+      // 7 days, give or take the test's own runtime.
       const remaining = (record.connectedUntil as number) - Date.now()
-      expect(remaining).toBeGreaterThan(29 * 24 * 60 * 60 * 1000)
-      expect(remaining).toBeLessThanOrEqual(30 * 24 * 60 * 60 * 1000)
+      expect(remaining).toBeGreaterThan(6 * 24 * 60 * 60 * 1000)
+      expect(remaining).toBeLessThanOrEqual(7 * 24 * 60 * 60 * 1000)
     })
 
     it("refuses a session stored for another parent origin", async () => {
@@ -1771,113 +1851,186 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         PARENT_ORIGIN,
         parentWindow,
       )
-      expect(storedSession()).toBeUndefined()
+      await vi.waitFor(() => expect(storedSession()).toBeUndefined())
     })
 
-    // The deadline cannot see a revoke made while the tab was closed — the
-    // re-handshake used to be what caught that, and persisting removes it. So
-    // a restored session checks the account's own Swarm state in the
-    // background and tears itself down on a tombstone.
-    it("ends a restored session the account has since revoked", async () => {
-      await connectPartitioned()
-      const revoked = makeSyncedAccount()
-      foldedFromSwarm.value = {
-        account: {
-          ...revoked,
-          connectedApps: [
-            {
-              appUrl: PARENT_ORIGIN,
-              appName: "dApp",
-              lastConnectedAt: Date.now(),
-              revokedAt: Date.now(),
-            },
-          ],
-        },
-        devices: [],
+    // The deadline cannot see a revoke made while the tab was closed, and a
+    // revoke on another device reaches this frame only through Swarm when no
+    // signaling server is set. So a restored session checks the published
+    // account before its first write (review P2-6). Writes wait for the
+    // answer, reads do not.
+    describe("the check before the first write", () => {
+      type GateInternals = {
+        ensureCanWrite(): Promise<void>
+        buildConnectionInfo(): {
+          canUpload: boolean
+          uploadUnavailableReason?: string
+        }
+      }
+      const gate = () => proxy as unknown as GateInternals
+
+      function deferredVerdict() {
+        let settle!: (verdict: "allowed" | "ended" | "unconfirmed") => void
+        restoredSessionVerdict.value = new Promise((resolve) => {
+          settle = resolve
+        })
+        return (verdict: "allowed" | "ended" | "unconfirmed") => settle(verdict)
       }
 
-      await reload()
+      const lastCoordinator = () =>
+        vi.mocked(BatchWriteCoordinator).mock.results.at(-1)?.value as {
+          startLease: ReturnType<typeof vi.fn>
+        }
+      const coordinatorCount = () =>
+        vi.mocked(BatchWriteCoordinator).mock.results.length
+      /** No coordinator built since `from` claimed a lease. */
+      const noLeaseStartedSince = (from: number) => {
+        for (const result of vi
+          .mocked(BatchWriteCoordinator)
+          .mock.results.slice(from)) {
+          expect(
+            (result.value as { startLease: ReturnType<typeof vi.fn> })
+              .startLease,
+          ).not.toHaveBeenCalled()
+        }
+      }
 
-      await vi.waitFor(() => {
-        const infos = messagesOfType("connectionInfoChanged")
-        expect(infos[infos.length - 1]?.canUpload).toBe(false)
+      afterEach(() => {
+        restoredSessionVerdict.value = Promise.resolve("allowed")
       })
-      expect(storedSession()).toBeUndefined()
-      foldedFromSwarm.value = undefined
-    })
 
-    // Disconnect and Remove both end a session, and both state it on the entry
-    // — but only Remove wrote the marker this check looked at. So a Disconnect
-    // made while the tab was closed came back still connected and still able to
-    // upload, for the rest of the session's 30 days (#667).
-    it("ends a restored session the account has since disconnected", async () => {
-      const connectedAt = Date.now()
-      await connectPartitionedAt(connectedAt)
-      foldedFromSwarm.value = {
-        account: {
-          ...makeSyncedAccount(),
-          connectedApps: [
-            {
-              appUrl: PARENT_ORIGIN,
-              appName: "dApp",
-              lastConnectedAt: connectedAt,
-              disconnectedAt: connectedAt + 1,
-            },
-          ],
-        },
-        devices: [],
-      }
+      it("holds a restored session's writes until the check allows them", async () => {
+        await connectPartitioned()
+        const settle = deferredVerdict()
+        const before = coordinatorCount()
+        await reload()
+        expect(coordinatorCount()).toBeGreaterThan(before)
 
-      await reload()
+        let written = false
+        const write = gate()
+          .ensureCanWrite()
+          .then(() => (written = true))
+        await flushBus()
+        expect(written).toBe(false)
+        expect(lastCoordinator().startLease).not.toHaveBeenCalled()
 
-      await vi.waitFor(() => {
-        const infos = messagesOfType("connectionInfoChanged")
-        expect(infos[infos.length - 1]?.canUpload).toBe(false)
+        settle("allowed")
+        await write
+
+        expect(written).toBe(true)
+        await vi.waitFor(() =>
+          expect(lastCoordinator().startLease).toHaveBeenCalled(),
+        )
       })
-      expect(storedSession()).toBeUndefined()
-      foldedFromSwarm.value = undefined
-    })
 
-    // The other half of the rule, and the reason the comparison exists: a
-    // disconnect this session already reconnected past says nothing about it.
-    // Waiting on the fold first, so this proves the check RAN and declined
-    // rather than that it never happened.
-    it("keeps a restored session it reconnected after the disconnect", async () => {
-      const connectedAt = Date.now()
-      await connectPartitionedAt(connectedAt)
-      foldedFromSwarm.value = {
-        account: {
-          ...makeSyncedAccount(),
-          connectedApps: [
-            {
-              appUrl: PARENT_ORIGIN,
-              appName: "dApp",
-              lastConnectedAt: connectedAt,
-              disconnectedAt: connectedAt - 1000,
-            },
-          ],
-        },
-        devices: [],
-      }
-      vi.mocked(foldAccountFromSwarm).mockClear()
+      it("answers while the check is pending, since reads need no answer", async () => {
+        await connectPartitioned()
+        deferredVerdict()
+        await reload()
 
-      await reload()
+        await dispatch(
+          { type: "checkAuth", requestId: "r5" },
+          PARENT_ORIGIN,
+          parentWindow,
+        )
 
-      await vi.waitFor(() =>
-        expect(vi.mocked(foldAccountFromSwarm)).toHaveBeenCalled(),
-      )
-      // The CALL is recorded before the continuation that would tear the
-      // session down, so waiting on it alone would also pass if the check had
-      // simply not got there yet. Settle the read and drain the microtasks
-      // behind it, and a surviving session means the check ran and declined.
-      await vi.mocked(foldAccountFromSwarm).mock.results.at(-1)?.value
-      await Promise.resolve()
-      await Promise.resolve()
+        const answer = messagesOfType("authStatusResponse").at(-1)
+        expect(answer?.authenticated).toBe(true)
+      })
 
-      const infos = messagesOfType("connectionInfoChanged")
-      expect(infos[infos.length - 1]?.canUpload).toBe(true)
-      expect(storedSession()).toBeTruthy()
-      foldedFromSwarm.value = undefined
+      it("ends a restored session the check says was ended", async () => {
+        await connectPartitioned()
+        restoredSessionVerdict.value = Promise.resolve("ended")
+        const before = coordinatorCount()
+
+        await reload()
+
+        await expect(gate().ensureCanWrite()).rejects.toThrow(/ended/)
+        await vi.waitFor(() => {
+          const infos = messagesOfType("connectionInfoChanged")
+          expect(infos[infos.length - 1]?.canUpload).toBe(false)
+        })
+        expect(storedSession()).toBeUndefined()
+        noLeaseStartedSince(before)
+      })
+
+      // An unreachable Swarm says nothing about a revoke, so it can neither
+      // end the session nor let it write. The session stays signed in for
+      // reads and tells the dApp why it cannot write.
+      it("refuses writes, and says so, when the check cannot complete", async () => {
+        await connectPartitioned()
+        restoredSessionVerdict.value = Promise.resolve("unconfirmed")
+        const before = coordinatorCount()
+
+        await reload()
+
+        await expect(gate().ensureCanWrite()).rejects.toThrow(
+          /could not confirm/i,
+        )
+        const info = gate().buildConnectionInfo()
+        expect(info.canUpload).toBe(false)
+        expect(info.uploadUnavailableReason).toBe("session-unconfirmed")
+        expect(storedSession()).toBeTruthy()
+        expect(coordinatorCount()).toBeGreaterThan(before)
+        noLeaseStartedSince(before)
+      })
+
+      it("asks again on the next write after a check that could not complete", async () => {
+        await connectPartitioned()
+        restoredSessionVerdict.value = Promise.resolve("unconfirmed")
+        await reload()
+        await expect(gate().ensureCanWrite()).rejects.toThrow()
+
+        restoredSessionVerdict.value = Promise.resolve("allowed")
+
+        await expect(gate().ensureCanWrite()).resolves.toBeUndefined()
+        expect(gate().buildConnectionInfo().uploadUnavailableReason).not.toBe(
+          "session-unconfirmed",
+        )
+      })
+
+      it("checks with the instant the session connected", async () => {
+        const connectedAt = Date.now() - 60_000
+        await connectPartitionedAt(connectedAt)
+        vi.mocked(checkRestoredSession).mockClear()
+
+        await reload()
+
+        expect(vi.mocked(checkRestoredSession)).toHaveBeenCalledWith(
+          expect.objectContaining({
+            appOrigin: PARENT_ORIGIN,
+            connectedAt,
+            accountId: "aa".repeat(20),
+          }),
+        )
+      })
+
+      it("does not check a session the person just connected", async () => {
+        vi.mocked(checkRestoredSession).mockClear()
+        await connectPartitioned()
+
+        await expect(gate().ensureCanWrite()).resolves.toBeUndefined()
+        expect(vi.mocked(checkRestoredSession)).not.toHaveBeenCalled()
+      })
+
+      it("checks a session restored from shared storage too", async () => {
+        await seedConnectedAccount()
+        restoredSessionVerdict.value = Promise.resolve("ended")
+        vi.mocked(checkRestoredSession).mockClear()
+
+        await dispatch(
+          {
+            type: "parentIdentify",
+            requestId: "r1",
+            metadata: { name: "dApp" },
+          },
+          PARENT_ORIGIN,
+          parentWindow,
+        )
+
+        expect(vi.mocked(checkRestoredSession)).toHaveBeenCalled()
+        await expect(gate().ensureCanWrite()).rejects.toThrow(/ended/)
+      })
     })
 
     // A reload is not a connection, and `hydratePartitionAccount` used to
@@ -2553,11 +2706,12 @@ describe("SwarmIdProxy partitioned write enablement", () => {
             localStorageFake.getItem(
               partitionSessionStorageKey(PARENT_ORIGIN),
             )!,
-          ) as {
-            connectedUntil: number
-            data: { account: { defaultPostageStampBatchID: string } }
+          ) as { connectedUntil: number; data: string }
+          // Sealed at rest, and opened here by the same page that sealed it.
+          const data = JSON.parse(openedValue(stored.data) ?? "{}") as {
+            account?: { defaultPostageStampBatchID: string }
           }
-          expect(stored.data.account.defaultPostageStampBatchID).toBe(
+          expect(data.account?.defaultPostageStampBatchID).toBe(
             OTHER_BATCH_ID_HEX,
           )
           // The deadline is the handover's, not a fresh one: re-persisting on
@@ -2626,8 +2780,8 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       const stored = (
         account: Partial<SyncedAccount>,
         app: Partial<ConnectedApp>,
-      ): Record<string, unknown> =>
-        serializeAccount({
+      ): SignedInAccount =>
+        ({
           ...makeSyncedAccount(),
           ...account,
           connectedApps: [
@@ -2646,30 +2800,24 @@ describe("SwarmIdProxy partitioned write enablement", () => {
             kdfIterations: 100_000,
           },
           encryptedSeed: "00".repeat(48),
-        } as SignedInAccount)
-      localStorageFake.setItem(
-        STORAGE_KEY_ACCOUNTS,
-        JSON.stringify({
-          version: 1,
-          data: [
-            // Still connected, but it connected FIRST.
-            stored(
-              { id: new EthAddress("aa".repeat(20)) },
-              {
-                lastConnectedAt: now - 60_000,
-              },
-            ),
-            // Lapsed, and the most recent thing on this origin.
-            stored(
-              {
-                id: new EthAddress("bb".repeat(20)),
-                derivationKey: OTHER_DERIVATION_KEY,
-              },
-              { lastConnectedAt: now, connectedUntil: now - 1000 },
-            ),
-          ],
-        }),
-      )
+        }) as SignedInAccount
+      await createAccountsStorageManager().save([
+        // Still connected, but it connected FIRST.
+        stored(
+          { id: new EthAddress("aa".repeat(20)) },
+          {
+            lastConnectedAt: now - 60_000,
+          },
+        ),
+        // Lapsed, and the most recent thing on this origin.
+        stored(
+          {
+            id: new EthAddress("bb".repeat(20)),
+            derivationKey: OTHER_DERIVATION_KEY,
+          },
+          { lastConnectedAt: now, connectedUntil: now - 1000 },
+        ),
+      ])
 
       const found = (
         proxy as unknown as {
@@ -3095,7 +3243,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       account?: Partial<SyncedAccount>
       connectedApps?: ConnectedApp[]
     }): Promise<BroadcastChannel> {
-      seedConnectedAccount(overrides)
+      await seedConnectedAccount(overrides)
       await dispatch(
         { type: "parentIdentify", requestId: "r1", metadata: { name: "dApp" } },
         PARENT_ORIGIN,
@@ -3189,7 +3337,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       const busChannel = await unpartitionedSession()
       const published = listen(busChannel)
       try {
-        seedConnectedAccount({ connectedApps: [revoked(PARENT_ORIGIN)] })
+        await seedConnectedAccount({ connectedApps: [revoked(PARENT_ORIGIN)] })
         await (
           proxy as unknown as {
             handleAccountStorageChange(): Promise<void>
@@ -3527,7 +3675,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     const peerId = "peer-device-stored"
     const selfId = "self-device-stored"
     localStorageFake.setItem("swarm-id-device-id", selfId)
-    const synced = seedConnectedAccount({
+    const synced = await seedConnectedAccount({
       account: {
         devices: [
           {
@@ -3563,6 +3711,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       .value as { deps: { refreshKnownDeviceIds: () => Promise<void> } }
     await deps.refreshKnownDeviceIds()
 
+    await settleAccountWrites()
     const stored = JSON.parse(
       localStorageFake.getItem(STORAGE_KEY_ACCOUNTS)!,
     ) as { data: { id: string; devices: Device[] }[] }
@@ -3629,7 +3778,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
   it("leaves an unpartitioned device's name free of the dApp", async () => {
     const selfId = "self-device-shared"
     localStorageFake.setItem("swarm-id-device-id", selfId)
-    const synced = seedConnectedAccount({
+    const synced = await seedConnectedAccount({
       account: {
         devices: [
           {
@@ -3661,6 +3810,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       .value as { deps: { refreshKnownDeviceIds: () => Promise<void> } }
     await deps.refreshKnownDeviceIds()
 
+    await settleAccountWrites()
     const stored = JSON.parse(
       localStorageFake.getItem(STORAGE_KEY_ACCOUNTS)!,
     ) as { data: { id: string; devices: Device[] }[] }
@@ -4044,7 +4194,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     // and nothing would ever age them out of a tracker that survives the
     // switch. `destroy` clears the same tracker; this is the other caller.
     it("forgets the previous room's live peers on a switch", async () => {
-      seedConnectedAccount()
+      await seedConnectedAccount()
       await dispatch(
         { type: "parentIdentify", requestId: "r1", metadata: { name: "dApp" } },
         PARENT_ORIGIN,
@@ -4063,7 +4213,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         await flushBus()
         expect(knownDeviceIds()).toContain("peer-live")
 
-        seedConnectedAccount({
+        await seedConnectedAccount({
           account: { derivationKey: OTHER_DERIVATION_KEY },
         })
         rejoinBus()
@@ -4086,7 +4236,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     }
 
     it("attaches on a first authentication from shared storage", async () => {
-      const synced = seedConnectedAccount()
+      const synced = await seedConnectedAccount()
       await remountWithSignaling()
 
       await dispatch(
@@ -4128,7 +4278,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         PARENT_ORIGIN,
         parentWindow,
       )
-      seedConnectedAccount()
+      await seedConnectedAccount()
       expect(SignalingTransport).not.toHaveBeenCalled()
 
       // Every join path is fire-and-forget (`loadAuthData`,
@@ -4157,7 +4307,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         PARENT_ORIGIN,
         parentWindow,
       )
-      seedConnectedAccount()
+      await seedConnectedAccount()
       expect(SignalingTransport).not.toHaveBeenCalled()
 
       // Same in-flight window as the disconnect case, on the unload path.
@@ -4179,7 +4329,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     // threw `TypeError: … is not a constructor` and the intended `SyntaxError`
     // body never ran. The test passed on the wrong throw.
     it("retries the signaling transport after its constructor throws", async () => {
-      seedConnectedAccount()
+      await seedConnectedAccount()
       await remountWithSignaling()
       vi.mocked(SignalingTransport).mockImplementationOnce(function () {
         throw new SyntaxError("The URL's scheme must be 'ws' or 'wss'")
@@ -4206,7 +4356,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     // plain `pnpm dev`) still has same-device tabs to serve, and losing that
     // would silently stop cross-tab utilization from propagating.
     it("still joins the local bus without a configured signaling url", async () => {
-      seedConnectedAccount()
+      await seedConnectedAccount()
       vi.mocked(SignalingTransport).mockClear()
       stamperStub.currentPartition = 0
       stamperStub.partitionCount = 2
@@ -4241,7 +4391,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     // The channel moved off the origin-wide name; anything still shouting on
     // it is talking to nobody.
     it("ignores traffic on the old origin-wide channel", async () => {
-      seedConnectedAccount()
+      await seedConnectedAccount()
       stamperStub.currentPartition = 0
       stamperStub.partitionCount = 2
       stamperStub.applyUtilizationUpdate.mockClear()
@@ -4286,7 +4436,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     // down with it is the same "no bus at all, silently" this PR exists to
     // prevent, and it is indistinguishable from the healthy no-url case.
     it("keeps the local bus when the signaling constructor throws", async () => {
-      seedConnectedAccount()
+      await seedConnectedAccount()
       await remountWithSignaling()
       vi.mocked(SignalingTransport).mockImplementation(function () {
         throw new SyntaxError("The URL's scheme must be 'ws' or 'wss'")
@@ -4318,7 +4468,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     // `account-delta` rides the bus, that includes B's stamp signer keys —
     // would otherwise go to A's contexts as well.
     it("leaves the previous account's channel on a switch", async () => {
-      seedConnectedAccount()
+      await seedConnectedAccount()
       stamperStub.currentPartition = 0
       stamperStub.partitionCount = 2
       stamperStub.applyUtilizationUpdate.mockClear()
@@ -4331,7 +4481,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       await awaitBusJoin()
       const first = busTopicNow()
 
-      const switched = seedConnectedAccount({
+      const switched = await seedConnectedAccount({
         account: { derivationKey: OTHER_DERIVATION_KEY },
       })
       rejoinBus()
@@ -4360,7 +4510,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     // leaves this session publishing B's traffic into A's room — the very leak
     // the account-scoped topic closes, surviving in the error path.
     it("drops the previous account's transports when a switch fails", async () => {
-      seedConnectedAccount()
+      await seedConnectedAccount()
       stamperStub.currentPartition = 0
       stamperStub.partitionCount = 2
       stamperStub.applyUtilizationUpdate.mockClear()
@@ -4372,7 +4522,9 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       )
       await awaitBusJoin()
 
-      seedConnectedAccount({ account: { derivationKey: OTHER_DERIVATION_KEY } })
+      await seedConnectedAccount({
+        account: { derivationKey: OTHER_DERIVATION_KEY },
+      })
       busContextController.failNext = true
       rejoinBus()
       await vi.waitFor(() => expect(busTopicNow()).toBeUndefined())
@@ -4392,7 +4544,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     // with no handle to close it — the signaling transport connects in its
     // constructor and re-arms its own reconnect loop.
     it("opens no signaling socket when the local transport throws", async () => {
-      seedConnectedAccount()
+      await seedConnectedAccount()
       await remountWithSignaling()
       const realBroadcastChannel = globalThis.BroadcastChannel
       vi.stubGlobal("BroadcastChannel", function () {
@@ -4419,7 +4571,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     // costs two HMACs and an `importKey` per event, and bumps the join
     // generation, which cancels any join still in flight.
     it("does not re-derive the bus context for the same account", async () => {
-      seedConnectedAccount()
+      await seedConnectedAccount()
 
       await dispatch(
         { type: "parentIdentify", requestId: "r1", metadata: { name: "dApp" } },

@@ -65,9 +65,6 @@ let client = $state<SwarmIdClient | undefined>(undefined)
 let authenticated = $state(false)
 let canUpload = $state(false)
 let storagePartitioned = $state(false)
-// Surfaced for the Safari check (#584): an id that CHANGES across loads means
-// the partitioned storage holding it was evicted.
-let deviceId = $state<string | undefined>(undefined)
 let uploadMode = $state<'user-stamp' | 'subsidised' | 'unavailable'>('unavailable')
 // Why uploads are off, when they are. Surfaced for the Safari check (#584):
 // "no drive" and "the write path broke" look identical without it, and the
@@ -196,6 +193,8 @@ function uploadUnavailableDescription(info: ConnectionInfo): string {
       return 'the account’s drive has expired — renew it or add another in Swarm ID'
     case 'stamp-not-usable':
       return 'the account’s drive record says the node lacks or cannot use it — open the drive in Swarm ID to refresh it, or add another'
+    case 'session-unconfirmed':
+      return 'Swarm ID could not check that this saved session is still allowed, and asks again on the next upload'
     default:
       return 'no postage stamp available'
   }
@@ -211,7 +210,6 @@ async function onConnectionChange(info: ConnectionInfo) {
   authenticated = isAuthenticated
   canUpload = info.canUpload
   storagePartitioned = info.storagePartitioned ?? false
-  deviceId = info.deviceId
   uploadMode = info.uploadMode ?? 'unavailable'
   uploadUnavailableReason = info.uploadUnavailableReason
 
@@ -429,9 +427,6 @@ export const clientStore = {
   get storagePartitioned() {
     return storagePartitioned
   },
-  get deviceId() {
-    return deviceId
-  },
   get uploadMode() {
     return uploadMode
   },
@@ -516,7 +511,6 @@ export const clientStore = {
     authenticated = false
     canUpload = false
     storagePartitioned = false
-    deviceId = undefined
     uploadMode = 'unavailable'
     identity = undefined
     appKey = undefined

@@ -31,6 +31,7 @@ import {
   stampsReachableByApp,
 } from '@snaha/swarm-id/internal'
 
+import { requireCleanSite } from '$lib/clean-site'
 import { strip0x } from '$lib/crypto/hex'
 import { privateKeyFromEntropy } from '$lib/crypto/mnemonic'
 import type { ConnectRequest } from '$lib/stores/connect.svelte'
@@ -175,6 +176,7 @@ export async function completeConnect(
   entropy: Uint8Array,
   request: ConnectRequest,
 ): Promise<void> {
+  requireCleanSite(request.appOrigin)
   const masterKey = strip0x(privateKeyFromEntropy(entropy))
   const appSecret = await deriveSecret(masterKey, request.appOrigin)
   const chatBinding =
@@ -203,6 +205,7 @@ function findReusableConnection(account: Account, appOrigin: string): ConnectedA
  * unlock + derivation is required.
  */
 export function reuseConnection(account: Account, request: ConnectRequest): boolean {
+  requireCleanSite(request.appOrigin)
   const existing = findReusableConnection(account, request.appOrigin)
   if (!existing?.appSecret) {
     return false

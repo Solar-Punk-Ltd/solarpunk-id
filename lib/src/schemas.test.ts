@@ -93,12 +93,17 @@ describe("LocalAccountSchemaV1 signed-in/signed-out union", () => {
     }
   })
 
-  it("rejects a signed-out record without the encrypted state snapshot", () => {
-    expect(
-      LocalAccountSchemaV1.safeParse(
-        serializedAccount({ ...VAULT, signedOutAt: 1700000000001 }),
-      ).success,
-    ).toBe(false)
+  // The record an account becomes when its sealed keys cannot be opened on
+  // this device: there is no snapshot to keep, and sign-back-in restores the
+  // account from Swarm.
+  it("accepts a signed-out record without the encrypted state snapshot", () => {
+    const result = LocalAccountSchemaV1.safeParse(
+      serializedAccount({ ...VAULT, signedOutAt: 1700000000001 }),
+    )
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(isSignedOutAccount(result.data)).toBe(true)
+    }
   })
 
   // A record written before the sign-out shrank to the minimal remnant (full

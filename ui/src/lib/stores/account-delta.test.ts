@@ -124,6 +124,11 @@ function delta(overrides?: {
   }
 }
 
+/** Wait for every write already queued for the accounts document. */
+function writesLanded(): Promise<void> {
+  return createAccountsStorageManager().update(() => undefined)
+}
+
 /** Read what is actually persisted, through an independent manager instance. */
 function storedApp(appUrl = APP_URL): ConnectedApp | undefined {
   const account = createAccountsStorageManager()
@@ -134,13 +139,14 @@ function storedApp(appUrl = APP_URL): ConnectedApp | undefined {
     : undefined
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   accountsStore.clear()
+  await writesLanded()
   setAccountsSyncHook(undefined)
 })
 
 describe('applyAccountDelta', () => {
-  it('folds a peer’s revoke into stored truth', () => {
+  it('folds a peer’s revoke into stored truth', async () => {
     accountsStore.add(record())
     const revokedAt = CREATED_AT + 5_000
 
@@ -158,6 +164,7 @@ describe('applyAccountDelta', () => {
       }),
     )
 
+    await writesLanded()
     expect(storedApp()?.revokedAt).toBe(revokedAt)
     // The credential goes with it, or an unpartitioned proxy reading this
     // record stays authenticated for an app that was removed.
@@ -167,7 +174,7 @@ describe('applyAccountDelta', () => {
   // The wire carries no session fields at all, so a merely NEWER entry — a
   // rename, a reconnect on another device — would otherwise blank the secret
   // this device is actively using.
-  it('keeps this device’s session for an app the delta did not end', () => {
+  it('keeps this device’s session for an app the delta did not end', async () => {
     accountsStore.add(record())
 
     applyAccountDelta(
@@ -182,6 +189,7 @@ describe('applyAccountDelta', () => {
       }),
     )
 
+    await writesLanded()
     expect(storedApp()?.appName).toBe('dApp renamed elsewhere')
     expect(storedApp()?.appSecret).toBe(APP_SECRET)
     expect(storedApp()?.connectedUntil).toBe(CREATED_AT + 1_000)
@@ -189,7 +197,7 @@ describe('applyAccountDelta', () => {
 
   // A plain Disconnect is not a tombstone, so the entry survives — but the
   // session it names does not.
-  it('ends the session on a disconnect newer than ours', () => {
+  it('ends the session on a disconnect newer than ours', async () => {
     accountsStore.add(record())
 
     applyAccountDelta(
@@ -205,11 +213,12 @@ describe('applyAccountDelta', () => {
       }),
     )
 
+    await writesLanded()
     expect(storedApp()?.revokedAt).toBeUndefined()
     expect(storedApp()?.appSecret).toBeUndefined()
   })
 
-  it('learns about an app connected on another device', () => {
+  it('learns about an app connected on another device', async () => {
     accountsStore.add(record())
 
     applyAccountDelta(
@@ -221,12 +230,13 @@ describe('applyAccountDelta', () => {
       }),
     )
 
+    await writesLanded()
     expect(storedApp(OTHER_APP_URL)?.appName).toBe('other')
     // ...without losing our own session for the app we already had.
     expect(storedApp()?.appSecret).toBe(APP_SECRET)
   })
 
-  it('folds the scalars on their own clocks, in both directions', () => {
+  it('folds the scalars on their own clocks, in both directions', async () => {
     accountsStore.add(record())
 
     applyAccountDelta(delta({ accountName: 'Renamed', accountNameAt: CREATED_AT + 5_000 }))
@@ -236,7 +246,7 @@ describe('applyAccountDelta', () => {
     expect(accountsStore.get(ID_HEX)?.name).toBe('Renamed')
   })
 
-  it('follows a default stamp moved on another device', () => {
+  it('follows a default stamp moved on another device', async () => {
     accountsStore.add(record({ defaultPostageStampBatchID: new BatchId(BATCH_ID_HEX) }))
 
     applyAccountDelta(
@@ -252,20 +262,23 @@ describe('applyAccountDelta', () => {
   // The echo guard. `applyRefreshed` commits with `skipSync`, so nothing
   // reaches the propagation seam — the proxy states the same rule as
   // `source === "bus"`. Without it two devices trade one change forever.
-  it('publishes nothing back', () => {
+  it('publishes nothing back', async () => {
     accountsStore.add(record())
     const syncHook = vi.fn()
     setAccountsSyncHook(syncHook)
 
     applyAccountDelta(delta({ accountName: 'Renamed', accountNameAt: CREATED_AT + 5_000 }))
+    await writesLanded()
     expect(syncHook).not.toHaveBeenCalled()
 
     // A control, or the assertion above would also pass with the seam unwired.
+    // The hook runs once the write has landed.
     accountsStore.get(ID_HEX)?.rename('Renamed here')
+    await writesLanded()
     expect(syncHook).toHaveBeenCalledTimes(1)
   })
 
-  it('ignores a delta for an account this device does not hold', () => {
+  it('ignores a delta for an account this device does not hold', async () => {
     accountsStore.add(record())
 
     applyAccountDelta(
@@ -281,7 +294,7 @@ describe('applyAccountDelta', () => {
 
   // The remnant kept no `derivationKey`; writing synced state back onto it
   // would resurrect an account the user signed out of.
-  it('ignores a delta for a signed-out account', () => {
+  it('ignores a delta for a signed-out account', async () => {
     const account = accountsStore.add(record())
     account.signOut('encrypted-state')
 

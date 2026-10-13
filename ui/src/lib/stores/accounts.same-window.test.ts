@@ -81,8 +81,8 @@ function record(overrides?: Partial<SignedInAccount>): SignedInAccount {
 }
 
 /** What the proxy's `clearAuthData` writes, through a manager of its own. */
-function proxyDisconnects(): void {
-  createAccountsStorageManager().save([
+function proxyDisconnects(): Promise<void> {
+  return createAccountsStorageManager().save([
     record({
       connectedApps: [
         {
@@ -120,6 +120,11 @@ function peerDelta(): AccountStateSnapshot {
   }
 }
 
+/** Wait for every write already queued for the accounts document. */
+function writesLanded(): Promise<void> {
+  return createAccountsStorageManager().update(() => undefined)
+}
+
 function storedApp(): ConnectedApp | undefined {
   const account = createAccountsStorageManager()
     .load()
@@ -129,23 +134,26 @@ function storedApp(): ConnectedApp | undefined {
     : undefined
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   accountsStore.clear()
+  await writesLanded()
   setAccountsSyncHook(undefined)
 })
 
 describe('a same-window write by another manager instance', () => {
-  it('updates the live Account', () => {
+  it('updates the live Account', async () => {
     const account = accountsStore.add(record())
-    proxyDisconnects()
-    expect(account.connectedApps[0].disconnectedAt).toBe(DISCONNECTED_AT)
+    await proxyDisconnects()
+    await vi.waitFor(() => expect(account.connectedApps[0].disconnectedAt).toBe(DISCONNECTED_AT))
     expect(account.connectedApps[0].appSecret).toBeUndefined()
   })
 
-  it('is not undone by the next peer delta (#712)', () => {
-    accountsStore.add(record())
-    proxyDisconnects()
+  it('is not undone by the next peer delta (#712)', async () => {
+    const account = accountsStore.add(record())
+    await proxyDisconnects()
+    await vi.waitFor(() => expect(account.connectedApps[0].disconnectedAt).toBe(DISCONNECTED_AT))
     applyAccountDelta(peerDelta())
+    await writesLanded()
     expect(storedApp()?.disconnectedAt).toBe(DISCONNECTED_AT)
     expect(storedApp()?.appSecret).toBeUndefined()
   })

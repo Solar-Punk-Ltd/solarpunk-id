@@ -21,6 +21,7 @@
   import { resolve } from '$app/paths'
 
   import { type Attempt, createAttemptTracker } from '$lib/attempt'
+  import { markBackupPromptDue } from '$lib/backup-prompt'
   import AppHeader from '$lib/components/app-header.svelte'
   import NewPasswordFields, { isNewPasswordValid } from '$lib/components/new-password-fields.svelte'
   import { Button } from '$lib/components/ui/button'
@@ -118,6 +119,8 @@
     }
     // `add` returns the live reactive account; the handshake mutates it.
     const liveAccount = accountsStore.add(account)
+    // Before it becomes current, so the prompt reads it the moment it can show.
+    markBackupPromptDue(localStorage, liveAccount.id.toHex())
     sessionStore.setCurrentAccount(liveAccount.id)
     // `add` persists but doesn't fire the sync hook (only field mutations do),
     // so publish once here to register this device in the Swarm roster. No-ops

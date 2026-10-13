@@ -18,19 +18,14 @@
  */
 import type { UploadUnavailableReason } from '@snaha/swarm-id'
 
-/** What the page has observed, across this load and the previous one. */
+/** What the page has observed in this load. */
 export interface CheckInput {
   /** ConnectionInfo as last reported by the proxy. */
   connection?: {
     storagePartitioned?: boolean
     uploadMode?: 'user-stamp' | 'subsidised' | 'unavailable'
     uploadUnavailableReason?: UploadUnavailableReason
-    deviceId?: string
   }
-  /** The device id this page recorded on an earlier load, if any. */
-  previousDeviceId?: string
-  /** Page loads this page has counted since the last reset, including this one. */
-  loadCount: number
   /** Whether an upload attempt in this session round-tripped. */
   uploadRoundTrip?: 'ok' | 'failed'
   /** What the upload threw, when it failed. The device has no console. */
@@ -195,6 +190,14 @@ function writerPath(input: CheckInput): CheckResult {
         detail:
           'The account’s drive record says the node lacks or cannot use it, so the session refuses to stamp and the writer path was never exercised. Open the drive on the identity site to refresh its record, or add another, then run this again.',
       }
+    case 'session-unconfirmed':
+      return {
+        id,
+        title,
+        verdict: 'unknown',
+        detail:
+          'The session came back from storage and could not yet check with Swarm that it is still allowed, so it refuses to write. Check the connection, then upload again: the next upload checks again.',
+      }
     default:
       // Not red: `uploadUnavailableReason` is optional on the wire, so an older
       // identity deployment sends `unavailable` without one and this branch is
@@ -207,44 +210,6 @@ function writerPath(input: CheckInput): CheckResult {
         detail: `Upload mode is "${connection.uploadMode ?? 'unknown'}" and the proxy gave no reason — most likely an identity deployment older than this page. Check the identity site's version, then run this again.`,
       }
   }
-}
-
-/**
- * Whether the partitioned storage holding the device id survived. A NEW id on a
- * later load means it was evicted, and every session joins the device roster as
- * a new device (#570) — the growth problem this test exists to measure.
- */
-function storagePersistence(input: CheckInput): CheckResult {
-  const current = input.connection?.deviceId
-  if (!current) {
-    return {
-      id: 'persistence',
-      title: 'Partitioned storage survives reloads',
-      verdict: 'unknown',
-      detail: 'No device id reported yet — connect first.',
-    }
-  }
-  if (!input.previousDeviceId) {
-    return {
-      id: 'persistence',
-      title: 'Partitioned storage survives reloads',
-      verdict: 'unknown',
-      detail: `First load — recorded ${current.slice(0, 8)}…. Reload (and come back tomorrow) to compare.`,
-    }
-  }
-  return current === input.previousDeviceId
-    ? {
-        id: 'persistence',
-        title: 'Partitioned storage survives reloads',
-        verdict: 'pass',
-        detail: `Same device id across ${input.loadCount} load(s): ${current.slice(0, 8)}….`,
-      }
-    : {
-        id: 'persistence',
-        title: 'Partitioned storage survives reloads',
-        verdict: 'fail',
-        detail: `Device id CHANGED (${input.previousDeviceId.slice(0, 8)}… → ${current.slice(0, 8)}…) — the partitioned storage was evicted, so this session is a new device in the roster.`,
-      }
 }
 
 /** Whether the session can actually put bytes on Swarm and read them back. */
@@ -276,13 +241,7 @@ function uploadPath(input: CheckInput): CheckResult {
 }
 
 export function runChecks(input: CheckInput): CheckResult[] {
-  return [
-    partitioning(input),
-    popupHandover(input),
-    writerPath(input),
-    storagePersistence(input),
-    uploadPath(input),
-  ]
+  return [partitioning(input), popupHandover(input), writerPath(input), uploadPath(input)]
 }
 
 /** A paste-able summary — the device has no console to copy from. */

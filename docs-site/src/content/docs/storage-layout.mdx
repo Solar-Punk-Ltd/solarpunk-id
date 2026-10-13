@@ -69,7 +69,7 @@ The schema is `LocalAccountSchemaV1`, the signed-in arm: the portable projection
 | `name`           | Display name                                                                                                                                                  |
 | `createdAt`      | Epoch milliseconds                                                                                                                                            |
 | `publicKey`      | The account's compressed secp256k1 public key, 66 hex characters, no `0x`                                                                                     |
-| `derivationKey`  | `deriveSecret(masterKey, "derivation-key")`, 64 hex characters                                                                                                |
+| `derivationKey`  | `deriveSecret(masterKey, "derivation-key")`, 64 hex characters, stored sealed (see [Keys at rest](#keys-at-rest))                                             |
 | `partitionCount` | `PARTITION_COUNT` (currently `2`). Omitted, the UI treats the record as the single-device layout until `devices` is non-empty, then assumes `PARTITION_COUNT` |
 | `devices`        | `[]`. The UI registers this device on first sign-in                                                                                                           |
 | `connectedApps`  | `[]`                                                                                                                                                          |
@@ -108,7 +108,7 @@ the one with no external dependency.
 ### Postage stamps
 
 An entry of `postageStamps` is `PostageStampSchemaV1`: `batchID` (64 hex characters),
-`signerKey` (the private key that owns the batch, 64 bare hex characters), `createdAt` (epoch
+`signerKey` (the private key that owns the batch, 64 bare hex characters, stored sealed), `createdAt` (epoch
 milliseconds), and the batch as the chain reports it: `depth`, `bucketDepth`, `amount` (a decimal
 string, since it does not fit a JSON number), `blockNumber`, `immutableFlag`, `exists`, `usable`,
 `utilization` (`0` for a fresh batch) and optionally `batchTTL`.
@@ -129,3 +129,21 @@ from the host.
 A signed-out account is the other arm of the union: the display fields, the vault, and
 `encryptedState`, an encrypted snapshot of everything the signed-in arm had. A host has no
 reason to write this form.
+
+The snapshot is absent on one kind of record: an account the site signed out itself because its
+sealed keys could not be opened on this device. Signing back in then restores it from Swarm.
+
+## Keys at rest
+
+Three fields hold key material, and each is stored sealed: an account's `derivationKey`, every
+connected app's `appSecret`, and every stamp's `signerKey`. A sealed value is the string
+`sealed:v1:` followed by the lowercase hex of a 12-byte IV and the AES-GCM ciphertext of the
+plain value. The key is a non-extractable AES-GCM key the site keeps in IndexedDB on the same
+origin, database `swarm-id-keys`, store `wrapping-keys`, entry `at-rest-v1`, and creates on first
+use.
+
+A key the site cannot open, including one written in plain text, reads as absent: the account
+loads as signed out, with its vault, and the person signs in again. So a host can no longer write
+these three fields as plain hex. Sealing needs the wrapping key, which only code running on the
+identity origin can use. The design and what it does not protect against are in the
+repository's `docs/Hardening.md`.

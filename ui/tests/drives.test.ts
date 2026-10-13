@@ -27,6 +27,7 @@ import {
   chainReachable,
   completeCreateFlow,
   fundPostageSigner,
+  sealInPage,
   seedLocalChain,
   seedNoChain,
 } from './helpers'
@@ -91,19 +92,21 @@ async function expireStoredDrives(page: import('@playwright/test').Page) {
 
 /** Re-keys every stored drive to one random signer, as a pasted key would; returns it. */
 async function giveStoredDrivesTheirOwnSigner(page: import('@playwright/test').Page) {
-  return page.evaluate(() => {
-    const key = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) =>
-      b.toString(16).padStart(2, '0'),
-    ).join('')
+  const key = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) =>
+    b.toString(16).padStart(2, '0'),
+  ).join('')
+  // Stored sealed, as the app stores every signer key.
+  const sealed = await sealInPage(page, key)
+  await page.evaluate((sealed) => {
     const doc = JSON.parse(localStorage.getItem('swarm-id-accounts') ?? '{}') as {
       data?: { postageStamps?: { signerKey?: string }[] }[]
     }
     for (const stamp of doc.data?.[0]?.postageStamps ?? []) {
-      stamp.signerKey = key
+      stamp.signerKey = sealed
     }
     localStorage.setItem('swarm-id-accounts', JSON.stringify(doc))
-    return key
-  })
+  }, sealed)
+  return key
 }
 
 test('drive management: add, rename, set default, remove', async ({ page }) => {

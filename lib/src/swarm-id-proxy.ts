@@ -52,8 +52,10 @@ import type {
   UploadUnavailableReason,
   AuthData,
   PartitionSession,
+  StoredPartitionSession,
 } from "./types"
 import {
+  AuthDataSchema,
   ParentToIframeMessageSchema,
   ParentIdentifyMessageSchema,
   PopupToIframeMessageSchema,
@@ -147,7 +149,7 @@ import {
 } from "./sync"
 import type { DeviceStateSnapshot } from "./sync"
 import { mergeDevicesList } from "./sync/merge-snapshot"
-import { foldAccountFromSwarm } from "./sync/fold-account-from-swarm"
+import { checkRestoredSession, type SessionVerdict } from "./sync/session-check"
 import {
   accountDeltaFromSnapshot,
   restoreLocalSessionFields,
@@ -169,6 +171,12 @@ import {
   serializeSyncedAccount,
 } from "./utils/storage-managers"
 import { isStorageShared } from "./utils/storage-probe"
+import {
+  isSealedValue,
+  openedValue,
+  primeSealedValues,
+  sealValue,
+} from "./utils/sealed-values"
 import {
   deriveSecret,
   deriveSecretSync,
@@ -346,6 +354,19 @@ interface StampedForApp {
   marshaled: string
   /** Remembers a single-owner chunk's slot. Run only once the stamp is committed */
   recordSlot?: () => void
+}
+
+/**
+ * Writes to a stored partitioned session, chained per storage key across every
+ * proxy in this window, in call order (see `writePartitionSession`).
+ */
+const partitionSessionWrites = new Map<string, Promise<void>>()
+
+function sessionEndedError(): SwarmIdError {
+  return new SwarmIdError(
+    "not-authenticated",
+    "This session was ended from the account. Connect again to write.",
+  )
 }
 
 /**
@@ -552,6 +573,19 @@ export class SwarmIdProxy {
    * session, so acquire / refresh / validate always agree on one identity.
    */
   private deviceId: string | undefined
+  /**
+   * A session this load restored from storage, rather than one the person
+   * connected in it, waits on this before its first write (review P2-6).
+   * Unset for a fresh connection. Kept through `clearAuthData`, so a write
+   * that was waiting when the check ended the session is told why.
+   */
+  private restoredSessionCheck:
+    | {
+        verdict: Promise<SessionVerdict>
+        settled: SessionVerdict | undefined
+        input: Parameters<typeof checkRestoredSession>[0]
+      }
+    | undefined
 
   constructor(config: ProxyConfig) {
     this.siteAllowList = config.siteAllowList
@@ -744,6 +778,9 @@ export class SwarmIdProxy {
       return
     }
 
+    // The keys in shared storage are sealed, and the reads below open them
+    // from memory (`utils/sealed-values.ts`).
+    await createAccountsStorageManager().prime()
     const connection = this.findConnectionForParent()
 
     if (connection) {
@@ -869,6 +906,7 @@ export class SwarmIdProxy {
     this.appSecret = connectedApp.appSecret
     this.chatBinding = undefined
     this.authenticated = true
+    this.restoredSessionCheck = undefined
     this.storagePartitioned = false
     this.partitionAccount = undefined
     this.authLoading = false
@@ -943,6 +981,7 @@ export class SwarmIdProxy {
       this.appSecret = message.data.secret
       this.chatBinding = this.acceptHandedOverChatBinding(message.data)
       this.authenticated = true
+      this.restoredSessionCheck = undefined
       this.storagePartitioned = true
       this.authLoading = false
       this.isConnecting = false
@@ -1029,7 +1068,9 @@ export class SwarmIdProxy {
   }
 
   /**
-   * Write the handed-over session to this partition's own store.
+   * Write the handed-over session to this partition's own store, sealed
+   * (review P2-2): it holds the app secret, the derivation key and the stamp's
+   * signer key.
    *
    * The wire form, not the parsed one: `AuthDataSchema` revives `BatchId` and
    * `PrivateKey` instances, which do not survive `JSON.stringify`, so what goes
@@ -1042,38 +1083,32 @@ export class SwarmIdProxy {
    */
   private savePartitionSession(data: AuthData): void {
     if (!this.parentOrigin) return
+    const parentOrigin = this.parentOrigin
     const connection = this.partitionAccount?.connectedApps.find(
-      (app) => app.appUrl === this.parentOrigin,
+      (app) => app.appUrl === parentOrigin,
     )
-    const record: unknown = {
+    const connectedUntil =
+      connection?.connectedUntil ??
+      Date.now() + appSessionDuration(this.partitionAccount?.settings)
+    // The projection carries `BatchId`/`PrivateKey`/`EthAddress`; this is the
+    // same serializer the popup used to build it. This parent's own chat
+    // binding is all it keeps, as in `hydratePartitionAccount`.
+    const wire = {
+      ...data,
+      account: serializeSyncedAccount({
+        ...data.account,
+        connectedApps: onlySiteChatBinding(
+          data.account.connectedApps,
+          parentOrigin,
+        ),
+      }),
+    }
+    this.writePartitionSession(parentOrigin, async () => ({
       version: 1,
-      parentOrigin: this.parentOrigin,
-      connectedUntil:
-        connection?.connectedUntil ??
-        Date.now() + appSessionDuration(this.partitionAccount?.settings),
-      data: {
-        ...data,
-        // The projection carries `BatchId`/`PrivateKey`/`EthAddress`; this is
-        // the same serializer the popup used to build it. This parent's own
-        // chat binding is all it keeps, as in `hydratePartitionAccount`.
-        account: serializeSyncedAccount({
-          ...data.account,
-          connectedApps: onlySiteChatBinding(
-            data.account.connectedApps,
-            this.parentOrigin,
-          ),
-        }),
-      },
-    }
-    try {
-      localStorage.setItem(
-        partitionSessionStorageKey(this.parentOrigin),
-        JSON.stringify(record),
-      )
-    } catch (error) {
-      // A session that cannot be stored still works for this page load.
-      console.warn("[Proxy] Could not persist the partitioned session:", error)
-    }
+      parentOrigin,
+      connectedUntil,
+      data: await sealValue(JSON.stringify(wire)),
+    }))
   }
 
   /**
@@ -1095,27 +1130,84 @@ export class SwarmIdProxy {
    */
   private refreshStoredPartitionAccount(): void {
     if (!this.partitionAccount || !this.parentOrigin) return
-    const key = partitionSessionStorageKey(this.parentOrigin)
-    try {
-      const raw = localStorage.getItem(key)
-      if (!raw) return
-      const record = JSON.parse(raw) as { data?: Record<string, unknown> }
-      if (!record.data) return
-      record.data.account = serializeSyncedAccount(this.partitionAccount)
-      localStorage.setItem(key, JSON.stringify(record))
-    } catch (error) {
-      // As on write: a session that cannot be stored still works for this load.
-      console.warn("[Proxy] Could not persist the folded session:", error)
-    }
+    const parentOrigin = this.parentOrigin
+    const account = serializeSyncedAccount(this.partitionAccount)
+    this.writePartitionSession(parentOrigin, async () => {
+      const stored = await this.openStoredPartitionSession(parentOrigin)
+      if (!stored) return undefined
+      return {
+        ...stored.record,
+        data: await sealValue(JSON.stringify({ ...stored.wire, account })),
+      }
+    })
   }
 
   /** Forget the stored session. Every path that ends one calls this. */
   private clearPartitionSession(): void {
     if (!this.parentOrigin) return
+    this.writePartitionSession(this.parentOrigin, async () => null)
+  }
+
+  /**
+   * Writes to the stored session wait for sealing, so they run one after
+   * another in call order. Otherwise a save that started before a clear could
+   * land after it and bring an ended session back. `build` answers the record
+   * to write, `null` to remove it, or `undefined` to leave it as it is.
+   */
+  private writePartitionSession(
+    parentOrigin: string,
+    build: () => Promise<StoredPartitionSession | null | undefined>,
+  ): void {
+    const key = partitionSessionStorageKey(parentOrigin)
+    const queued = (partitionSessionWrites.get(key) ?? Promise.resolve())
+      .then(async () => {
+        const record = await build()
+        if (record === undefined) return
+        if (record === null) localStorage.removeItem(key)
+        else localStorage.setItem(key, JSON.stringify(record))
+      })
+      .catch((error: unknown) => {
+        // A session that cannot be stored still works for this page load.
+        console.warn(
+          "[Proxy] Could not persist the partitioned session:",
+          error,
+        )
+      })
+    partitionSessionWrites.set(key, queued)
+  }
+
+  /** The stored record for this parent and its opened wire payload. */
+  private async openStoredPartitionSession(
+    parentOrigin: string,
+  ): Promise<
+    | { record: StoredPartitionSession; wire: Record<string, unknown> }
+    | undefined
+  > {
+    let raw: string | null = null
     try {
-      localStorage.removeItem(partitionSessionStorageKey(this.parentOrigin))
+      raw = localStorage.getItem(partitionSessionStorageKey(parentOrigin))
     } catch {
-      // Nothing to do: an unreadable store cannot hold a session either.
+      return undefined
+    }
+    if (!raw) return undefined
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      return undefined
+    }
+    const result = PartitionSessionSchemaV1.safeParse(parsed)
+    if (!result.success || !isSealedValue(result.data.data)) return undefined
+    await primeSealedValues([result.data.data])
+    const opened = openedValue(result.data.data)
+    if (opened === undefined) return undefined
+    try {
+      return {
+        record: result.data,
+        wire: JSON.parse(opened) as Record<string, unknown>,
+      }
+    } catch {
+      return undefined
     }
   }
 
@@ -1125,37 +1217,39 @@ export class SwarmIdProxy {
    * The key is per dApp origin, because the partition is not: it is scoped to
    * the top-level SITE, so same-site dApps share this store (#671). The
    * `parentOrigin` check below is now the belt to that pair of braces rather
-   * than the only thing keeping two dApps apart. An expired or malformed
-   * record is removed on the way past: it will never become valid again.
+   * than the only thing keeping two dApps apart. An expired, malformed or
+   * unopenable record is removed on the way past: it will never become valid
+   * again, and a record whose seal does not open is no session (review P2-2).
    */
-  private readPartitionSession(): PartitionSession | undefined {
+  private async readPartitionSession(): Promise<PartitionSession | undefined> {
     if (!this.parentOrigin) return undefined
+    const parentOrigin = this.parentOrigin
+    // Behind any write still in flight, so a reload sees its own last write.
+    await partitionSessionWrites.get(partitionSessionStorageKey(parentOrigin))
     let raw: string | null = null
     try {
-      raw = localStorage.getItem(partitionSessionStorageKey(this.parentOrigin))
+      raw = localStorage.getItem(partitionSessionStorageKey(parentOrigin))
     } catch {
       return undefined
     }
     if (!raw) return undefined
 
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
+    const stored = await this.openStoredPartitionSession(parentOrigin)
+    const data = stored && AuthDataSchema.safeParse(stored.wire)
+    if (!stored || !data?.success) {
       this.clearPartitionSession()
       return undefined
     }
-    const result = PartitionSessionSchemaV1.safeParse(parsed)
-    if (!result.success) {
+    if (stored.record.parentOrigin !== parentOrigin) return undefined
+    if (stored.record.connectedUntil <= Date.now()) {
       this.clearPartitionSession()
       return undefined
     }
-    if (result.data.parentOrigin !== this.parentOrigin) return undefined
-    if (result.data.connectedUntil <= Date.now()) {
-      this.clearPartitionSession()
-      return undefined
+    return {
+      parentOrigin: stored.record.parentOrigin,
+      connectedUntil: stored.record.connectedUntil,
+      data: data.data,
     }
-    return result.data
   }
 
   /**
@@ -1182,7 +1276,7 @@ export class SwarmIdProxy {
       appSecret,
       // From the CALLER, never `now`: a handover is a connection and a restore
       // is not, and this clock is what every reader compares a Disconnect
-      // against (`restoreLocalSessionFields`, `verifyRestoredSession`).
+      // against (`restoreLocalSessionFields`, `startRestoredSessionCheck`).
       // Restamping it on a reload made a disconnect made while the tab was
       // closed read as stale, and the session came back undead (#670).
       lastConnectedAt: connectedAt,
@@ -2067,7 +2161,25 @@ export class SwarmIdProxy {
         })
       },
     })
-    this.coordinator.startLease()
+    this.startLeaseOnceAllowed(this.coordinator)
+  }
+
+  /**
+   * The eager lease claim is a write of its own, so a restored session makes
+   * it only once its check allows writes. A session whose check could not
+   * complete claims lazily instead, on the first write a later check allows.
+   */
+  private startLeaseOnceAllowed(coordinator: BatchWriteCoordinator): void {
+    const check = this.restoredSessionCheck
+    if (!check) {
+      coordinator.startLease()
+      return
+    }
+    void check.verdict.then((verdict) => {
+      if (verdict === "allowed" && this.coordinator === coordinator) {
+        coordinator.startLease()
+      }
+    })
   }
 
   /**
@@ -2571,9 +2683,20 @@ export class SwarmIdProxy {
       return
     }
 
+    await createAccountsStorageManager().prime()
     const sharedData = this.lookupAppSecretFromSharedStorage()
 
     if (sharedData) {
+      const connection = this.findConnectionForParent()
+      if (connection) {
+        this.startRestoredSessionCheck({
+          bee: this.bee,
+          derivationKey: connection.account.derivationKey,
+          accountId: connection.account.id.toHex(),
+          appOrigin: this.parentOrigin,
+          connectedAt: connection.app.lastConnectedAt,
+        })
+      }
       this.appSecret = sharedData.secret
       this.chatBinding = undefined
       this.authenticated = true
@@ -2592,9 +2715,9 @@ export class SwarmIdProxy {
 
     // No shared storage to read: either nobody has connected, or this iframe is
     // partitioned. A session kept from a previous load answers that (#635) —
-    // the same 30-day deadline the unpartitioned branch above enforces out of
-    // shared storage, enforced here out of this partition's own.
-    const session = this.readPartitionSession()
+    // the same deadline the unpartitioned branch above enforces out of shared
+    // storage, enforced here out of this partition's own.
+    const session = await this.readPartitionSession()
     if (session) {
       await this.restorePartitionSession(session)
       return
@@ -2610,29 +2733,40 @@ export class SwarmIdProxy {
    * Through the same `hydratePartitionAccount`, so there is one function that
    * builds a partitioned session rather than two that drift.
    *
-   * The deadline cannot see a revoke made while the tab was closed — the
-   * re-handshake used to be what caught that. So the session comes up now and
-   * is checked against the account's own Swarm state in the background
-   * (`verifyRestoredSession`), which is the posture the unpartitioned path
-   * already has: trust local storage first, learn of a remote revoke after.
+   * The deadline cannot see a revoke made while the tab was closed, so the
+   * session comes up for reads at once and checks the account's published
+   * state before its first write (`startRestoredSessionCheck`), as a session
+   * restored from shared storage does.
    */
   private async restorePartitionSession(
     session: PartitionSession,
   ): Promise<void> {
     const { data } = session
-    this.appSecret = data.secret
-    this.chatBinding = this.acceptHandedOverChatBinding(data)
-    this.authenticated = true
-    this.storagePartitioned = true
-    this.authLoading = false
-    this.deviceId = getOrCreateDeviceId()
-
     // The handover's own record of when this connection began. A reload is not
     // a connection, so the restored view keeps it rather than stamping a fresh
     // one — see `hydratePartitionAccount`.
     const connectedAt = data.account.connectedApps.find(
       (app) => app.appUrl === this.parentOrigin,
     )?.lastConnectedAt
+
+    // Before hydrating, which builds the write path and would otherwise claim
+    // a lease before the check could hold it.
+    this.startRestoredSessionCheck({
+      bee: this.bee,
+      derivationKey: data.account.derivationKey,
+      accountId: data.account.id.toHex(),
+      appOrigin: this.parentOrigin!,
+      // Deliberately the raw value, `undefined` included: a missing instant is
+      // not evidence that we connected after a disconnect, and the check reads
+      // it as 0 for exactly that reason.
+      connectedAt,
+    })
+    this.appSecret = data.secret
+    this.chatBinding = this.acceptHandedOverChatBinding(data)
+    this.authenticated = true
+    this.storagePartitioned = true
+    this.authLoading = false
+    this.deviceId = getOrCreateDeviceId()
 
     await this.hydratePartitionAccount(
       data.account,
@@ -2646,74 +2780,78 @@ export class SwarmIdProxy {
 
     this.showAuthButton()
     this.emitConnectionInfoIfChanged()
-    // Deliberately the raw value, `undefined` included: a missing instant is
-    // not evidence that we connected after a disconnect, and the check reads it
-    // as 0 for exactly that reason.
-    void this.verifyRestoredSession(connectedAt)
   }
 
   /**
-   * Read the account's PUBLISHED state once, on restore, and end the session if
-   * this origin's connection has ended since. A check, not a fold — the view
-   * keeps what was handed over, and any other change (a rotated signer key, a
-   * moved default stamp) is adopted from the bus at the next live overlap, as
-   * it was before #635.
+   * Ask the account's published state whether this restored session was ended
+   * while no page of the site was open (review P2-6). Ended means what it means
+   * everywhere else: the entry is gone, `revokedAt` (Remove), or a
+   * `disconnectedAt` newer than the connection this session came from
+   * (Disconnect, #667), with the rules in `sync/session-check.ts`.
    *
-   * Ended means what it means everywhere else: the entry is gone, `revokedAt`
-   * (Remove), or a `disconnectedAt` newer than the connection this session came
-   * from (Disconnect). Both buttons state the end on the entry — the bus strips
-   * `appSecret`/`connectedUntil`, so the entry is the only place it can be
-   * said — and testing only the Remove marker let a Disconnect made while the
-   * tab was closed come back still connected and still able to upload, for the
-   * rest of the session's 30 days (#667). The comparison is `connectedAt`, the
-   * same guard `restoreLocalSessionFields` uses live: a disconnect older than
-   * our connection was answered by that connection.
-   *
-   * Background, and deliberately fail-open: a gateway that cannot be reached is
-   * not evidence of a revoke, and refusing the session for it would make every
-   * offline load a logout. An account that has never published has nothing to
-   * read either (`foldAccountFromSwarm` returns undefined), so its closed-tab
-   * revoke also waits for a live overlap. Both holes are in
-   * `docs/Account-Bus.md`'s Known gaps.
+   * Reads start at once. Writes wait on the answer (`ensureCanWrite`), and an
+   * answer that could not be read keeps them refused: an unreachable Swarm
+   * says nothing about a revoke, so it neither ends the session nor lets it
+   * write. The next write asks again.
    */
-  private async verifyRestoredSession(
-    connectedAt: number | undefined,
-  ): Promise<void> {
-    const account = this.partitionAccount
-    if (!account) return
-    try {
-      const folded = await foldAccountFromSwarm({
-        bee: this.bee,
-        derivationKey: account.derivationKey,
-        accountId: account.id.toHex(),
-      })
-      if (!folded) return
-      const app = folded.account.connectedApps.find(
-        (entry) => entry.appUrl === this.parentOrigin,
-      )
-      // `connectedUntil` is deliberately not read: the published form is
-      // `portableConnectedApp`, which strips it along with `appSecret` — the
-      // deadline belongs to the context that issued it, and this session's copy
-      // is the record's own, already enforced on read.
-      //
-      // A missing `connectedAt` is not evidence that we connected after the
-      // disconnect, so it reads as 0 and the disconnect stands. That is not the
-      // offline case the fail-open below protects: the answer arrived.
-      const ended =
-        app === undefined ||
-        app.revokedAt !== undefined ||
-        (app.disconnectedAt !== undefined &&
-          app.disconnectedAt > (connectedAt ?? 0))
-      if (!ended) return
-      console.info(
-        "[Proxy] The restored session was ended while this page was closed",
-      )
-      this.clearAuthData()
-      this.emitConnectionInfoIfChanged()
-    } catch (error) {
-      // Fail open, as above — an unreachable gateway says nothing.
-      console.warn("[Proxy] Could not verify the restored session:", error)
+  private startRestoredSessionCheck(
+    input: Parameters<typeof checkRestoredSession>[0],
+  ): void {
+    const check: NonNullable<typeof this.restoredSessionCheck> = {
+      input,
+      settled: undefined,
+      verdict: checkRestoredSession(input),
     }
+    this.restoredSessionCheck = check
+    void check.verdict.then((verdict) => {
+      check.settled = verdict
+      if (this.restoredSessionCheck !== check) return
+      if (verdict === "ended") {
+        console.info(
+          "[Proxy] The restored session was ended while this page was closed",
+        )
+        this.clearAuthData()
+      } else if (verdict === "unconfirmed") {
+        console.warn(
+          "[Proxy] Could not confirm the restored session, writes stay refused",
+        )
+      }
+      this.emitConnectionInfoIfChanged()
+    })
+  }
+
+  /** Waits for the restored session's check, and refuses unless it allowed. */
+  private async awaitRestoredSessionAllowed(): Promise<void> {
+    let check = this.restoredSessionCheck
+    if (!check) return
+    if (check.settled === "unconfirmed") {
+      this.startRestoredSessionCheck(check.input)
+      check = this.restoredSessionCheck!
+    }
+    const verdict = await check.verdict
+    if (verdict === "allowed") return
+    if (verdict === "ended") throw sessionEndedError()
+    throw new SwarmIdError(
+      "upload-unavailable",
+      "Could not confirm with Swarm that this session is still allowed to write, so writes are refused until it can be confirmed.",
+      { reason: "session-unconfirmed" },
+    )
+  }
+
+  /**
+   * The gate every write handler passes. The session check comes first, and
+   * the refusal checks run after it because the session can change while it
+   * waits.
+   */
+  private async ensureCanWrite(): Promise<void> {
+    // A check that already ended the session also cleared its auth, and says
+    // why better than "not authenticated" does.
+    if (this.restoredSessionCheck?.settled === "ended") {
+      throw sessionEndedError()
+    }
+    this.ensureCanUpload()
+    await this.awaitRestoredSessionAllowed()
+    this.ensureCanUpload()
   }
 
   /**
@@ -2862,6 +3000,7 @@ export class SwarmIdProxy {
       // branch in `knownDeviceIdsForAccount`.
       const partitioned = this.partitionAccount?.id.toHex() === accountId
       const manager = partitioned ? undefined : createAccountsStorageManager()
+      await manager?.prime()
       const accounts = manager?.load() ?? []
       const account = partitioned
         ? this.partitionAccount
@@ -2905,8 +3044,10 @@ export class SwarmIdProxy {
           // is re-read from Swarm on the next load anyway.
           this.partitionAccount = { ...account, devices: mergedDevices }
         } else {
-          manager!.save(
-            accounts.map((a) =>
+          // Applied to what is stored when the write's turn comes, not to the
+          // copy read before the roster round trip.
+          void manager!.update((stored) =>
+            stored.map((a) =>
               a.id.toHex() === accountId ? { ...a, devices: mergedDevices } : a,
             ),
           )
@@ -3356,14 +3497,13 @@ export class SwarmIdProxy {
     // is simply the value that loses every merge, so the entry's old timestamp
     // came back on the next fold and a dApp-initiated Disconnect never reached
     // a peer the way the identity UI's does.
-    try {
-      const manager = createAccountsStorageManager()
-      const accounts = manager.load()
+    const parentOrigin = this.parentOrigin
+    void createAccountsStorageManager().update((accounts) => {
       let changed = false
       const updated = accounts.map((account) => {
         if (isSignedOutAccount(account)) return account
         const connectedApps = account.connectedApps.map((app) => {
-          if (app.appUrl === this.parentOrigin) {
+          if (app.appUrl === parentOrigin) {
             changed = true
             return {
               ...app,
@@ -3376,13 +3516,8 @@ export class SwarmIdProxy {
         })
         return { ...account, connectedApps }
       })
-      if (changed) manager.save(updated)
-    } catch (error) {
-      console.error(
-        "[Proxy] Error invalidating connected app in shared storage:",
-        error,
-      )
-    }
+      return changed ? updated : undefined
+    })
 
     // Reset auth state
     this.authenticated = false
@@ -3622,7 +3757,11 @@ export class SwarmIdProxy {
     // app secret would mislead the dApp into attempting uploads that always
     // fail. Subsidised mode is the fallback when no user stamp is usable.
     let uploadMode: "user-stamp" | "subsidised" | "unavailable" = "unavailable"
-    if (this.authenticated && this.appSecret) {
+    if (
+      this.authenticated &&
+      this.appSecret &&
+      this.restoredSessionCheck?.settled !== "unconfirmed"
+    ) {
       if (this.hasUsableUserStamp()) {
         uploadMode = "user-stamp"
       } else if (this.subsidisedGatewayUrl) {
@@ -3638,9 +3777,6 @@ export class SwarmIdProxy {
         uploadMode === "unavailable"
           ? this.uploadUnavailableReason()
           : undefined,
-      // Read, not created: reporting it must not be what mints one, or the
-      // "did this survive the reload" comparison would always say yes.
-      deviceId: this.deviceId,
       identity,
       appKey,
       partition: this.coordinator?.currentPartition,
@@ -3658,6 +3794,9 @@ export class SwarmIdProxy {
    */
   private uploadUnavailableReason(): UploadUnavailableReason | undefined {
     if (!this.authenticated || !this.appSecret) return undefined
+    if (this.restoredSessionCheck?.settled === "unconfirmed") {
+      return "session-unconfirmed"
+    }
     if (!this.postageBatchId || !this.signerKey) return "no-stamp"
     if (this.stampRefusal) return this.stampRefusal
     // The stamp resolved and the write path still did not build:
@@ -3687,7 +3826,6 @@ export class SwarmIdProxy {
       storagePartitioned: info.storagePartitioned,
       uploadMode: info.uploadMode,
       uploadUnavailableReason: info.uploadUnavailableReason,
-      deviceId: info.deviceId,
       identity: info.identity,
       appKey: info.appKey,
       partition: info.partition,
@@ -3979,7 +4117,7 @@ export class SwarmIdProxy {
     } = message
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
 
       // Create progress callback if enabled (works in both modes)
       const onProgress = this.createProgressCallback(
@@ -4063,7 +4201,7 @@ export class SwarmIdProxy {
     const fileName = name || "index.bin"
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
 
       // Create progress callback if enabled
       const onProgress = this.createProgressCallback(
@@ -4221,7 +4359,7 @@ export class SwarmIdProxy {
     } = message
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
       const onProgress = this.createProgressCallback(
         event,
         requestId,
@@ -4272,7 +4410,7 @@ export class SwarmIdProxy {
     const { requestId, data, options, requestOptions } = message
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
 
       // Validate chunk size (must be between 1 and 4096 bytes)
       if (data.length < 1 || data.length > 4096) {
@@ -4355,7 +4493,7 @@ export class SwarmIdProxy {
     const { requestId, signer, identifier, data, options } = message
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
 
       const signerKey = new PrivateKey(signer)
       const id = new Identifier(identifier)
@@ -4393,7 +4531,7 @@ export class SwarmIdProxy {
     const { requestId, identifier, data, signer, options } = message
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
 
       const signerKey = signer ?? this.appSecret!
       const signerKeyObj = new PrivateKey(signerKey)
@@ -4433,7 +4571,7 @@ export class SwarmIdProxy {
     const { requestId, identifier, data, signer, options } = message
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
 
       const signerKey = signer ?? this.appSecret!
       const signerKeyObj = new PrivateKey(signerKey)
@@ -4969,7 +5107,7 @@ export class SwarmIdProxy {
       message
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
 
       const signerKey = signer ?? this.appSecret!
       const signerKeyObj = new PrivateKey(signerKey)
@@ -5462,7 +5600,7 @@ export class SwarmIdProxy {
     } = message
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
 
       const signerKey = signer ?? this.appSecret!
       const signerKeyObj = new PrivateKey(signerKey)
@@ -5554,7 +5692,7 @@ export class SwarmIdProxy {
     } = message
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
 
       const signerKey = signer ?? this.appSecret!
       const signerKeyObj = new PrivateKey(signerKey)
@@ -5645,7 +5783,7 @@ export class SwarmIdProxy {
     } = message
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
 
       const signerKey = signer ?? this.appSecret!
       const signerKeyObj = new PrivateKey(signerKey)
@@ -5761,7 +5899,7 @@ export class SwarmIdProxy {
     } = message
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
 
       // Parse grantee public keys from compressed hex
       const granteePublicKeys = grantees.map((hex) =>
@@ -5949,7 +6087,7 @@ export class SwarmIdProxy {
     const { requestId, historyReference, grantees, requestOptions } = message
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
 
       const publisherPrivateKey = this.actKeys()
 
@@ -5999,7 +6137,7 @@ export class SwarmIdProxy {
     } = message
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
 
       const publisherPrivateKey = this.actKeys()
 
@@ -6174,7 +6312,7 @@ export class SwarmIdProxy {
     }
 
     try {
-      this.ensureCanUpload()
+      await this.ensureCanWrite()
 
       const result = await this.withModeAwareWriteLock(
         undefined,

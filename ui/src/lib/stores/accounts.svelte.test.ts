@@ -14,6 +14,7 @@
 import { BatchId, EthAddress, PrivateKey } from '@ethersphere/bee-js'
 import {
   type Account as AccountRecord,
+  STORAGE_KEY_ACCOUNTS,
   type SignedInAccount,
   type SignedOutAccount,
   createAccountsStorageManager,
@@ -65,9 +66,20 @@ function record(idHex: string, name: string): AccountRecord {
   }
 }
 
+/**
+ * Wait for every write already queued for the accounts document. Writes are
+ * sealed on the way to storage, so they land asynchronously, in call order.
+ */
+function writesLanded(): Promise<void> {
+  return createAccountsStorageManager().update(() => undefined)
+}
+
 /** Read what is actually persisted, through an independent manager instance. */
-function stored(): AccountRecord[] {
-  return createAccountsStorageManager().load()
+async function stored(): Promise<AccountRecord[]> {
+  await writesLanded()
+  const manager = createAccountsStorageManager()
+  await manager.prime()
+  return manager.load()
 }
 
 /**
@@ -76,68 +88,90 @@ function stored(): AccountRecord[] {
  * real cross-tab `storage` events (which never fire here), so it stays stale —
  * exactly the interleaving window of the two-tab race.
  */
-function otherTabRenames(idHex: string, name: string): void {
-  const manager = createAccountsStorageManager()
-  manager.save(
-    manager
-      .load()
-      .map((account) =>
-        account.id.equals(new EthAddress(idHex)) ? { ...account, name } : account,
-      ),
+async function otherTabRenames(idHex: string, name: string): Promise<void> {
+  await createAccountsStorageManager().update((accounts) =>
+    accounts.map((account) =>
+      account.id.equals(new EthAddress(idHex)) ? { ...account, name } : account,
+    ),
   )
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   accountsStore.clear()
+  await writesLanded()
 })
 
 describe('persist read-merge-write (two-tab race)', () => {
-  it('a mutation keeps a concurrent write to ANOTHER account made by another tab', () => {
+  it('a mutation keeps a concurrent write to ANOTHER account made by another tab', async () => {
     accountsStore.add(record(X_ID_HEX, 'x'))
     accountsStore.add(record(Y_ID_HEX, 'y'))
 
-    otherTabRenames(Y_ID_HEX, 'y-from-tab2')
+    await otherTabRenames(Y_ID_HEX, 'y-from-tab2')
     accountsStore.get(X_ID_HEX)?.rename('x-renamed')
 
-    const names = new Map(stored().map((account) => [account.id.toHex(), account.name]))
+    const names = new Map((await stored()).map((account) => [account.id.toHex(), account.name]))
     expect(names.get(new EthAddress(X_ID_HEX).toHex())).toBe('x-renamed')
     expect(names.get(new EthAddress(Y_ID_HEX).toHex())).toBe('y-from-tab2')
   })
 
-  it('add() keeps a concurrent write to another account', () => {
+  it('add() keeps a concurrent write to another account', async () => {
     accountsStore.add(record(X_ID_HEX, 'x'))
-    otherTabRenames(X_ID_HEX, 'x-from-tab2')
+    await otherTabRenames(X_ID_HEX, 'x-from-tab2')
 
     accountsStore.add(record(Y_ID_HEX, 'y'))
 
-    const names = new Map(stored().map((account) => [account.id.toHex(), account.name]))
+    const names = new Map((await stored()).map((account) => [account.id.toHex(), account.name]))
     expect(names.get(new EthAddress(X_ID_HEX).toHex())).toBe('x-from-tab2')
     expect(names.get(new EthAddress(Y_ID_HEX).toHex())).toBe('y')
   })
 
-  it('remove() keeps a concurrent write to another account', () => {
+  it('remove() keeps a concurrent write to another account', async () => {
     accountsStore.add(record(X_ID_HEX, 'x'))
     accountsStore.add(record(Y_ID_HEX, 'y'))
-    otherTabRenames(Y_ID_HEX, 'y-from-tab2')
+    await otherTabRenames(Y_ID_HEX, 'y-from-tab2')
 
     accountsStore.remove(X_ID_HEX)
 
-    const records = stored()
+    const records = await stored()
     expect(records).toHaveLength(1)
     expect(records[0]?.name).toBe('y-from-tab2')
   })
 
-  it('a mutation round-trips to storage (sanity)', () => {
+  it('a mutation round-trips to storage (sanity)', async () => {
     accountsStore.add(record(X_ID_HEX, 'x'))
     accountsStore.get(X_ID_HEX)?.rename('x-renamed')
 
-    expect(stored()[0]?.name).toBe('x-renamed')
+    expect((await stored())[0]?.name).toBe('x-renamed')
   })
 })
 
 // The proxy inside the proxy iframe subscribes beside this store and publishes
 // what it is told about — unless the write says peers must not hear of it.
 // A regression in this plumb reintroduces the echo of #707 silently.
+// Review P2-2: a connect leaves the app secret, the derivation key and every
+// signer key sealed in storage, never in plain text.
+describe('persist keeps no key in plain text', () => {
+  it('after an account is added and an app connected', async () => {
+    const APP_SECRET = '5a'.repeat(32)
+    const account = accountsStore.add(record(X_ID_HEX, 'x'))
+    account.connectApp({
+      appUrl: 'https://app.example.com',
+      appName: 'App',
+      lastConnectedAt: 1,
+      appSecret: APP_SECRET,
+      connectedUntil: Date.now() + 60_000,
+    })
+    await writesLanded()
+
+    const raw = window.localStorage.getItem(STORAGE_KEY_ACCOUNTS) ?? ''
+    expect(raw).not.toBe('')
+    expect(raw).not.toContain(APP_SECRET)
+    expect(raw).not.toContain('f'.repeat(64))
+    const [back] = await stored()
+    expect(back && 'derivationKey' in back && back.derivationKey).toBe('f'.repeat(64))
+  })
+})
+
 describe('persist tells the same-window proxy which writes not to republish', () => {
   function detailOfLastWrite(): { noRepublish?: boolean } {
     const spy = vi.mocked(window.dispatchEvent)
@@ -149,13 +183,15 @@ describe('persist tells the same-window proxy which writes not to republish', ()
     vi.spyOn(window, 'dispatchEvent')
   })
 
-  it("a plain mutation is this device's change to publish", () => {
+  it("a plain mutation is this device's change to publish", async () => {
     accountsStore.add(record(X_ID_HEX, 'x')).rename('renamed')
+    await writesLanded()
     expect(detailOfLastWrite().noRepublish).toBeFalsy()
   })
 
-  it('a skipSync commit is marked noRepublish', () => {
+  it('a skipSync commit is marked noRepublish', async () => {
     accountsStore.add(record(X_ID_HEX, 'x')).signOut(ENCRYPTED_STATE)
+    await writesLanded()
     expect(detailOfLastWrite().noRepublish).toBe(true)
   })
 })
@@ -357,6 +393,40 @@ describe('Account.setAppStamp', () => {
     account.setAppStamp('https://other.example.com', new BatchId(BATCH_HEX))
     expect(account.connectedApps[0].postageStampBatchID).toBeUndefined()
     expect(account.connectedApps).toHaveLength(1)
+  })
+})
+
+// An app entry is keyed by its site, and the site comes from the connect
+// window's link. Both writers that take one check it (review P3-1).
+describe('Account refuses a site that is not a clean origin', () => {
+  const DIRTY_SITE = 'https://app.example.com/path'
+
+  it('records no connection for it', () => {
+    let commits = 0
+    const account = new Account(signedInRecord(), () => commits++)
+
+    expect(() =>
+      account.connectApp({ appUrl: DIRTY_SITE, appName: 'Test App', lastConnectedAt: 1 }),
+    ).toThrow(/not accepted/)
+
+    expect(account.connectedApps).toHaveLength(0)
+    expect(commits).toBe(0)
+  })
+
+  it('points no drive for it, even at an entry already stored under it', () => {
+    let commits = 0
+    const account = new Account(
+      {
+        ...signedInRecord(),
+        connectedApps: [{ appUrl: DIRTY_SITE, appName: 'Test App', lastConnectedAt: 1 }],
+      },
+      () => commits++,
+    )
+
+    account.setAppStamp(DIRTY_SITE, new BatchId('c'.repeat(64)))
+
+    expect(account.connectedApps[0].postageStampBatchID).toBeUndefined()
+    expect(commits).toBe(0)
   })
 })
 

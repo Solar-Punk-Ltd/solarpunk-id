@@ -763,6 +763,10 @@ export type UploadMode = z.infer<typeof UploadModeSchema>
  * - `app-slice-full`: only in a refused `stampChunk`. The chunk's bucket has
  *   no slot left for app stamps, the rest is kept for the account's own
  *   uploads (`ACCOUNT_RESERVED_LANE_SHARE`).
+ * - `session-unconfirmed` — the session was restored from storage and the
+ *   check that it was not ended while no page was open could not read the
+ *   account's published state. Writes stay refused until a later check, made
+ *   on the next write, can.
  */
 export const UploadUnavailableReasonSchema = z.enum([
   "no-stamp",
@@ -774,6 +778,7 @@ export const UploadUnavailableReasonSchema = z.enum([
   "app-stamp-rate",
   "app-bucket-share",
   "app-slice-full",
+  "session-unconfirmed",
 ])
 
 export type UploadUnavailableReason = z.infer<
@@ -857,17 +862,6 @@ export const ConnectionInfoSchema = z.object({
    * pre-first-upload) or for legacy single-device accounts.
    */
   partition: z.number().int().min(0).optional(),
-  /**
-   * This proxy's device id — the random per-context id the partition lease and
-   * the device roster identify it by, kept in the proxy's own storage.
-   *
-   * Exposed because whether it CHANGES is a real signal: a partitioned iframe
-   * (Safari ITP) keeps it in partitioned storage, so an id that differs across
-   * loads means that storage was evicted and every session is joining the
-   * roster as a new device (#584, #570). Not a secret — a random uuid the
-   * embedding page already shares a browser with.
-   */
-  deviceId: z.string().optional(),
   identity: ConnectionIdentitySchema.optional(),
   /** App-specific key derived from identity + app origin (use publicKey for ACT grantee operations) */
   appKey: z
@@ -1679,7 +1673,6 @@ export const ConnectionInfoChangedMessageSchema = z.object({
    */
   uploadUnavailableReason:
     UploadUnavailableReasonSchema.optional().catch(undefined),
-  deviceId: z.string().optional(),
   identity: ConnectionIdentitySchema.optional(),
   appKey: z
     .object({
@@ -2139,7 +2132,7 @@ export type AuthData = z.infer<typeof AuthDataSchema>
  *
  * The popup hands all of it over on every load today; keeping it changes the
  * window from the life of the page to the life of the session, in a store only
- * this (SwarmID origin, dApp origin) pair can read.
+ * this (SwarmID origin, dApp origin) pair can read, and sealed there.
  *
  * `connectedUntil` is the same clock the unpartitioned path enforces from
  * shared storage, so both modes end a session on the same rule. What the
@@ -2150,10 +2143,23 @@ export const PartitionSessionSchemaV1 = z.object({
   version: z.literal(1),
   parentOrigin: z.string(),
   connectedUntil: z.number(),
-  data: AuthDataSchema,
+  /**
+   * The handed-over payload's wire form, as JSON, sealed with this
+   * partition's wrapping key (`utils/sealed-values.ts`, review P2-2). Only
+   * the parts that say nothing secret, whose session this is and when it
+   * ends, stay readable.
+   */
+  data: z.string(),
 })
 
-export type PartitionSession = z.infer<typeof PartitionSessionSchemaV1>
+export type StoredPartitionSession = z.infer<typeof PartitionSessionSchemaV1>
+
+/** A stored session once opened, with its payload parsed. */
+export interface PartitionSession {
+  parentOrigin: string
+  connectedUntil: number
+  data: AuthData
+}
 
 export const SetSecretMessageSchema = z.object({
   type: z.literal("setSecret"),

@@ -17,6 +17,7 @@ import {
   chainReachable,
   completeCreateFlow,
   fundPostageSigner,
+  openSealedInPage,
 } from './helpers'
 
 const BEE_NODE_URL = 'http://localhost:1633/'
@@ -110,7 +111,8 @@ test('buying a drive creates a batch the account owns on chain', async ({ page }
   const owner = await onChainOwner(drive!.batchID)
   expect(owner).toBeDefined()
 
-  const signerAddress = new PrivateKey(drive!.signerKey).publicKey().address().toHex()
+  const signerKey = await openSealedInPage(page, drive!.signerKey)
+  const signerAddress = new PrivateKey(signerKey).publicKey().address().toHex()
   expect(owner!.toLowerCase()).toBe(`0x${signerAddress}`.toLowerCase())
 
   // And because it is a real batch, the paid flows work on it straight away.

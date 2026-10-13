@@ -277,6 +277,50 @@ describe('the chat binding at connect', () => {
     expect(verifyChatBinding(binding).signer).toBe(`0x${ACCOUNT_ID.toHex()}`)
   })
 
+  // The site is a derivation label and a storage key. It reaches here from the
+  // window's own link, which the connect store checks, but every caller of
+  // these two functions gets the same check rather than trusting that one
+  // (review P3-1).
+  describe('refuses a site that is not a clean origin', () => {
+    const DIRTY_SITES = [
+      'https://dapp.example.com/',
+      'https://dapp.example.com/path',
+      'https://DAPP.example.com',
+      'http://dapp.example.com',
+      'javascript:alert(1)',
+    ]
+
+    for (const site of DIRTY_SITES) {
+      it(`before deriving anything for ${site}`, async () => {
+        const account = fakeAccount()
+
+        await expect(
+          completeConnect(account, ENTROPY, { ...request, appOrigin: site }),
+        ).rejects.toThrow(/not accepted/)
+
+        expect(account.connectedApps).toHaveLength(0)
+        expect(opener.postMessage).not.toHaveBeenCalled()
+      })
+
+      it(`before reusing a stored secret for ${site}`, () => {
+        const account = fakeAccount([
+          {
+            appUrl: site,
+            appName: 'dApp',
+            lastConnectedAt: 1,
+            appSecret: '55'.repeat(32),
+            connectedUntil: Date.now() + 60_000,
+          },
+        ])
+
+        expect(() => reuseConnection(account, { ...request, appOrigin: site })).toThrow(
+          /not accepted/,
+        )
+        expect(opener.postMessage).not.toHaveBeenCalled()
+      })
+    }
+  })
+
   it('hands over the kept binding when a valid session is reused', async () => {
     const account = fakeAccount()
     await completeConnect(account, ENTROPY, request)

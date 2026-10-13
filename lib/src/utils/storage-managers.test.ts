@@ -1,7 +1,7 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, it, expect, afterEach, vi } from "vitest"
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest"
 import { BatchId, EthAddress, PrivateKey } from "@ethersphere/bee-js"
 import {
   createAccountsStorageManager,
@@ -19,6 +19,8 @@ import {
   createSignedOutAccount,
   createPostageStamp,
 } from "../test-fixtures"
+import { createFakeIndexedDB } from "../test-indexeddb"
+import { sealValue } from "./sealed-values"
 
 describe("serializeAccount — device-local seed vault", () => {
   it("round-trips a seed-vault account through serialize + Zod parse", () => {
@@ -141,7 +143,33 @@ describe("createAccountsStorageManager().load() — invalid records", () => {
     })
   }
 
-  it("skips an invalid record instead of dropping every account", () => {
+  /** A serialized account with its keys sealed, as the manager writes it. */
+  async function sealed(record: Record<string, unknown>) {
+    const key = (value: unknown) =>
+      typeof value === "string" ? sealValue(value) : value
+    return {
+      ...record,
+      derivationKey: await key(record.derivationKey),
+      connectedApps: await Promise.all(
+        (record.connectedApps as Record<string, unknown>[]).map(
+          async (app) => ({
+            ...app,
+            appSecret: await key(app.appSecret),
+          }),
+        ),
+      ),
+      postageStamps: await Promise.all(
+        (record.postageStamps as Record<string, unknown>[]).map(
+          async (stamp) => ({
+            ...stamp,
+            signerKey: await key(stamp.signerKey),
+          }),
+        ),
+      ),
+    }
+  }
+
+  it("skips an invalid record instead of dropping every account", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined)
     const good = createAccount()
     const other = createAccount({
@@ -155,7 +183,7 @@ describe("createAccountsStorageManager().load() — invalid records", () => {
     }
     stubLocalStorage({
       version: 1,
-      data: [serializeAccount(good), corrupt],
+      data: [await sealed(serializeAccount(good)), await sealed(corrupt)],
     })
 
     const loaded = createAccountsStorageManager().load()
@@ -168,7 +196,7 @@ describe("createAccountsStorageManager().load() — invalid records", () => {
   // ahead of `new EthAddress(s)` / `BigInt(s)`, one record with a 40-character
   // non-hex id or a non-decimal `amount` dropped the WHOLE document, and the
   // next read-merge-write erased the other accounts for real.
-  it("skips a record whose transform input is malformed, not the document", () => {
+  it("skips a record whose transform input is malformed, not the document", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined)
     const good = createAccount()
     const other = createAccount({
@@ -184,7 +212,11 @@ describe("createAccountsStorageManager().load() — invalid records", () => {
     }
     stubLocalStorage({
       version: 1,
-      data: [badId, serializeAccount(good), badAmount],
+      data: [
+        await sealed(badId),
+        await sealed(serializeAccount(good)),
+        await sealed(badAmount),
+      ],
     })
 
     const loaded = createAccountsStorageManager().load()
@@ -264,5 +296,144 @@ describe("a connected app's chat binding", () => {
     >[]
     expect(app.chatBinding).toEqual(binding)
     expect("appSecret" in app).toBe(false)
+  })
+})
+
+// Review P2-2: key material at rest is sealed with a non-extractable key kept
+// in this origin's IndexedDB, opened into memory for the page. A key that
+// cannot be opened is absent, and the person signs in again.
+describe("the accounts document keeps its keys sealed", () => {
+  const APP_SECRET = "5a".repeat(32)
+  const SIGNER_KEY = "6b".repeat(32)
+  const DERIVATION_KEY = "7c".repeat(32)
+
+  type StorageManagers = typeof import("./storage-managers")
+
+  let store: Map<string, string>
+
+  /** A page load: fresh modules over the same storage. */
+  async function freshPage(): Promise<StorageManagers> {
+    vi.resetModules()
+    // eslint-disable-next-line no-restricted-syntax -- a fresh module per page load is the point
+    return import("./storage-managers")
+  }
+
+  function account() {
+    return createAccount({
+      derivationKey: DERIVATION_KEY,
+      connectedApps: [
+        {
+          appUrl: "https://app.example.com",
+          appName: "Test App",
+          lastConnectedAt: 1,
+          appSecret: APP_SECRET,
+          connectedUntil: 2,
+        },
+      ],
+      postageStamps: [
+        createPostageStamp({ signerKey: new PrivateKey(SIGNER_KEY) }),
+      ],
+    })
+  }
+
+  const raw = () => store.get(STORAGE_KEY_ACCOUNTS) ?? ""
+
+  beforeEach(() => {
+    store = new Map()
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => void store.set(key, value),
+        removeItem: (key: string) => void store.delete(key),
+      },
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => true,
+    })
+    vi.stubGlobal("indexedDB", createFakeIndexedDB())
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it("leaves no key in plain text in storage", async () => {
+    const { createAccountsStorageManager } = await freshPage()
+
+    await createAccountsStorageManager().save([account()])
+
+    expect(raw()).not.toBe("")
+    for (const secret of [APP_SECRET, SIGNER_KEY, DERIVATION_KEY]) {
+      expect(raw()).not.toContain(secret)
+    }
+  })
+
+  it("reads the keys back on a later page load", async () => {
+    await (await freshPage()).createAccountsStorageManager().save([account()])
+    const manager = (await freshPage()).createAccountsStorageManager()
+
+    await manager.prime()
+    const [loaded] = manager.load()
+
+    expect(isSignedOutAccount(loaded)).toBe(false)
+    if (isSignedOutAccount(loaded)) return
+    expect(loaded.derivationKey).toBe(DERIVATION_KEY)
+    expect(loaded.connectedApps[0].appSecret).toBe(APP_SECRET)
+    expect(loaded.postageStamps[0].signerKey.toHex()).toBe(SIGNER_KEY)
+  })
+
+  it("signs the account out when the wrapping key is gone, keeping its vault", async () => {
+    const original = account()
+    await (await freshPage()).createAccountsStorageManager().save([original])
+    vi.stubGlobal("indexedDB", createFakeIndexedDB())
+    const manager = (await freshPage()).createAccountsStorageManager()
+
+    await manager.prime()
+    const [loaded] = manager.load()
+
+    expect(isSignedOutAccount(loaded)).toBe(true)
+    expect(loaded.id.equals(original.id)).toBe(true)
+    expect(loaded.encryptedSeed).toBe(original.encryptedSeed)
+    expect(loaded.access).toEqual(original.access)
+  })
+
+  it("does not read a key stored in plain text", async () => {
+    store.set(
+      STORAGE_KEY_ACCOUNTS,
+      JSON.stringify({ version: 1, data: [serializeAccount(account())] }),
+    )
+    const manager = (await freshPage()).createAccountsStorageManager()
+
+    await manager.prime()
+    const [loaded] = manager.load()
+
+    expect(isSignedOutAccount(loaded)).toBe(true)
+  })
+
+  it("keeps two writes from one window in order", async () => {
+    const manager = (await freshPage()).createAccountsStorageManager()
+    const renamed = { ...account(), name: "Renamed" }
+
+    await Promise.all([manager.save([account()]), manager.save([renamed])])
+
+    await manager.prime()
+    expect(manager.load()[0].name).toBe("Renamed")
+  })
+
+  it("updates on what is stored at the time of the write", async () => {
+    const manager = (await freshPage()).createAccountsStorageManager()
+    const other = createAccount({
+      id: new EthAddress(TEST_ETH_ADDRESS_2_HEX),
+      name: "Other",
+    })
+
+    await Promise.all([
+      manager.update((stored) => [...stored, account()]),
+      manager.update((stored) => [...stored, other]),
+    ])
+
+    await manager.prime()
+    expect(manager.load().map((a) => a.name)).toEqual(["Test Account", "Other"])
   })
 })

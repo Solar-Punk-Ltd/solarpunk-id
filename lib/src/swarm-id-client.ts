@@ -536,7 +536,6 @@ export class SwarmIdClient {
           storagePartitioned: message.storagePartitioned,
           uploadMode: message.uploadMode,
           uploadUnavailableReason: message.uploadUnavailableReason,
-          deviceId: message.deviceId,
           identity: message.identity,
           appKey: message.appKey,
           partition: message.partition,
@@ -954,7 +953,7 @@ export class SwarmIdClient {
    *   `window.opener` points back at the iframe and the session can be handed
    *   over directly — the only channel into a partitioned frame. The session
    *   is then kept in that partition's own store until it is disconnected or
-   *   its 30 days are up (#635), so a reload does not re-run this; a handover
+   *   its 7 days are up (#635), so a reload does not re-run this; a handover
    *   that arrives without the account view is refused outright rather than
    *   producing a session that cannot upload and cannot hear a revoke. A popup
    *   blocked on this path falls back to opening from the parent.

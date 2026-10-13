@@ -20,7 +20,11 @@ export const DAY = 24 * HOUR
 // Session Defaults
 // ============================================================================
 
-export const DEFAULT_SESSION_DURATION = 30 * DAY
+/**
+ * A saved session lets a site keep writing until its next load notices a
+ * revoke, so it is kept short (review P2-6). An account can set its own.
+ */
+export const DEFAULT_SESSION_DURATION = 7 * DAY
 
 /**
  * How long a connection to a dApp lasts, in ms: the account's own setting, or
