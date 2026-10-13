@@ -171,6 +171,7 @@ export function serializeConnectedApp(
     postageStampBatchIDAt: app.postageStampBatchIDAt,
     revokedAt: app.revokedAt,
     disconnectedAt: app.disconnectedAt,
+    chatBinding: app.chatBinding,
   }
 }
 

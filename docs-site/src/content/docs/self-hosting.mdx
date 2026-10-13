@@ -19,8 +19,12 @@ embeds `swarm-id.snaha.net`, both under `snaha.net`.
    cross-device sync.
 2. Serve the build from a subdomain of your app's site, over HTTPS, with the same
    registrable domain. Ports do not affect site; the scheme and the registrable domain do.
-3. Point your `SwarmIdClient` at it with `iframeOrigin`.
-4. If you use a subsidised gateway or your own Bee node, allow the **identity origin** in
+3. Allow your app's origin. The identity site serves only the sites named in a text record
+   on an ENS name, read through `PUBLIC_ETHEREUM_RPC_URL`, an Ethereum mainnet endpoint the
+   build must set. Point `PUBLIC_SITE_ALLOW_LIST_ENS_NAME` at a name you control and put your
+   app's exact origin in its record (`docs/Site-Allow-List.md` in the repository).
+4. Point your `SwarmIdClient` at it with `iframeOrigin`.
+5. If you use a subsidised gateway or your own Bee node, allow the **identity origin** in
    its CORS configuration, not the app's: the iframe is what uploads. See
    [Using Your Own Bee Node](../own-bee-node/).
 

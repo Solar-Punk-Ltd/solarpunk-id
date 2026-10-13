@@ -169,6 +169,7 @@ describe("foldAccount — differential equivalence with mergeSnapshotWithRemote"
     const folded = foldAccount(
       [viewA, viewB] as unknown as DeviceStateSnapshot[],
       [makeDevice("dev-a"), makeDevice("dev-b")],
+      ACCOUNT_ID,
     )
     const merged = mergeSnapshotWithRemote(
       viewToSnapshot(viewA),
@@ -194,6 +195,7 @@ describe("foldAccount — differential equivalence with mergeSnapshotWithRemote"
     const folded = foldAccount(
       [active, deleted] as unknown as DeviceStateSnapshot[],
       [makeDevice("dev-a")],
+      ACCOUNT_ID,
     )
     expect(folded.postageStamps).toHaveLength(1)
     expect(folded.postageStamps[0].deletedAt).toBe(5)
@@ -220,6 +222,7 @@ describe("foldAccount — a stale, narrowed publisher", () => {
     const folded = foldAccount(
       [partitioned, firstParty] as unknown as DeviceStateSnapshot[],
       [makeDevice("dev-partition"), makeDevice("dev-first-party")],
+      ACCOUNT_ID,
     )
 
     expect(folded.postageStamps.map((s) => s.batchID.toHex()).sort()).toEqual(
@@ -250,6 +253,7 @@ describe("foldAccount — a stale, narrowed publisher", () => {
     const folded = foldAccount(
       [frozen, peer] as unknown as DeviceStateSnapshot[],
       [makeDevice("dev-partition"), makeDevice("dev-peer")],
+      ACCOUNT_ID,
     )
 
     expect(folded.connectedApps).toHaveLength(1)
@@ -272,6 +276,7 @@ describe("foldAccount — per-field scalar LWW", () => {
     const folded = foldAccount(
       [viewA, viewB] as unknown as DeviceStateSnapshot[],
       [],
+      ACCOUNT_ID,
     )
     expect(folded.accountName).toBe("renamed-on-A")
     expect(folded.defaultPostageStampBatchID?.toHex()).toBe("ee".repeat(32))
@@ -296,9 +301,14 @@ describe("foldAccount — per-field scalar LWW", () => {
         { ...labelled, deviceId: "", timestamp: Number.MAX_SAFE_INTEGER },
       ] as unknown as DeviceStateSnapshot[],
       [],
+      ACCOUNT_ID,
     )
     expect(folded).toEqual(
-      foldAccount([labelled] as unknown as DeviceStateSnapshot[], []),
+      foldAccount(
+        [labelled] as unknown as DeviceStateSnapshot[],
+        [],
+        ACCOUNT_ID,
+      ),
     )
   })
 
@@ -306,6 +316,7 @@ describe("foldAccount — per-field scalar LWW", () => {
     const folded = foldAccount(
       [makeView()] as unknown as DeviceStateSnapshot[],
       [makeDevice("dev-x"), makeDevice("dev-y")],
+      ACCOUNT_ID,
     )
     expect(folded.devices.map((d) => d.deviceId).sort()).toEqual([
       "dev-x",
@@ -325,6 +336,7 @@ describe("foldAccount — account immutables from any defining view", () => {
     const folded = foldAccount(
       [partial, full] as unknown as DeviceStateSnapshot[],
       [makeDevice("dev-a")],
+      ACCOUNT_ID,
     )
     expect(folded.partitionCount).toBe(4)
     expect(folded.publicKey).toBe(TEST_ACCOUNT_PUBLIC_KEY)

@@ -12,6 +12,7 @@ import { AccountDeltaMessageSchema } from "./messages"
 import { mergeConnectedApps } from "../sync/merge-snapshot"
 import type { ConnectedApp } from "../schemas"
 import type { AccountStateSnapshot } from "../utils/account-state-snapshot"
+import { createChatBinding } from "../utils/chat-binding"
 
 const APP_URL = "https://app.example"
 const ACCOUNT_ID = "aa".repeat(20)
@@ -42,7 +43,10 @@ function onWire(app: ConnectedApp): ConnectedApp {
 }
 
 function fold(local: ConnectedApp[], incoming: ConnectedApp[]): ConnectedApp[] {
-  return restoreLocalSessionFields(mergeConnectedApps(local, incoming), local)
+  return restoreLocalSessionFields(
+    mergeConnectedApps(local, incoming, ACCOUNT_ID),
+    local,
+  )
 }
 
 describe("restoreLocalSessionFields — a peer's Disconnect", () => {
@@ -169,5 +173,44 @@ describe("accountDeltaFromSnapshot", () => {
     expect(app.disconnectedAt).toBe(LATER)
     expect("appSecret" in app).toBe(false)
     expect("connectedUntil" in app).toBe(false)
+  })
+
+  // Every context of the account shares this room, and some of them are frames
+  // embedded by other sites. A site's binding links the account to its chat
+  // there, so no binding rides the bus: the windows get them from storage and
+  // the synced feed, and a frame only ever holds its own site's.
+  const binding = createChatBinding(
+    "5a".repeat(32),
+    APP_URL,
+    new Date("2026-10-14T12:00:00.000Z"),
+  )
+
+  it("carries no chat binding", () => {
+    const wire = accountDeltaFromSnapshot(
+      snapshot([localSession({ chatBinding: binding })]),
+    )
+
+    const [app] = wire.connectedApps as Record<string, unknown>[]
+    expect("chatBinding" in app).toBe(false)
+  })
+
+  it("drops a chat binding a publisher left on the wire", () => {
+    const parsed = AccountDeltaMessageSchema.parse({
+      type: "account-delta",
+      snapshot: {
+        ...accountDeltaFromSnapshot(snapshot([localSession()])),
+        connectedApps: [
+          {
+            appUrl: APP_URL,
+            appName: "Test App",
+            lastConnectedAt: CONNECTED_AT,
+            chatBinding: binding,
+          },
+        ],
+      },
+    })
+
+    const [app] = parsed.snapshot.connectedApps
+    expect("chatBinding" in app).toBe(false)
   })
 })

@@ -121,6 +121,19 @@ export {
   mergeDevices,
 } from "./utils/device-id"
 
+export { createChatBinding, onlySiteChatBinding } from "./utils/chat-binding"
+
+export {
+  DEFAULT_SITE_ALLOW_LIST_ENS_NAME,
+  DEFAULT_SITE_ALLOW_LIST_RECORD_KEY,
+  createSiteAllowList,
+} from "./utils/site-allow-list"
+export type {
+  SiteAllowList,
+  SiteAllowListSettings,
+  SiteCheck,
+} from "./utils/site-allow-list"
+
 export { hexAddress } from "./utils/hex"
 
 export {

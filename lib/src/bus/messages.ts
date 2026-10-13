@@ -31,10 +31,15 @@ import {
  * app carrying a live `connectedUntil` with a different secret would drive the
  * reconcile into `authenticateFromStorage`, which drops the hydrated view a
  * partitioned session cannot rebuild without a reload.
+ *
+ * `chatBinding` is omitted for the first of those reasons: a frame for one
+ * site must not learn the account's chat address on another
+ * (`accountDeltaFromSnapshot`).
  */
 const BusConnectedAppSchema = ConnectedAppSchemaV1.omit({
   appSecret: true,
   connectedUntil: true,
+  chatBinding: true,
 })
 
 /**

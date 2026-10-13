@@ -359,6 +359,28 @@ describe("SwarmIdClient connectionInfo", () => {
     })
   })
 
+  // The account's signed statement that this site's chat key is its own
+  // (docs/Chat-Binding.md), exposed with the rest of the connection.
+  it("exposes the chat binding the proxy pushed", () => {
+    const chatBinding = {
+      message: "Swarm ID chat binding v1",
+      signature: `0x${"ab".repeat(64)}1b`,
+    }
+
+    deliver({
+      type: "connectionInfoChanged" as const,
+      canUpload: true,
+      uploadMode: "user-stamp" as const,
+      chatBinding,
+    })
+    internals(client).ready = true
+
+    expect(onConnectionChange).toHaveBeenCalledWith(
+      expect.objectContaining({ chatBinding }),
+    )
+    expect(client.connectionInfo.chatBinding).toEqual(chatBinding)
+  })
+
   it("replaces the cached snapshot on subsequent pushes", () => {
     const first = {
       type: "connectionInfoChanged" as const,

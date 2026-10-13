@@ -8,10 +8,12 @@ vi.mock("virtual:stamp-worker-code", () => ({ default: "" }))
 
 import { DEFAULT_BEE_NODE_URL } from "./schemas"
 import { SwarmIdProxy } from "./swarm-id-proxy"
+import { allowingSites } from "./test-fixtures"
 import { deriveSecret } from "./utils/key-derivation"
 import { uint8ArrayToHex } from "./utils/hex"
 import { STORAGE_KEY_NETWORK_SETTINGS } from "./types"
 import type { ButtonConfig } from "./types"
+import type { SiteAllowList } from "./utils/site-allow-list"
 import type { StampLifetimeFields } from "./utils/stamp-lifespan"
 
 /**
@@ -80,7 +82,7 @@ describe("SwarmIdProxy parentIdentify security (#410)", () => {
     }
     vi.stubGlobal("window", mockWindow)
 
-    new SwarmIdProxy()
+    new SwarmIdProxy({ siteAllowList: allowingSites(PARENT_ORIGIN) })
     messageListener = listeners["message"] as MessageListener
   })
 
@@ -159,6 +161,106 @@ describe("SwarmIdProxy parentIdentify security (#410)", () => {
   })
 })
 
+describe("SwarmIdProxy allow list on parentIdentify", () => {
+  const NEAR_MISS_ORIGIN = "https://dapp.example.com:8443"
+  let parentWindow: { postMessage: ReturnType<typeof vi.fn> }
+  let messageListener: MessageListener
+
+  function mount(siteAllowList: SiteAllowList): SwarmIdProxy {
+    parentWindow = { postMessage: vi.fn() }
+    const listeners: Record<string, unknown> = {}
+    vi.stubGlobal("window", {
+      addEventListener: vi.fn((type: string, listener: unknown) => {
+        listeners[type] = listener
+      }),
+      removeEventListener: vi.fn(),
+      parent: parentWindow,
+      location: { origin: "https://id.example.com" },
+    })
+    const proxy = new SwarmIdProxy({ siteAllowList })
+    messageListener = listeners["message"] as MessageListener
+    return proxy
+  }
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const identify = (origin: string) =>
+    messageListener({
+      data: {
+        type: "parentIdentify",
+        requestId: "r1",
+        metadata: { name: "Test App" },
+      },
+      origin,
+      source: parentWindow,
+    } as unknown as MessageEvent)
+
+  const messagesOfType = (type: string) =>
+    parentWindow.postMessage.mock.calls.filter(
+      ([message]) => message?.type === type,
+    )
+
+  it("refuses a parent the list does not name, saying why, before anything else", async () => {
+    const proxy = mount(allowingSites(PARENT_ORIGIN))
+    const loadAuthData = vi.spyOn(internals(proxy), "loadAuthData")
+
+    await identify(NEAR_MISS_ORIGIN)
+
+    expect(messagesOfType("proxyReady")).toHaveLength(0)
+    expect(messagesOfType("connectionInfoChanged")).toHaveLength(0)
+    expect(loadAuthData).not.toHaveBeenCalled()
+    const initErrors = messagesOfType("initError")
+    expect(initErrors).toHaveLength(1)
+    expect(initErrors[0][0].error).toContain(NEAR_MISS_ORIGIN)
+  })
+
+  it("stays refused: the parent's later messages are ignored", async () => {
+    mount(allowingSites(PARENT_ORIGIN))
+    await identify(NEAR_MISS_ORIGIN)
+    parentWindow.postMessage.mockClear()
+
+    await identify(NEAR_MISS_ORIGIN)
+    await messageListener({
+      data: { type: "checkAuth", requestId: "r2" },
+      origin: NEAR_MISS_ORIGIN,
+      source: parentWindow,
+    } as unknown as MessageEvent)
+
+    expect(messagesOfType("proxyReady")).toHaveLength(0)
+    expect(messagesOfType("authStatusResponse")).toHaveLength(0)
+  })
+
+  it("refuses every parent when the list cannot be read", async () => {
+    mount({
+      check: async () => ({
+        allowed: false,
+        reason: "list-unavailable",
+        message: "The allow list could not be read.",
+      }),
+    })
+
+    await identify(PARENT_ORIGIN)
+
+    expect(messagesOfType("proxyReady")).toHaveLength(0)
+    expect(messagesOfType("initError")[0][0]).toMatchObject({
+      error: "The allow list could not be read.",
+    })
+  })
+
+  it("checks one identify only, even when a second arrives during the check", async () => {
+    const check = vi.fn(allowingSites(PARENT_ORIGIN).check)
+    mount({ check })
+
+    await Promise.all([identify(PARENT_ORIGIN), identify(PARENT_ORIGIN)])
+
+    expect(check).toHaveBeenCalledTimes(1)
+    expect(check).toHaveBeenCalledWith(PARENT_ORIGIN)
+    expect(messagesOfType("proxyReady")).toHaveLength(1)
+  })
+})
+
 describe("SwarmIdProxy initialization failure (#420)", () => {
   let parentWindow: { postMessage: ReturnType<typeof vi.fn> }
   let messageListener: MessageListener
@@ -180,7 +282,7 @@ describe("SwarmIdProxy initialization failure (#420)", () => {
     }
     vi.stubGlobal("window", mockWindow)
 
-    proxy = new SwarmIdProxy()
+    proxy = new SwarmIdProxy({ siteAllowList: allowingSites(PARENT_ORIGIN) })
     messageListener = listeners["message"] as MessageListener
   })
 
@@ -233,7 +335,7 @@ describe("SwarmIdProxy deriveAppSecret (#520)", () => {
       location: { origin: "https://id.example.com" },
     })
 
-    proxy = new SwarmIdProxy()
+    proxy = new SwarmIdProxy({ siteAllowList: allowingSites(PARENT_ORIGIN) })
     source = { postMessage: vi.fn() }
   })
 
@@ -321,7 +423,7 @@ describe("SwarmIdProxy honours a Bee URL change mid-session (#515)", () => {
       location: { origin: "https://id.example.com" },
     })
 
-    proxy = new SwarmIdProxy()
+    proxy = new SwarmIdProxy({ siteAllowList: allowingSites(PARENT_ORIGIN) })
   })
 
   it("rebuilds the Bee client at the newly configured node", () => {
@@ -379,7 +481,7 @@ describe("SwarmIdProxy auth button typography (#779)", () => {
       })),
     })
 
-    proxy = new SwarmIdProxy()
+    proxy = new SwarmIdProxy({ siteAllowList: allowingSites(PARENT_ORIGIN) })
   })
 
   /** Render the button with `config` and hand back the styles it carries. */
@@ -488,7 +590,7 @@ describe("SwarmIdProxy subsidised-mode selection", () => {
       location: { origin: "https://id.example.com", pathname: "/proxy" },
       localStorage: localStorageFake,
     })
-    proxy = new SwarmIdProxy()
+    proxy = new SwarmIdProxy({ siteAllowList: allowingSites(PARENT_ORIGIN) })
     messageListener = listeners["message"] as MessageListener
   }
 

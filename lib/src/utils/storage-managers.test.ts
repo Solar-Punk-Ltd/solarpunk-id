@@ -6,7 +6,9 @@ import { BatchId, EthAddress, PrivateKey } from "@ethersphere/bee-js"
 import {
   createAccountsStorageManager,
   serializeAccount,
+  serializeSyncedAccount,
 } from "./storage-managers"
+import { createChatBinding } from "./chat-binding"
 import { LocalAccountSchemaV1, isSignedOutAccount } from "../schemas"
 import { STORAGE_KEY_ACCOUNTS } from "../types"
 import {
@@ -223,5 +225,44 @@ describe("createAccountsStorageManager().load() — invalid records", () => {
     stubLocalStorage({ version: 1, data: { not: "an array" } })
 
     expect(createAccountsStorageManager().load()).toEqual([])
+  })
+})
+
+// The chat binding is public and true on every device of the account, so it
+// travels with the connection it belongs to, unlike the app secret.
+describe("a connected app's chat binding", () => {
+  const binding = createChatBinding(
+    "5a".repeat(32),
+    "https://viewer.example.com",
+    new Date("2026-10-14T12:00:00.000Z"),
+  )
+  const account = createAccount({
+    connectedApps: [
+      {
+        appUrl: "https://viewer.example.com",
+        appName: "Viewer",
+        lastConnectedAt: 1_000_000,
+        appSecret: "44".repeat(32),
+        chatBinding: binding,
+      },
+    ],
+  })
+
+  it("is kept in the device's own record", () => {
+    const reparsed = LocalAccountSchemaV1.parse(
+      JSON.parse(JSON.stringify(serializeAccount(account))),
+    )
+    if (isSignedOutAccount(reparsed))
+      throw new Error("expected a signed-in account")
+    expect(reparsed.connectedApps[0].chatBinding).toEqual(binding)
+  })
+
+  it("travels in the portable projection, without the app secret", () => {
+    const [app] = serializeSyncedAccount(account).connectedApps as Record<
+      string,
+      unknown
+    >[]
+    expect(app.chatBinding).toEqual(binding)
+    expect("appSecret" in app).toBe(false)
   })
 })

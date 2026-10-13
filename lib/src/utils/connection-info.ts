@@ -39,6 +39,10 @@ export function connectionInfoEqual(
     // partitioned session it means the storage holding it was evicted, and the
     // session rejoined the roster as a new device (#584, #570).
     a.deviceId === b.deviceId &&
-    a.partition === b.partition
+    a.partition === b.partition &&
+    // A newer binding replaces the old one, and readers trust the newest, so
+    // the dApp has to hear of it.
+    a.chatBinding?.message === b.chatBinding?.message &&
+    a.chatBinding?.signature === b.chatBinding?.signature
   )
 }

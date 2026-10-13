@@ -51,7 +51,7 @@ projection; `serializeAccount` writes it plus the local tail to storage.
 | `id`, `name`, `createdAt`                       | there is exactly one kind of account — a BIP-39 seed account, no `type` discriminant. **How** the seed is protected on this device is the vault's `access` (`AccessMethodSchemaV1`: `passkey` / `eth-wallet` / `password`), which is device-local and therefore not here |
 | `derivationKey`, `publicKey`                    | `derivationKey` is the shared account key every device holds (see Assumptions)                                                                                                                                                                                           |
 | `devices: Device[]`                             | each: `deviceId, name, createdAt, lastSignedInAt`, rename clock `nameUpdatedAt?`, tombstone `removedAt?`                                                                                                                                                                 |
-| `connectedApps: ConnectedApp[]`                 | each: app fields, optional `postageStampBatchID` + its own `postageStampBatchIDAt` clock, `disconnectedAt?`, tombstone `revokedAt?`                                                                                                                                      |
+| `connectedApps: ConnectedApp[]`                 | each: app fields, optional `postageStampBatchID` + its own `postageStampBatchIDAt` clock, `disconnectedAt?`, tombstone `revokedAt?`, the site's newest `chatBinding?` ([Chat-Binding.md](Chat-Binding.md))                                                               |
 | `postageStamps: PostageStamp[]`                 | account-owned set; each: stamp fields + `createdAt`, node-state edit clock `updatedAt?` (dilute / top-up), rename clock `nameUpdatedAt?`, tombstone `deletedAt?`                                                                                                         |
 | `defaultPostageStampBatchID`                    | the account's default batch (stores account data; default for app uploads)                                                                                                                                                                                               |
 | `settings`                                      | e.g. `appSessionDuration`                                                                                                                                                                                                                                                |
@@ -73,7 +73,7 @@ delete propagates), not dropped.
    (per device)        │     latest pointer = that device's FULL current view (apps/stamps/scalars)       │  NO cross-device contention
                        └───────────────────────────────────────────────────────────────────────────────┘
   read        ────────▶  foldAccountFromSwarm = read roster → read each non-removed device's latest view
-                          (in parallel) → foldAccount(views, rosterDevices)  → converged account
+                          (in parallel) → foldAccount(views, rosterDevices, accountId) → converged account
 ```
 
 All feeds share **one owner** — the account backup key,
@@ -131,7 +131,7 @@ partition lease still keeps two devices' writes slot-disjoint on the shared batc
 
 `foldAccountFromSwarm({ bee, derivationKey, accountId })` (`fold-account-from-swarm.ts`): derive the
 owner/encryption key → `readRoster` (empty ⇒ `undefined`, i.e. "no backup") → read each non-removed
-device's latest view **in parallel** (`Promise.all`) → `foldAccount(views, rosterDevices)`. Two callers:
+device's latest view **in parallel** (`Promise.all`) → `foldAccount(views, rosterDevices, accountId)`. Two callers:
 
 - **Restore (a new device signing in)** — ui `sign-back-in.ts` and the import page →
   `foldedToSyncedAccount` → the account record the sign-in/import flow stores.

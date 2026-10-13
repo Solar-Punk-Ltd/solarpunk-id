@@ -180,6 +180,8 @@ import {
 import { hexToUint8Array, uint8ArrayToHex } from "./utils/hex"
 import { generatedAvatar } from "./utils/avatar"
 import { connectionInfoEqual } from "./utils/connection-info"
+import { acceptedChatBinding, onlySiteChatBinding } from "./utils/chat-binding"
+import type { ChatBinding } from "./utils/chat-binding"
 import {
   activeDeviceIds,
   KNOWN_DEVICE_MAX_AGE_MS,
@@ -212,6 +214,7 @@ import {
 } from "./schemas"
 import { appSessionDuration } from "./utils/constants"
 import { buildAuthUrl } from "./utils/url"
+import type { SiteAllowList } from "./utils/site-allow-list"
 import {
   createActForContent,
   decryptActReference,
@@ -358,9 +361,23 @@ interface StampedForApp {
 export class SwarmIdProxy {
   private parentOrigin: string | undefined
   private parentIdentified: boolean = false
+  /**
+   * Set by the first `parentIdentify`, before its allow-list check awaits, so a
+   * second one cannot start a check of its own. A refused parent leaves it set:
+   * the frame answers nothing more until the page loads it again.
+   */
+  private parentIdentifyReceived: boolean = false
+  private siteAllowList: SiteAllowList
   private authenticated: boolean = false
   private authLoading: boolean = true // Start in loading state
   private appSecret: string | undefined
+  /**
+   * The chat binding the popup handed over with this session, already checked
+   * against it (`acceptHandedOverChatBinding`). Only a handover sets it: an
+   * unpartitioned session reads its connection out of shared storage and
+   * reports none.
+   */
+  private chatBinding: ChatBinding | undefined
   private postageBatchId: string | undefined
   private signerKey: string | undefined
   private stamper: UtilizationAwareStamper | undefined
@@ -536,7 +553,8 @@ export class SwarmIdProxy {
    */
   private deviceId: string | undefined
 
-  constructor(config?: ProxyConfig) {
+  constructor(config: ProxyConfig) {
+    this.siteAllowList = config.siteAllowList
     // Load Bee API URL from network settings, falling back to default
     const networkSettings = createNetworkSettingsStorageManager().load()
     this.beeApiUrl = networkSettings?.beeNodeUrl || DEFAULT_BEE_NODE_URL
@@ -545,8 +563,8 @@ export class SwarmIdProxy {
     // supplies this from a build-time env so local dev can point at the
     // bee-compose anvil deployment; defaults to the Gnosis mainnet contract.
     this.postageStampContractAddress =
-      config?.postageStampContractAddress || POSTAGE_STAMP_CONTRACT_ADDRESS
-    this.signalingUrl = config?.signalingUrl
+      config.postageStampContractAddress || POSTAGE_STAMP_CONTRACT_ADDRESS
+    this.signalingUrl = config.signalingUrl
     if (!this.signalingUrl) {
       // Said out loud because the alternative is silence: without a URL the
       // bus never leaves this origin+partition, and a static build that lost
@@ -849,6 +867,7 @@ export class SwarmIdProxy {
     connectedApp: ConnectedApp,
   ): Promise<void> {
     this.appSecret = connectedApp.appSecret
+    this.chatBinding = undefined
     this.authenticated = true
     this.storagePartitioned = false
     this.partitionAccount = undefined
@@ -922,6 +941,7 @@ export class SwarmIdProxy {
 
       // Authenticate in storage-partitioned mode (no stamps available via postMessage)
       this.appSecret = message.data.secret
+      this.chatBinding = this.acceptHandedOverChatBinding(message.data)
       this.authenticated = true
       this.storagePartitioned = true
       this.authLoading = false
@@ -986,6 +1006,29 @@ export class SwarmIdProxy {
   }
 
   /**
+   * The handed-over chat binding, if it names exactly this parent origin, the
+   * address of the secret it came with and the account it came with, so the
+   * dApp is never shown a statement about another site, key or account.
+   *
+   * Local http is allowed in the parse because the comparison with
+   * `parentOrigin`, which the browser reported, is the check here. Which sites
+   * a binding may name at all is the popup's to decide, and a production popup
+   * refuses local http.
+   */
+  private acceptHandedOverChatBinding(data: AuthData): ChatBinding | undefined {
+    if (!this.parentOrigin) return undefined
+    return acceptedChatBinding(
+      data.chatBinding,
+      {
+        site: this.parentOrigin,
+        chatAddress: new PrivateKey(data.secret).publicKey().address().toHex(),
+        signer: data.account.id.toHex(),
+      },
+      { allowLocalHttp: true },
+    )
+  }
+
+  /**
    * Write the handed-over session to this partition's own store.
    *
    * The wire form, not the parsed one: `AuthDataSchema` revives `BatchId` and
@@ -1011,8 +1054,15 @@ export class SwarmIdProxy {
       data: {
         ...data,
         // The projection carries `BatchId`/`PrivateKey`/`EthAddress`; this is
-        // the same serializer the popup used to build it.
-        account: serializeSyncedAccount(data.account),
+        // the same serializer the popup used to build it. This parent's own
+        // chat binding is all it keeps, as in `hydratePartitionAccount`.
+        account: serializeSyncedAccount({
+          ...data.account,
+          connectedApps: onlySiteChatBinding(
+            data.account.connectedApps,
+            this.parentOrigin,
+          ),
+        }),
       },
     }
     try {
@@ -1144,10 +1194,16 @@ export class SwarmIdProxy {
     }
     this.partitionAccount = {
       ...account,
+      // Every other site's chat binding is dropped here, on the handover and
+      // on a restore alike: this frame runs inside its parent's page, and a
+      // binding links the account to its chat on that binding's site.
       connectedApps: [
         connection,
-        ...account.connectedApps.filter(
-          (app) => app.appUrl !== this.parentOrigin,
+        ...onlySiteChatBinding(
+          account.connectedApps.filter(
+            (app) => app.appUrl !== this.parentOrigin,
+          ),
+          this.parentOrigin!,
         ),
       ],
       access: { type: "password", kdfSalt: "", kdfIterations: 0 },
@@ -1745,6 +1801,7 @@ export class SwarmIdProxy {
           deltaFoldView(snapshot),
         ],
         mergeDevicesList(account.devices, snapshot.metadata.devices),
+        account.id.toHex(),
       )
       const foldedAccount = foldedToSyncedAccount({
         id: account.id,
@@ -1761,9 +1818,12 @@ export class SwarmIdProxy {
           snapshot.metadata.lastModified,
         ),
       })
-      const connectedApps = restoreLocalSessionFields(
-        folded.connectedApps,
-        account.connectedApps,
+      // The bus schema already drops every chat binding. This holds the same
+      // line for the fold's output, so no path into this view can bring
+      // another site's binding in.
+      const connectedApps = onlySiteChatBinding(
+        restoreLocalSessionFields(folded.connectedApps, account.connectedApps),
+        connection.app.appUrl,
       )
       this.partitionAccount = {
         ...this.partitionAccount,
@@ -2270,9 +2330,18 @@ export class SwarmIdProxy {
     event: MessageEvent,
   ): Promise<void> {
     // Prevent parent from changing after first identification
-    if (this.parentIdentified) {
+    if (this.parentIdentifyReceived) {
       console.error("[Proxy] Parent already identified! Ignoring duplicate.")
       return
+    }
+    this.parentIdentifyReceived = true
+
+    // The browser-reported origin is checked before the frame reads or says
+    // anything for it. The refusal reaches the parent as an `initError`.
+    const siteCheck = await this.siteAllowList.check(event.origin)
+    if (!siteCheck.allowed) {
+      console.warn("[Proxy] Refused parent:", siteCheck.message)
+      throw new Error(siteCheck.message)
     }
 
     const parentPopupMode = message.popupMode
@@ -2506,6 +2575,7 @@ export class SwarmIdProxy {
 
     if (sharedData) {
       this.appSecret = sharedData.secret
+      this.chatBinding = undefined
       this.authenticated = true
       this.authLoading = false
       this.showAuthButton()
@@ -2551,6 +2621,7 @@ export class SwarmIdProxy {
   ): Promise<void> {
     const { data } = session
     this.appSecret = data.secret
+    this.chatBinding = this.acceptHandedOverChatBinding(data)
     this.authenticated = true
     this.storagePartitioned = true
     this.authLoading = false
@@ -3317,6 +3388,7 @@ export class SwarmIdProxy {
     this.authenticated = false
     this.authLoading = false
     this.appSecret = undefined
+    this.chatBinding = undefined
     // Before dropping `deviceId` — the release announcement is sent as us.
     this.setResolvedStamp(undefined)
     this.deviceId = undefined
@@ -3572,6 +3644,7 @@ export class SwarmIdProxy {
       identity,
       appKey,
       partition: this.coordinator?.currentPartition,
+      chatBinding: this.authenticated ? this.chatBinding : undefined,
     }
   }
 
@@ -3618,6 +3691,7 @@ export class SwarmIdProxy {
       identity: info.identity,
       appKey: info.appKey,
       partition: info.partition,
+      chatBinding: info.chatBinding,
     })
   }
 
@@ -6139,6 +6213,11 @@ export class SwarmIdProxy {
  */
 export interface ProxyConfig {
   /**
+   * The sites this frame serves (docs/Site-Allow-List.md). A parent whose
+   * origin it refuses gets an `initError` and nothing else.
+   */
+  siteAllowList: SiteAllowList
+  /**
    * PostageStamp contract address for on-chain stamp-TTL reads. Defaults to the
    * Gnosis mainnet deployment; set this (from a build-time env) to the local
    * bee-compose anvil address when developing against a local chain.
@@ -6155,6 +6234,6 @@ export interface ProxyConfig {
 /**
  * Initialize the proxy (called from HTML page)
  */
-export function initProxy(config?: ProxyConfig): SwarmIdProxy {
+export function initProxy(config: ProxyConfig): SwarmIdProxy {
   return new SwarmIdProxy(config)
 }

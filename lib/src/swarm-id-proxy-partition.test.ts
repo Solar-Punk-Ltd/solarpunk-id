@@ -7,7 +7,11 @@
  * the proxy into a first-class writer; a payload without one is refused.
  */
 
-import { derivePostageSignerKeySync } from "./utils/key-derivation"
+import {
+  derivePostageSignerKeySync,
+  deriveSecretSync,
+} from "./utils/key-derivation"
+import { createChatBinding } from "./utils/chat-binding"
 import {
   describe,
   it,
@@ -203,6 +207,7 @@ import { BatchId, EthAddress, PrivateKey } from "@ethersphere/bee-js"
 
 import { SwarmIdProxy, PUBLISH_DEBOUNCE_MS } from "./swarm-id-proxy"
 import type { ProxyConfig } from "./swarm-id-proxy"
+import { allowingSites } from "./test-fixtures"
 import { SignalingTransport } from "./bus/signaling-transport"
 import { busChannelName } from "./bus/account-bus"
 import { BusMessageSchema } from "./bus/messages"
@@ -322,7 +327,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
   let storageListener: (event: StorageEvent) => void
 
   /** (Re)create the proxy under a fresh window mock; keeps `localStorageFake`. */
-  function mountProxy(config?: ProxyConfig): void {
+  function mountProxy(config: Partial<ProxyConfig> = {}): void {
     const listeners: Record<string, unknown> = {}
     const mockWindow = {
       addEventListener: vi.fn((type: string, listener: unknown) => {
@@ -344,7 +349,10 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     vi.stubGlobal("window", mockWindow)
     vi.stubGlobal("localStorage", localStorageFake)
 
-    proxy = new SwarmIdProxy(config)
+    proxy = new SwarmIdProxy({
+      siteAllowList: allowingSites(PARENT_ORIGIN, SIBLING_ORIGIN),
+      ...config,
+    })
     messageListener = listeners["message"] as MessageListener
     storageListener = listeners["storage"] as (event: StorageEvent) => void
   }
@@ -1889,6 +1897,257 @@ describe("SwarmIdProxy partitioned write enablement", () => {
           (app) => app.appUrl === PARENT_ORIGIN,
         )?.lastConnectedAt,
       ).toBe(connectedAt)
+    })
+  })
+
+  // The account's statement that this site's chat key is its own
+  // (docs/Chat-Binding.md). It reaches the dApp only inside the checked
+  // handover, and only when it names this parent, this session's app key and
+  // the account that was handed over.
+  describe("the chat binding", () => {
+    const ACCOUNT_KEY = "5a".repeat(32)
+    const accountAddress = new PrivateKey(ACCOUNT_KEY).publicKey().address()
+    const appSecret = deriveSecretSync(ACCOUNT_KEY, PARENT_ORIGIN)
+    const binding = createChatBinding(
+      ACCOUNT_KEY,
+      PARENT_ORIGIN,
+      new Date("2026-10-14T12:00:00.000Z"),
+    )
+
+    async function connectWithBinding(chatBinding: unknown): Promise<void> {
+      const challenge = await startPartitionedConnect()
+      await sendSetSecret(challenge, {
+        secret: appSecret,
+        account: serializeSyncedAccount({
+          ...makeSyncedAccount(),
+          id: accountAddress,
+        }),
+        chatBinding,
+      })
+    }
+
+    const lastInfo = () => messagesOfType("connectionInfoChanged").at(-1)
+
+    it("hands the dApp the binding the handover carried", async () => {
+      await connectWithBinding(binding)
+
+      expect(messagesOfType("authSuccess")).toHaveLength(1)
+      expect(lastInfo()?.chatBinding).toEqual(binding)
+    })
+
+    it("keeps it across a reload", async () => {
+      await connectWithBinding(binding)
+
+      await reload()
+
+      expect(lastInfo()?.canUpload).toBe(true)
+      expect(lastInfo()?.chatBinding).toEqual(binding)
+    })
+
+    it("drops a binding signed for another site, and still connects", async () => {
+      await connectWithBinding(
+        createChatBinding(ACCOUNT_KEY, SIBLING_ORIGIN, new Date()),
+      )
+
+      expect(messagesOfType("authSuccess")).toHaveLength(1)
+      expect(lastInfo()?.canUpload).toBe(true)
+      expect(lastInfo()?.chatBinding).toBeUndefined()
+    })
+
+    it("drops a binding signed by another account", async () => {
+      await connectWithBinding(
+        createChatBinding("6b".repeat(32), PARENT_ORIGIN, new Date()),
+      )
+
+      expect(lastInfo()?.chatBinding).toBeUndefined()
+    })
+
+    it("drops a binding whose signature does not match its message", async () => {
+      await connectWithBinding({
+        message: binding.message.replace("12:00:00", "12:00:01"),
+        signature: binding.signature,
+      })
+
+      expect(lastInfo()?.chatBinding).toBeUndefined()
+    })
+
+    // The handover's projection, the stored session and the bus all carry the
+    // account's connected apps, and each entry can carry its site's binding.
+    // A frame runs inside its site's page, so whatever it holds that page's
+    // scripts can reach: another site's binding there links the account to its
+    // chat on that other site. Only this parent's own binding is ever held.
+    describe("another site's binding", () => {
+      const siblingBinding = createChatBinding(
+        ACCOUNT_KEY,
+        SIBLING_ORIGIN,
+        new Date("2026-10-14T12:00:00.000Z"),
+      )
+
+      function accountWithBothBindings(): SyncedAccount {
+        return {
+          ...makeSyncedAccount(),
+          id: accountAddress,
+          connectedApps: [
+            {
+              appUrl: PARENT_ORIGIN,
+              appName: "dApp",
+              lastConnectedAt: Date.now() - 1000,
+              chatBinding: binding,
+            },
+            {
+              appUrl: SIBLING_ORIGIN,
+              appName: "Sibling",
+              lastConnectedAt: Date.now() - 1000,
+              chatBinding: siblingBinding,
+            },
+          ],
+        }
+      }
+
+      const heldApps = () =>
+        (
+          proxy as unknown as {
+            partitionAccount: SignedInAccount | undefined
+          }
+        ).partitionAccount?.connectedApps ?? []
+
+      const heldBinding = (origin: string) =>
+        heldApps().find((app) => app.appUrl === origin)?.chatBinding
+
+      const storedSession = () =>
+        localStorageFake.getItem(partitionSessionStorageKey(PARENT_ORIGIN))!
+
+      async function connectWithBothBindings(): Promise<void> {
+        const challenge = await startPartitionedConnect()
+        await sendSetSecret(challenge, {
+          secret: appSecret,
+          account: serializeSyncedAccount(accountWithBothBindings()),
+          chatBinding: binding,
+        })
+      }
+
+      it("is not held after a handover that carried it", async () => {
+        await connectWithBothBindings()
+
+        expect(heldApps().some((app) => app.appUrl === SIBLING_ORIGIN)).toBe(
+          true,
+        )
+        expect(heldBinding(SIBLING_ORIGIN)).toBeUndefined()
+        expect(heldBinding(PARENT_ORIGIN)).toEqual(binding)
+        expect(lastInfo()?.chatBinding).toEqual(binding)
+      })
+
+      it("is not written to the stored session", async () => {
+        await connectWithBothBindings()
+
+        expect(storedSession()).not.toContain(siblingBinding.signature)
+        expect(storedSession()).toContain(binding.signature)
+      })
+
+      it("is not held after restoring a stored session that carried it", async () => {
+        await connectWithBothBindings()
+        // A record written before this rule, or by another build.
+        const record = JSON.parse(storedSession()) as {
+          data: Record<string, unknown>
+        }
+        record.data.account = serializeSyncedAccount(accountWithBothBindings())
+        localStorageFake.setItem(
+          partitionSessionStorageKey(PARENT_ORIGIN),
+          JSON.stringify(record),
+        )
+
+        await reload()
+
+        expect(lastInfo()?.canUpload).toBe(true)
+        expect(heldBinding(SIBLING_ORIGIN)).toBeUndefined()
+        expect(heldBinding(PARENT_ORIGIN)).toEqual(binding)
+        expect(lastInfo()?.chatBinding).toEqual(binding)
+      })
+
+      it("is not held after a peer's delta carried it", async () => {
+        const challenge = await startPartitionedConnect()
+        await sendSetSecret(challenge, {
+          secret: appSecret,
+          account: serializeSyncedAccount({
+            ...accountWithBothBindings(),
+            connectedApps: [accountWithBothBindings().connectedApps[0]],
+          }),
+          chatBinding: binding,
+        })
+        await awaitBusJoin()
+        const busChannel = new BroadcastChannel(accountChannelName)
+        try {
+          const account = accountWithBothBindings()
+          busChannel.postMessage({
+            type: "account-delta",
+            snapshot: serializeAccountStateSnapshot({
+              accountId: account.id.toHex(),
+              metadata: {
+                accountName: account.name,
+                defaultPostageStampBatchID: BATCH_ID_HEX,
+                publicKey: account.publicKey,
+                settings: undefined,
+                createdAt: account.createdAt,
+                lastModified: Date.now(),
+                devices: [],
+                partitionCount: 2,
+              },
+              connectedApps: account.connectedApps,
+              postageStamps: account.postageStamps,
+              timestamp: Date.now(),
+            }),
+          })
+          await vi.waitFor(() =>
+            expect(
+              heldApps().some((app) => app.appUrl === SIBLING_ORIGIN),
+            ).toBe(true),
+          )
+
+          expect(heldBinding(SIBLING_ORIGIN)).toBeUndefined()
+          expect(heldBinding(PARENT_ORIGIN)).toEqual(binding)
+          expect(storedSession()).not.toContain(siblingBinding.signature)
+          expect(lastInfo()?.chatBinding).toEqual(binding)
+        } finally {
+          busChannel.close()
+        }
+      })
+
+      it("is not published to the bus by this frame", async () => {
+        await connectWithBothBindings()
+        await awaitBusJoin()
+        const busChannel = new BroadcastChannel(accountChannelName)
+        const published: Record<string, unknown>[] = []
+        busChannel.onmessage = (event) =>
+          published.push(event.data as Record<string, unknown>)
+        try {
+          ;(
+            proxy as unknown as { publishAccountDelta(): void }
+          ).publishAccountDelta()
+          await vi.waitFor(() =>
+            expect(
+              published.filter((m) => m.type === "account-delta"),
+            ).toHaveLength(1),
+          )
+
+          expect(JSON.stringify(published)).not.toContain(
+            siblingBinding.signature,
+          )
+        } finally {
+          busChannel.close()
+        }
+      })
+    })
+
+    it("forgets the binding when the dApp disconnects", async () => {
+      await connectWithBinding(binding)
+
+      await dispatch(
+        { type: "disconnect", requestId: "r3" },
+        PARENT_ORIGIN,
+        parentWindow,
+      )
+
+      expect(lastInfo()?.chatBinding).toBeUndefined()
     })
   })
 

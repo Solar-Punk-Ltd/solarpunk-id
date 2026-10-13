@@ -301,6 +301,7 @@ function pickLatest<T extends { at: number }>(a: T, b: T): T {
 export function foldAccount(
   views: DeviceStateSnapshot[],
   rosterDevices: Device[],
+  accountId: string,
 ): FoldedAccount {
   // Non-empty `views` is a precondition: account immutables (publicKey below)
   // are read from `views[0]`. The sole caller guards this, but assert it here so
@@ -315,7 +316,11 @@ export function foldAccount(
   let settings: { value?: AccountSettings; at: number } = { at: 0 }
 
   for (const v of views) {
-    connectedApps = mergeConnectedApps(connectedApps, v.connectedApps)
+    connectedApps = mergeConnectedApps(
+      connectedApps,
+      v.connectedApps,
+      accountId,
+    )
     postageStamps = mergePostageStamps(postageStamps, v.postageStamps)
     accountName = pickLatest(accountName, v.accountName)
     defaultBatch = pickLatest(defaultBatch, v.defaultPostageStampBatchID)

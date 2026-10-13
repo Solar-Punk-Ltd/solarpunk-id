@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { STORAGE_CHALLENGE_KEY } from '@snaha/swarm-id/internal'
 
+import { siteAllowList } from '$lib/accepted-site'
+
 /**
  * A dApp connection request, parsed from the URL hash the @snaha/swarm-id
  * client puts on the connect popup (e.g. #origin=…&appName=…&challenge=…).
@@ -38,7 +40,20 @@ function deriveAppName(origin: string): string {
   }
 }
 
+/** A site the allow list refused, and its reason, for the page to show. */
+export interface SiteRefusalNotice {
+  site: string
+  message: string
+}
+
 let request = $state<ConnectRequest | undefined>(undefined)
+// What the allow list said about the site the last link named, when it
+// refused it, for the page to say so instead of offering accounts.
+let refusal = $state<SiteRefusalNotice | undefined>(undefined)
+let checkingSite = $state(false)
+// Bumped by every link that names a site, so a check that answers after a
+// newer link was read cannot overwrite what that link decided.
+let linkGeneration = 0
 // Whether the connect that just completed was the account's FIRST to this app
 // (no active connected-app entry at select time). Set by the chooser right
 // before the handshake; the done page keys the drive-picker variant off it.
@@ -53,21 +68,43 @@ export const connectStore = {
     return firstConnect
   },
 
+  get refusal() {
+    return refusal
+  },
+
+  get checkingSite() {
+    return checkingSite
+  },
+
   setFirstConnect(value: boolean) {
     firstConnect = value
   },
 
   /**
-   * Parse a connect request from the popup URL hash. Keeps any previously
-   * parsed request when the hash carries none (e.g. back-navigation to
-   * /connect). Returns whether a request is active afterwards.
+   * Parse a connect request from the popup URL hash, once the allow list has
+   * accepted the site it names. Keeps any previously parsed request when the
+   * hash carries none (e.g. back-navigation to /connect). Resolves to whether
+   * a request is active afterwards.
    */
-  initFromHash(hash: string): boolean {
+  async initFromHash(hash: string): Promise<boolean> {
     // eslint-disable-next-line svelte/prefer-svelte-reactivity -- ephemeral, parsed and discarded
     const params = new URLSearchParams(hash.slice(1))
     const appOrigin = params.get('origin')
     if (!appOrigin) {
       return request !== undefined
+    }
+    const generation = ++linkGeneration
+    request = undefined
+    refusal = undefined
+    checkingSite = true
+    const siteCheck = await siteAllowList().check(appOrigin)
+    if (generation !== linkGeneration) {
+      return false
+    }
+    checkingSite = false
+    if (!siteCheck.allowed) {
+      refusal = { site: appOrigin, message: siteCheck.message }
+      return false
     }
 
     // Storage partitioning detection: the proxy iframe wrote this challenge
@@ -96,7 +133,10 @@ export const connectStore = {
   },
 
   clear() {
+    linkGeneration++
     request = undefined
+    refusal = undefined
+    checkingSite = false
     firstConnect = false
   },
 }

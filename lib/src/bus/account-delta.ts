@@ -31,6 +31,11 @@ import type { AccountDeltaInput } from "./messages"
  * meaningless (worse, applying it would extend or truncate someone else's
  * session).
  *
+ * No chat binding rides it either. Each one links the account to its chat on
+ * one site, and the room is shared with frames embedded by every connected
+ * site. The account's windows get bindings from storage and the synced feed,
+ * and `mergeConnectedApps` keeps a binding an incoming entry lacks.
+ *
  * Stamp signer keys stay, and so does the whole collection: the publisher does
  * not know which app each receiver is embedded by, so it cannot narrow. The
  * narrowing happens on receive instead — `applyAccountDelta` keeps only the
@@ -54,7 +59,10 @@ export function accountDeltaFromSnapshot(
   return {
     ...wire,
     connectedApps: (wire.connectedApps as Record<string, unknown>[]).map(
-      portableConnectedApp,
+      (app) => {
+        const { chatBinding: _chatBinding, ...rest } = portableConnectedApp(app)
+        return rest
+      },
     ),
     // Hand-written serialization, so the compiler cannot verify this matches
     // the schema's shape — a mismatched delta is dropped silently on receive.

@@ -47,7 +47,11 @@ export function applyAccountDelta(snapshot: AccountStateSnapshot): void {
 
   // Local side first, as everywhere else: a tie on a collection entry keeps
   // ours rather than adopting a peer's identical-clock copy.
-  const mergedApps = mergeConnectedApps(account.connectedApps, snapshot.connectedApps)
+  const mergedApps = mergeConnectedApps(
+    account.connectedApps,
+    snapshot.connectedApps,
+    account.id.toHex(),
+  )
 
   account.applyRefreshed({
     devices: mergeDevicesList(account.devices, snapshot.metadata.devices),
