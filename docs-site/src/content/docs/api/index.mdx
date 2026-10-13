@@ -888,6 +888,100 @@ console.log('Chunk size:', chunk.length)
 
 ---
 
+### `stampChunk(chunk)`
+
+Stamps a chunk with the account's own postage stamp and hands the stamp back, so the app sends the chunk itself, through whatever Swarm access it chose: a gateway, its own Bee node or a browser node. The person's stamp still pays, the app only carries the bytes.
+
+The whole chunk goes in, never an address: the iframe computes the address itself, so a stamp is only ever issued for bytes it has seen. Two shapes are accepted:
+
+- **A content chunk**: `{ kind: 'content', data }`, where `data` is the 8-byte little-endian span followed by the payload.
+- **A single-owner chunk the iframe signs in the same call**: `{ kind: 'soc', identifier, data, signer }`. `signer: 'app'` signs with the app's own secret, the same key [`makeSOCWriter()`](#makesocwritersigner-requestoptions) uses by default. `signer: { privateKey }` signs with a key the app supplies, such as a chat's shared GSOC inbox key.
+
+Anything else is refused with `invalid-request`: a chunk that also names an address, an owner or a signature, a pre-signed chunk, and a single-owner chunk whose owner would be one of the account's own keys (the backup signer that owns its lock, partition state, device state and roster chunks, its postage signer, its ACT sharing key, its derivation and encryption keys, and the account address).
+
+The stamp goes through the same write path as an upload: the cross-tab write lock, the device's partition lease, and a fresh slot in the bucket. It is returned only once the bucket counter it spent is saved and, for an account shared between devices, published, which is the guarantee an upload's acknowledgement carries. When the iframe cannot save the counter, the call is refused with `internal` and no stamp is returned, because a counter that was never saved could hand the same slot out again after a reload. Two different chunks never get the same bucket slot, and the slots the account keeps for its own bookkeeping are never handed out. The account's own lock and counter chunks stay inside the iframe and go through its own node.
+
+#### The same single-owner chunk again
+
+A chat sends every message as a new version of one single-owner chunk, its inbox, whose address never changes. The account's stamp is mutable, and on a mutable stamp Bee replaces a chunk stamped at the same slot when the new stamp has a newer timestamp. So when an app asks to stamp a single-owner chunk this device already stamped for it on this stamp, the iframe stamps it again at the same slot with a newer timestamp instead of spending a new one. A chat then keeps one slot for its inbox however many messages it sends.
+
+- Stamping again spends no slot, so it does not count against the app's count, its bucket share or the account's own half. It still counts against the app's rate, and it is refused once the app has spent its whole count of new slots on that stamp.
+- The timestamp is the current time, or one millisecond past the last stamp at that slot when that is later, as when the device's clock went back or two stamps of the address land in the same millisecond, so the new stamp always wins. The iframe keeps the last timestamp in memory from the moment it stamps, so a second stamp of the address made before the first's slot is remembered still gets a newer one.
+- The iframe remembers the slot per app origin and per stamp in its own storage, beside the app's limits, so a reload keeps it. It remembers a slot only once the counter that spent it is saved and published, so a call refused for an unsaved or unpublished counter leaves nothing behind, and the next stamp of that address takes a new slot. It remembers up to 256 addresses per app and stamp (`SOC_RESTAMP_SLOT_LIMIT` in `lib/src/proxy/soc-restamp-slots.ts`). Past that, a new address takes a new slot each time, as a content chunk does.
+- Only a slot this device took in its current partition lane is reused. On another device, or once this device holds another lane, the same address takes a new slot.
+- A content chunk always takes a new slot.
+
+In [subsidised mode](../subsidised-gateway/) the gateway stamps every upload, so there is no stamp of the account's to return: the call is refused with `upload-unavailable` and reason `subsidised`.
+
+#### Limits per app
+
+The stamp is the person's, so an app may only use part of it. Each app origin has its own limits, counted by the iframe in its own storage, so reloading the app does not reset them. The count is kept per stamp: when the account moves to a new stamp, every app starts a new count.
+
+| Limit              | Default                                                                    | Resets                                       | Reason when refused |
+| ------------------ | -------------------------------------------------------------------------- | -------------------------------------------- | ------------------- |
+| Count              | 10,000 new slots per app on one stamp                                      | Never on that stamp. A new stamp starts at 0 | `app-stamp-count`   |
+| Rate               | 60 stamps per app per 60 seconds                                           | When the 60 seconds are over                 | `app-stamp-rate`    |
+| Bucket share       | A third of a bucket's data lane per app, rounded down (2 of 7 at depth 20) | Never on that stamp                          | `app-bucket-share`  |
+| Account's own half | Apps together use only the lower half of a bucket's data lane              | Never on that stamp                          | `app-slice-full`    |
+
+The last row keeps the account's own uploads safe from apps. Every bucket of the stamp gives each device a lane of data slots. Apps and the account take slots from the same counter, so no slot is ever handed out twice. An app stamp is refused once the lane is half used, whoever used it, and the upper half is only ever spent by the account's own uploads. So however much apps stamp, the account keeps at least half of every bucket.
+
+Each refusal is `upload-unavailable` with the reason in the table, and its message names the limit and its value. A refused call spends no slot and is not counted. `app-stamp-rate` passes with time, the others stay until the account moves to a new stamp. The defaults are constants: `APP_STAMP_COUNT_LIMIT`, `APP_STAMP_RATE_LIMIT`, `APP_STAMP_RATE_WINDOW_MS` and `APP_BUCKET_SHARE` in `lib/src/proxy/app-stamp-limits.ts`, and `ACCOUNT_RESERVED_LANE_SHARE` in `lib/src/utils/batch-utilization.ts`.
+
+**Parameters:**
+
+| Parameter          | Type                                            | Required | Description                                                     |
+| ------------------ | ----------------------------------------------- | -------- | --------------------------------------------------------------- |
+| `chunk.kind`       | `'content' \| 'soc'`                            | Yes      | Which of the two shapes                                         |
+| `chunk.data`       | `Uint8Array`                                    | Yes      | Span plus payload, 8 to 4104 bytes                              |
+| `chunk.identifier` | `Uint8Array \| string`                          | SOC only | The 32-byte SOC identifier                                      |
+| `chunk.signer`     | `'app' \| { privateKey: Uint8Array \| string }` | SOC only | The app's own secret, or a 32-byte private key the app supplies |
+
+**Returns:** `Promise<StampedChunk>`
+
+| Field       | Type     | Description                                                                                                                           |
+| ----------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `address`   | `string` | The chunk's address, as the iframe computed it                                                                                        |
+| `stamp`     | `string` | The postage stamp as hex: batch id, index, timestamp and signature, 113 bytes. The value of Bee's `swarm-postage-stamp` upload header |
+| `owner`     | `string` | Single-owner chunk only: the owner it was signed as                                                                                   |
+| `signature` | `string` | Single-owner chunk only: the signature, for `/soc/<owner>/<identifier>?sig=`                                                          |
+
+**Throws:**
+
+- `SwarmIdError` `not-authenticated` if no session is connected
+- `SwarmIdError` `upload-unavailable` if the account cannot stamp, with reason `subsidised` in subsidised mode
+- `SwarmIdError` `upload-unavailable` with reason `app-stamp-count`, `app-stamp-rate`, `app-bucket-share` or `app-slice-full` when the app has reached one of its [limits](#limits-per-app)
+- `SwarmIdError` `invalid-request` for a chunk of the wrong shape or an owner that is one of the account's keys
+- `SwarmIdError` `partition-contended` or `lease-lost` as for an upload
+- `SwarmIdError` `internal` when the bucket counter the stamp spent could not be saved, and no stamp is returned
+
+**Example:**
+
+```typescript
+// A content chunk, sent to the app's own gateway
+const { address, stamp } = await client.stampChunk({ kind: 'content', data })
+await fetch(`${gatewayUrl}/chunks`, {
+  method: 'POST',
+  headers: { 'swarm-postage-stamp': stamp },
+  body: data,
+})
+
+// A single-owner chunk signed with the chat's shared inbox key
+const soc = await client.stampChunk({
+  kind: 'soc',
+  identifier,
+  data,
+  signer: { privateKey: inboxKey },
+})
+await fetch(`${gatewayUrl}/soc/${soc.owner}/${identifierHex}?sig=${soc.signature}`, {
+  method: 'POST',
+  headers: { 'swarm-postage-stamp': soc.stamp },
+  body: data,
+})
+```
+
+---
+
 ## SOC Methods
 
 SOC (Single Owner Chunk) methods provide read/write helpers for SOCs, which are signed chunks owned by an Ethereum address. Uploads via `SOCWriter.upload` are encrypted by default and return an `encryptionKey` for later decryption.
@@ -1695,6 +1789,10 @@ import type {
 
   // SOC
   SingleOwnerChunk,
+
+  // Stamp and return
+  StampChunkInput,
+  StampedChunk,
 
   // Feed types
   FeedReader,

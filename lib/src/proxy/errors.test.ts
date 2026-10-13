@@ -14,7 +14,10 @@ import { toWireError } from "./errors"
 import { SwarmIdError } from "../errors"
 import { TimeoutError } from "../utils/promise"
 import { PartitionContendedError } from "../sync/batch-write-coordinator"
-import { PartitionLeaseLostError } from "../utils/batch-utilization"
+import {
+  PartitionLeaseLostError,
+  ReservedSlotError,
+} from "../utils/batch-utilization"
 import { SocUploadError } from "./upload"
 
 describe("toWireError", () => {
@@ -82,6 +85,9 @@ describe("toWireError", () => {
       "lease-lost",
     )
     expect(toWireError(new TimeoutError("slow"), "x").code).toBe("timeout")
+    expect(toWireError(new ReservedSlotError(), "x").code).toBe(
+      "invalid-request",
+    )
   })
 
   it("reads a schema failure as an invalid request", () => {

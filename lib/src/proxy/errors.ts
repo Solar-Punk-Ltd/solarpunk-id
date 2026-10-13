@@ -19,9 +19,15 @@ import type { WireError } from "../types"
 // `partition-state`, whose schema literal then read `NUM_BUCKETS` as
 // undefined. This module must stay a leaf.
 const LIB_ERROR_CODES: Record<string, WireError["code"]> = {
+  AppSliceFullError: "upload-unavailable",
   PartitionContendedError: "partition-contended",
   PartitionLeaseLostError: "lease-lost",
+  ReservedSlotError: "invalid-request",
   TimeoutError: "timeout",
+}
+
+const LIB_ERROR_REASONS: Record<string, WireError["reason"]> = {
+  AppSliceFullError: "app-slice-full",
 }
 
 /** Bee's error body is `{ code, message }`; the gateway may answer plain text */
@@ -65,6 +71,8 @@ export function toWireError(error: unknown, fallback: string): WireError {
     wire.beeMessage = body
   } else if (error.name in LIB_ERROR_CODES) {
     wire.code = LIB_ERROR_CODES[error.name]
+    const reason = LIB_ERROR_REASONS[error.name]
+    if (reason !== undefined) wire.reason = reason
   } else if (error instanceof ZodError) {
     wire.code = "invalid-request"
   } else if (error instanceof TypeError && /fetch/i.test(error.message)) {

@@ -193,3 +193,113 @@ describe("ButtonConfigSchema typography (#779)", () => {
     expect(parsed).toMatchObject({ buttonConfig: TYPOGRAPHY })
   })
 })
+
+describe("stampChunk carries the whole chunk, never an address", () => {
+  const IDENTIFIER = "1d".repeat(32)
+  const PRIVATE_KEY = "2e".repeat(32)
+  const SIGNATURE = "3f".repeat(65)
+  const SPAN_AND_PAYLOAD = new Uint8Array([4, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4])
+
+  const request = (chunk: unknown) => ({
+    type: "stampChunk",
+    requestId: "r1",
+    chunk,
+  })
+  const accepts = (chunk: unknown) =>
+    ParentToIframeMessageSchema.safeParse(request(chunk)).success
+
+  it("accepts a content chunk as span plus payload", () => {
+    expect(accepts({ kind: "content", data: SPAN_AND_PAYLOAD })).toBe(true)
+  })
+
+  it("accepts a single-owner chunk signed with the app's own key", () => {
+    expect(
+      accepts({
+        kind: "soc",
+        identifier: IDENTIFIER,
+        data: SPAN_AND_PAYLOAD,
+        signer: "app",
+      }),
+    ).toBe(true)
+  })
+
+  it("accepts a single-owner chunk signed with a key the site supplies", () => {
+    expect(
+      accepts({
+        kind: "soc",
+        identifier: IDENTIFIER,
+        data: SPAN_AND_PAYLOAD,
+        signer: { privateKey: PRIVATE_KEY },
+      }),
+    ).toBe(true)
+  })
+
+  it("refuses a bare address", () => {
+    expect(accepts({ kind: "content", address: REFERENCE })).toBe(false)
+    expect(accepts({ kind: "address", address: REFERENCE })).toBe(false)
+  })
+
+  it("refuses a content chunk that also names its address", () => {
+    expect(
+      accepts({ kind: "content", data: SPAN_AND_PAYLOAD, address: REFERENCE }),
+    ).toBe(false)
+  })
+
+  it("refuses a pre-signed single-owner chunk", () => {
+    expect(
+      accepts({
+        kind: "soc",
+        identifier: IDENTIFIER,
+        data: SPAN_AND_PAYLOAD,
+        signer: "app",
+        signature: SIGNATURE,
+      }),
+    ).toBe(false)
+    expect(
+      accepts({
+        kind: "soc",
+        identifier: IDENTIFIER,
+        data: SPAN_AND_PAYLOAD,
+        owner: "4a".repeat(20),
+        signature: SIGNATURE,
+      }),
+    ).toBe(false)
+  })
+
+  it("refuses a signer that is neither the app nor a private key", () => {
+    expect(
+      accepts({
+        kind: "soc",
+        identifier: IDENTIFIER,
+        data: SPAN_AND_PAYLOAD,
+        signer: { privateKey: PRIVATE_KEY, signature: SIGNATURE },
+      }),
+    ).toBe(false)
+    expect(
+      accepts({
+        kind: "soc",
+        identifier: IDENTIFIER,
+        data: SPAN_AND_PAYLOAD,
+        signer: "account",
+      }),
+    ).toBe(false)
+  })
+
+  it("parses the reply: address, the stamp in the upload-header form, and a SOC's owner and signature", () => {
+    const reply = {
+      type: "stampChunkResponse",
+      requestId: "r1",
+      address: REFERENCE,
+      stamp: "5b".repeat(113),
+      owner: "4a".repeat(20),
+      signature: SIGNATURE,
+    }
+    expect(IframeToParentMessageSchema.safeParse(reply).success).toBe(true)
+    expect(
+      IframeToParentMessageSchema.safeParse({
+        ...reply,
+        stamp: "5b".repeat(112),
+      }).success,
+    ).toBe(false)
+  })
+})

@@ -31,6 +31,8 @@ export type {
   SingleOwnerChunk,
   SocUploadResult,
   SocRawUploadResult,
+  StampChunkInput,
+  StampedChunk,
   SOCReader,
   SOCWriter,
   FeedReader,

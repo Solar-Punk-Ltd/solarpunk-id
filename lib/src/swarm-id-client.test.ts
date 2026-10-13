@@ -821,6 +821,78 @@ describe("SwarmIdClient request seam", () => {
     await expect(promise).rejects.toThrow("Not authenticated")
   })
 
+  it("stampChunk sends the whole content chunk and returns the address and stamp", async () => {
+    const data = new Uint8Array([3, 0, 0, 0, 0, 0, 0, 0, 7, 8, 9])
+    const reply = { address: "a".repeat(64), stamp: "b".repeat(226) }
+
+    const promise = client.stampChunk({ kind: "content", data })
+
+    const sent = lastPostedMessage()
+    expect(sent).toEqual({
+      type: "stampChunk",
+      requestId: sent.requestId,
+      chunk: { kind: "content", data },
+    })
+    deliver({ type: "stampChunkResponse", requestId: sent.requestId, ...reply })
+    await expect(promise).resolves.toEqual(reply)
+  })
+
+  it("stampChunk sends a single-owner chunk with its identifier and signer as hex", async () => {
+    const data = new Uint8Array([1, 0, 0, 0, 0, 0, 0, 0, 5])
+    const identifier = new Uint8Array(32).fill(0x1d)
+    const privateKey = new Uint8Array(32).fill(0x2e)
+    const reply = {
+      address: "a".repeat(64),
+      stamp: "b".repeat(226),
+      owner: "c".repeat(40),
+      signature: "d".repeat(130),
+    }
+
+    const promise = client.stampChunk({
+      kind: "soc",
+      identifier,
+      data,
+      signer: { privateKey },
+    })
+
+    const sent = lastPostedMessage()
+    expect(sent.chunk).toEqual({
+      kind: "soc",
+      identifier: "1d".repeat(32),
+      data,
+      signer: { privateKey: "2e".repeat(32) },
+    })
+    deliver({ type: "stampChunkResponse", requestId: sent.requestId, ...reply })
+    await expect(promise).resolves.toEqual(reply)
+  })
+
+  it("stampChunk refuses a pre-signed chunk before it leaves the page", async () => {
+    const presigned = {
+      kind: "soc",
+      identifier: "1d".repeat(32),
+      data: new Uint8Array([1, 0, 0, 0, 0, 0, 0, 0, 5]),
+      signer: "app",
+      signature: "d".repeat(130),
+    } as unknown as Parameters<SwarmIdClient["stampChunk"]>[0]
+
+    const error = await rejectionOf(client.stampChunk(presigned))
+
+    expect(error).toMatchObject({ code: "invalid-request" })
+    expect(postMessage).not.toHaveBeenCalled()
+  })
+
+  it("stampChunk refuses a bare address", async () => {
+    const bare = {
+      kind: "content",
+      address: "a".repeat(64),
+    } as unknown as Parameters<SwarmIdClient["stampChunk"]>[0]
+
+    const error = await rejectionOf(client.stampChunk(bare))
+
+    expect(error).toMatchObject({ code: "invalid-request" })
+    expect(postMessage).not.toHaveBeenCalled()
+  })
+
   it("rejects a request still pending at destroy() with invalid-state", async () => {
     const promise = client.downloadData("a".repeat(64))
 

@@ -47,6 +47,9 @@ export const CompressedPublicKeySchema = hexString(66) // 33 bytes compressed se
 export const EncryptionKeySchema = hexString(64) // 32 bytes symmetric key
 export const IdentifierSchema = hexString(64) // 32 bytes
 export const SignatureSchema = hexString(130) // 65 bytes
+export const ChunkAddressSchema = hexString(64) // 32 bytes
+/** Batch id, index, timestamp and signature: 113 bytes, as Bee's `swarm-postage-stamp` header takes them */
+export const MarshaledStampSchema = hexString(226)
 export const TimestampSchema = z.preprocess(
   (val) => (typeof val === "bigint" ? val.toString() : val),
   z.union([z.number(), z.string()]),

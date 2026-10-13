@@ -57,6 +57,35 @@ export class PartitionLeaseLostError extends Error {
   }
 }
 
+/**
+ * Thrown by `UtilizationAwareStamper.stampDataChunk()` when the address is one
+ * the stamper routes to a reserved slot: a lock SOC, a counter or state chunk,
+ * or an intent SOC. Those slots hold the account's own bookkeeping, so their
+ * stamp is never handed to an app.
+ */
+export class ReservedSlotError extends Error {
+  constructor(
+    message = "This chunk address belongs to the account's own bookkeeping and cannot be stamped for an app.",
+  ) {
+    super(message)
+    this.name = "ReservedSlotError"
+  }
+}
+
+/**
+ * Thrown by `UtilizationAwareStamper.stampDataChunk()` when the chunk's bucket
+ * has no slot left in the app slice: the rest of that bucket's lane is kept
+ * for the account's own uploads.
+ */
+export class AppSliceFullError extends Error {
+  constructor(
+    message = "This bucket's share for app stamps is used up. The rest of it is kept for the account's own uploads.",
+  ) {
+    super(message)
+    this.name = "AppSliceFullError"
+  }
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -75,6 +104,16 @@ export const BUCKET_DEPTH = 16
  * See docs/Postage-Batch-Partitioning.md.
  */
 export const PARTITION_COUNT = 2
+
+/**
+ * Share of each bucket's data lane, counted from its top, that only the
+ * account's own uploads may use. An app stamp (`stampDataChunk`) is refused
+ * once the lane's counter reaches the rest, the app slice. Apps and the
+ * account draw from the one per-partition counter, so no slot is ever issued
+ * twice, and the slice needs no state of its own: it is read from the counter
+ * that is saved, published and handed over already.
+ */
+export const ACCOUNT_RESERVED_LANE_SHARE = 1 / 2
 
 /** First data slot index; reserved slots `[0, PARTITION_COUNT)` precede it. */
 export const DATA_COUNTER_START = PARTITION_COUNT
@@ -1672,20 +1711,10 @@ export class UtilizationAwareStamper implements Stamper, SlotAssigner {
   }
 
   /**
-   * Pick the slot `chunkAddress` is stamped at within its bucket, and spend it.
-   *
-   * Synchronous on purpose: callers fire stamps concurrently, and with no await
-   * in here each assignment runs to completion before the next starts. Whoever
-   * signs — {@link stamp} here, a `StampWorkerPool` worker — must take the slot
-   * from this method and nowhere else.
-   *
-   * @throws PartitionLeaseLostError when the bound partition's lease is gone
+   * The reserved slot `chunkAddress` overstamps, if it is one of the account's
+   * own bookkeeping chunks, else undefined.
    */
-  assignSlot(chunkAddress: Uint8Array): number {
-    // The three reserved-slot returns below skip the `maxSlot` bound: every
-    // reserved slot is below `partitionCount`, so it always fits. A data slot
-    // must never be returned from here — those take the bounded path at the end.
-    //
+  private reservedSlotFor(chunkAddress: Uint8Array): number | undefined {
     // Lock-SOC short-circuit: when stamping our own per-partition lock SOC,
     // overstamp the fixed reserved slot (= partition index, 0 or 1) within
     // its bucket. Doesn't consume new slot budget, doesn't bump our local
@@ -1705,9 +1734,9 @@ export class UtilizationAwareStamper implements Stamper, SlotAssigner {
     // counter changes), so writers register the current save's addresses via
     // `markReservedUtilizationChunk` before uploading them.
     const addressHex = uint8ArrayToHex(chunkAddress)
-    const reservedSlot = this.reservedUtilizationChunks?.get(addressHex)
-    if (reservedSlot !== undefined) {
-      return reservedSlot
+    const utilizationSlot = this.reservedUtilizationChunks?.get(addressHex)
+    if (utilizationSlot !== undefined) {
+      return utilizationSlot
     }
 
     // Intent-SOC short-circuit: a partition-intent chunk (Phase 2) overstamps
@@ -1718,25 +1747,54 @@ export class UtilizationAwareStamper implements Stamper, SlotAssigner {
     if (this.intentSoc?.addressHex === addressHex) {
       return this.intentSoc.slot
     }
+    return undefined
+  }
 
-    // Partition lease was reclaimed — abort cleanly before the stamp lands in
-    // slot space the peer now controls. Single-device legacy mode has no lease
-    // to invalidate, so neither condition can hold there. Two conditions:
-    //  - `leaseStale`: the refresh tick CONFIRMED a peer took over (write-verify
-    //    failed / displacement beacon seen), or the coordinator tore the lease
-    //    down. Holds across the unbind that follows, where the fall-through
-    //    below would stamp at legacy slots.
-    //  - `leaseLocallyLapsed()`: this device's own clock says the lease expired
-    //    (skew margin applied). Catches the un-renewable case a disjoint-gateway
-    //    refresh can't confirm by reading — stops a long op mid-stream the moment
-    //    the lease lapses locally, so the data write is fenced to the same skew
-    //    bound as the ack (Postage-Batch-Partitioning.md §12, "ack-safe").
+  /**
+   * Partition lease was reclaimed: abort cleanly before a data stamp lands in
+   * slot space the peer now controls. Single-device legacy mode has no lease
+   * to invalidate, so neither condition can hold there. Two conditions:
+   *  - `leaseStale`: the refresh tick CONFIRMED a peer took over (write-verify
+   *    failed / displacement beacon seen), or the coordinator tore the lease
+   *    down. Holds across the unbind that follows, where the fall-through
+   *    in `assignSlot` would stamp at legacy slots.
+   *  - `leaseLocallyLapsed()`: this device's own clock says the lease expired
+   *    (skew margin applied). Catches the un-renewable case a disjoint-gateway
+   *    refresh can't confirm by reading, stopping a long op mid-stream the
+   *    moment the lease lapses locally, so the data write is fenced to the same
+   *    skew bound as the ack (Postage-Batch-Partitioning.md §12, "ack-safe").
+   *
+   * @throws PartitionLeaseLostError
+   */
+  private requireLiveLease(): void {
     if (
       this.leaseStale ||
       (this.partition !== undefined && this.leaseLocallyLapsed())
     ) {
       throw new PartitionLeaseLostError()
     }
+  }
+
+  /**
+   * Pick the slot `chunkAddress` is stamped at within its bucket, and spend it.
+   *
+   * Synchronous on purpose: callers fire stamps concurrently, and with no await
+   * in here each assignment runs to completion before the next starts. Whoever
+   * signs — {@link stamp} here, a `StampWorkerPool` worker — must take the slot
+   * from this method and nowhere else.
+   *
+   * @throws PartitionLeaseLostError when the bound partition's lease is gone
+   */
+  assignSlot(chunkAddress: Uint8Array): number {
+    // The reserved-slot return below skips the `maxSlot` bound: every reserved
+    // slot is below `partitionCount`, so it always fits. A data slot must never
+    // be returned from there, those take the bounded path at the end.
+    const reservedSlot = this.reservedSlotFor(chunkAddress)
+    if (reservedSlot !== undefined) {
+      return reservedSlot
+    }
+
+    this.requireLiveLease()
 
     // This device's next slot in its partition's lane: slot = partitionCount +
     // partition + partitionCount·j, where j is the per-partition counter.
@@ -1778,6 +1836,94 @@ export class UtilizationAwareStamper implements Stamper, SlotAssigner {
       this.assignSlot(chunkAddress),
       timestampMs,
     )
+  }
+
+  /**
+   * Stamp a chunk an app will send through its own Swarm access. Always a
+   * data slot: an address the stamper would route to a reserved slot is
+   * refused, so an app can never be handed the stamp that overwrites the
+   * account's lock, counter, state or intent chunks. And always inside the
+   * bucket's app slice, so apps can never take the slots the account keeps
+   * for its own uploads.
+   *
+   * @throws ReservedSlotError for one of the account's own bookkeeping chunks
+   * @throws AppSliceFullError when the bucket's app slice is used up
+   * @throws PartitionLeaseLostError when the bound partition's lease is gone
+   */
+  stampDataChunk(
+    chunkAddress: Uint8Array,
+    timestampMs?: number,
+  ): EnvelopeWithBatchId {
+    if (this.reservedSlotFor(chunkAddress) !== undefined) {
+      throw new ReservedSlotError()
+    }
+    const bucket = toBucket(chunkAddress)
+    if (this.utilizationState.dataCounters[bucket] >= this.appSliceCapacity()) {
+      throw new AppSliceFullError()
+    }
+    return this.stamp(chunkAddress, timestampMs)
+  }
+
+  /**
+   * Whether `slot` is a data slot this device's current lane has already
+   * taken in `chunkAddress`'s bucket, so stamping `chunkAddress` there again
+   * replaces only a chunk this lane put there. A reserved chunk's address is
+   * never one.
+   */
+  isOwnDataSlot(chunkAddress: Uint8Array, slot: number): boolean {
+    if (this.reservedSlotFor(chunkAddress) !== undefined) return false
+    const lane = this.partitionCountValue
+    const offset = slot - dataSlot(this.partition ?? 0, 0, lane)
+    if (offset < 0 || offset % lane !== 0) return false
+    const j = offset / lane
+    return j < this.utilizationState.dataCounters[toBucket(chunkAddress)]
+  }
+
+  /**
+   * Stamp a single-owner chunk an app had stamped before at the same slot,
+   * with a newer timestamp, so a mutable batch replaces the old chunk at that
+   * slot rather than spending a new one. No slot is taken and the counter
+   * does not move.
+   *
+   * @param slot - A slot {@link isOwnDataSlot} accepts for `chunkAddress`
+   * @param timestampMs - Must be newer than the last stamp at this slot
+   * @throws ReservedSlotError for one of the account's own bookkeeping chunks
+   * @throws PartitionLeaseLostError when the bound partition's lease is gone
+   */
+  restampDataChunk(
+    chunkAddress: Uint8Array,
+    slot: number,
+    timestampMs?: number,
+  ): EnvelopeWithBatchId {
+    if (this.reservedSlotFor(chunkAddress) !== undefined) {
+      throw new ReservedSlotError()
+    }
+    this.requireLiveLease()
+    if (!this.isOwnDataSlot(chunkAddress, slot)) {
+      throw new Error(
+        `Slot ${slot} is not a slot this device took in this chunk's bucket.`,
+      )
+    }
+    return stampAtSlot(
+      this.signer,
+      this.batchId,
+      chunkAddress,
+      slot,
+      timestampMs,
+    )
+  }
+
+  /** How many data chunks this device's partition lane holds in one bucket */
+  laneCapacity(): number {
+    return partitionCapacity(this.depth, this.partitionCountValue)
+  }
+
+  /**
+   * How far up a bucket's lane an app stamp may go: the lane less the share
+   * {@link ACCOUNT_RESERVED_LANE_SHARE} keeps for the account's own uploads.
+   */
+  appSliceCapacity(): number {
+    return Math.floor(this.laneCapacity() * (1 - ACCOUNT_RESERVED_LANE_SHARE))
   }
 
   /**

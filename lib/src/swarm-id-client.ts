@@ -75,6 +75,10 @@ import type {
   SocRawDownloadResponseMessage,
   SocUploadResult,
   SocUploadResponseMessage,
+  StampChunkInput,
+  StampChunkRequest,
+  StampChunkResponseMessage,
+  StampedChunk,
   SocUploadMessage,
   ParentToIframeMessage,
   IframeToParentMessage,
@@ -1375,6 +1379,78 @@ export class SwarmIdClient {
     })
 
     return response.secret
+  }
+
+  /**
+   * Stamp a chunk with the account's own postage stamp and get the stamp back,
+   * to send the chunk through whatever Swarm access the app chose: a gateway,
+   * its own Bee node or a browser node.
+   *
+   * The frame computes the chunk's address itself, so the whole chunk goes in,
+   * never an address. A content chunk is stamped as it is. A single-owner chunk
+   * is signed by the frame in this same call, with the app's own secret
+   * (`signer: "app"`) or a private key the app supplies, such as a chat's
+   * shared GSOC inbox key. A pre-signed chunk is refused, and so is one owned
+   * by any of the account's own keys.
+   *
+   * The stamp is returned only once the bucket counter it spent is saved and,
+   * for an account shared between devices, published, as an upload is
+   * acknowledged. Two calls never return the same bucket slot.
+   *
+   * @param chunk - The chunk: `data` is the 8-byte little-endian span followed
+   *   by the payload, 8 to 4104 bytes
+   * @returns The chunk address, the stamp as the `swarm-postage-stamp` header
+   *   value, and for a single-owner chunk its owner and signature
+   * @throws {SwarmIdError} `upload-unavailable` with reason `subsidised` when
+   *   the account is in subsidised mode, where the gateway stamps and there is
+   *   no stamp of the account's to return, and `invalid-request` for a chunk of the
+   *   wrong shape or an owner that is one of the account's keys
+   *
+   * @example
+   * ```typescript
+   * const { address, stamp } = await client.stampChunk({ kind: 'content', data })
+   * await fetch(`${gateway}/chunks`, {
+   *   method: 'POST',
+   *   headers: { 'swarm-postage-stamp': stamp },
+   *   body: data,
+   * })
+   * ```
+   */
+  async stampChunk(chunk: StampChunkInput): Promise<StampedChunk> {
+    this.ensureReady()
+    const requestId = this.generateRequestId()
+
+    // Spread rather than rebuilt, so a field the frame refuses (an address, a
+    // signature) still reaches the schema check and is refused here.
+    const wireChunk =
+      chunk.kind === "soc"
+        ? {
+            ...chunk,
+            identifier: this.normalizeSocIdentifier(chunk.identifier),
+            signer:
+              chunk.signer === "app"
+                ? chunk.signer
+                : {
+                    ...chunk.signer,
+                    privateKey: this.normalizeSocKey(chunk.signer.privateKey),
+                  },
+          }
+        : chunk
+
+    const response = await this.sendRequest<StampChunkResponseMessage>({
+      type: "stampChunk",
+      requestId,
+      chunk: wireChunk as StampChunkRequest,
+    })
+
+    return {
+      address: response.address,
+      stamp: response.stamp,
+      ...(response.owner !== undefined && { owner: response.owner }),
+      ...(response.signature !== undefined && {
+        signature: response.signature,
+      }),
+    }
   }
 
   // ============================================================================

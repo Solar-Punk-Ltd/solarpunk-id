@@ -11,6 +11,7 @@ import type {
   UploadDataMessage,
   DownloadDataMessage,
   DeriveAppSecretMessage,
+  StampChunkMessage,
   UploadFileMessage,
   DownloadFileMessage,
   UploadFilesMessage,
@@ -61,6 +62,8 @@ import {
   partitionSessionStorageKey,
   PartitionSessionSchemaV1,
   leaseCacheStorageKey,
+  appStampUsageStorageKey,
+  socRestampSlotsStorageKey,
 } from "./types"
 import type { PopupToIframeMessage } from "./types"
 import {
@@ -85,8 +88,29 @@ import {
   uploadData,
   uploadSOC,
   uploadChunk,
+  isStamperTarget,
   type UploadTarget,
 } from "./proxy/upload"
+import {
+  accountInternalOwners,
+  marshalStamp,
+  prepareChunkToStamp,
+  type ChunkToStamp,
+} from "./proxy/stamp-chunk"
+import {
+  appRestampRefusal,
+  appStampRefusal,
+  parseAppStampUsage,
+  recordAppRestamp,
+  recordAppStamp,
+  type AppStampUsage,
+} from "./proxy/app-stamp-limits"
+import {
+  parseSocRestampSlots,
+  recordSocSlot,
+  restampTimestamp,
+  slotOfStampIndex,
+} from "./proxy/soc-restamp-slots"
 import {
   downloadDataWithChunkAPI,
   downloadSOC,
@@ -128,7 +152,7 @@ import {
   accountDeltaFromSnapshot,
   restoreLocalSessionFields,
 } from "./bus/account-delta"
-import { UtilizationAwareStamper } from "./utils/batch-utilization"
+import { UtilizationAwareStamper, toBucket } from "./utils/batch-utilization"
 import { UtilizationStoreDB } from "./storage/utilization-store"
 import type { PartitionLeaseStateSnapshot } from "./sync/partition-lease"
 import { BatchWriteCoordinator } from "./sync/batch-write-coordinator"
@@ -306,6 +330,21 @@ function deltaFoldView(snapshot: AccountStateSnapshot): DeviceStateSnapshot {
   }
 }
 
+function subsidisedStampRefusal(): SwarmIdError {
+  return new SwarmIdError(
+    "upload-unavailable",
+    "The account is in subsidised mode: the gateway pays for and stamps every upload, so there is no stamp of the account's to return.",
+    { reason: "subsidised" },
+  )
+}
+
+/** A stamp made for an app, before it is committed */
+interface StampedForApp {
+  marshaled: string
+  /** Remembers a single-owner chunk's slot. Run only once the stamp is committed */
+  recordSlot?: () => void
+}
+
 /**
  * Swarm ID Proxy - Runs inside the iframe
  *
@@ -379,6 +418,14 @@ export class SwarmIdProxy {
    * Bounded by the account's partition count.
    */
   private pendingLaneUpdates = new Map<string, Map<number, number>>()
+  /**
+   * The newest timestamp this frame gave a stamp again of a single-owner
+   * chunk, in milliseconds, by site, stamp and chunk address. Set under the
+   * write lock when the stamp is made, while the stored slot record is
+   * written only after the lock, so a second stamp of that address inside
+   * the lock still gets a newer timestamp than the first.
+   */
+  private lastRestampMs = new Map<string, number>()
   private utilizationStore: UtilizationStoreDB | undefined
   private beeApiUrl: string
   private gnosisRpcUrl: string
@@ -2038,48 +2085,57 @@ export class SwarmIdProxy {
   }
 
   /**
-   * Save stamper bucket state to IndexedDB
-   * Utilization-aware stamper persists bucket state automatically
+   * Save stamper bucket state to IndexedDB, logging a failure rather than
+   * throwing. The upload path relies on this: the coordinator flushes in a
+   * `finally`, after the upload has already gone out.
    */
   private async saveStamperState(): Promise<void> {
+    try {
+      await this.persistStamperState()
+    } catch (error) {
+      console.error("[Proxy] Failed to save stamper state:", error)
+    }
+  }
+
+  /**
+   * Save stamper bucket state to IndexedDB and tell local peers, throwing when
+   * the save fails.
+   */
+  private async persistStamperState(): Promise<void> {
     if (!this.stamper) {
       return
     }
 
-    try {
-      // Capture bucket updates BEFORE flush clears dirtyBuckets — and the lane
-      // they belong to in the same breath. Reading the lane after the await
-      // instead lets a teardown landing mid-flush (`unbindPartition` resets the
-      // partition to undefined and the count to 1) relabel partition-p counters
-      // as the legacy `{0, 1}` lane, which every momentarily-unbound same-batch
-      // peer then folds — the exact resume-pointer skip the lane guard exists
-      // to prevent.
-      const buckets = this.stamper.getBucketUpdatesForBroadcast()
-      const partition = this.stamper.currentPartition ?? 0
-      const partitionCount = this.stamper.partitionCount
+    // Capture bucket updates BEFORE flush clears dirtyBuckets — and the lane
+    // they belong to in the same breath. Reading the lane after the await
+    // instead lets a teardown landing mid-flush (`unbindPartition` resets the
+    // partition to undefined and the count to 1) relabel partition-p counters
+    // as the legacy `{0, 1}` lane, which every momentarily-unbound same-batch
+    // peer then folds — the exact resume-pointer skip the lane guard exists
+    // to prevent.
+    const buckets = this.stamper.getBucketUpdatesForBroadcast()
+    const partition = this.stamper.currentPartition ?? 0
+    const partitionCount = this.stamper.partitionCount
 
-      await this.stamper.flush()
+    await this.stamper.flush()
 
-      // Broadcast the utilization update to peers with pre-captured buckets.
-      // Local transports only: the counters are per-partition, and every peer
-      // a remote transport reaches is a different device holding a different
-      // lane, so a remote copy is dropped at the receive guard after paying for
-      // encryption and a frame the signaling server's payload cap may refuse
-      // outright (one entry per dirty bucket, up to NUM_BUCKETS of them).
-      if (this.postageBatchId && buckets.length > 0) {
-        this.bus.publish(
-          {
-            type: "utilization-updated",
-            batchId: this.postageBatchId,
-            partition,
-            partitionCount,
-            buckets,
-          },
-          { localOnly: true },
-        )
-      }
-    } catch (error) {
-      console.error("[Proxy] Failed to save stamper state:", error)
+    // Broadcast the utilization update to peers with pre-captured buckets.
+    // Local transports only: the counters are per-partition, and every peer
+    // a remote transport reaches is a different device holding a different
+    // lane, so a remote copy is dropped at the receive guard after paying for
+    // encryption and a frame the signaling server's payload cap may refuse
+    // outright (one entry per dirty bucket, up to NUM_BUCKETS of them).
+    if (this.postageBatchId && buckets.length > 0) {
+      this.bus.publish(
+        {
+          type: "utilization-updated",
+          batchId: this.postageBatchId,
+          partition,
+          partitionCount,
+          buckets,
+        },
+        { localOnly: true },
+      )
     }
   }
 
@@ -2307,6 +2363,10 @@ export class SwarmIdProxy {
 
       case "deriveAppSecret":
         await this.handleDeriveAppSecret(message, event)
+        break
+
+      case "stampChunk":
+        await this.handleStampChunk(message, event)
         break
 
       case "uploadFile":
@@ -4479,6 +4539,205 @@ export class SwarmIdProxy {
     } catch (error) {
       this.sendErrorToParent(event, requestId, error, "deriveAppSecret failed")
     }
+  }
+
+  /**
+   * Stamp a chunk with the account's own stamp and hand the stamp back, for
+   * the app to send through its own Swarm access. The stamp takes the same
+   * write path as an upload, so it is returned only after the coordinator has
+   * published the partition counter, the guarantee an upload's ack carries.
+   * It also needs the stamper state saved, and refuses when that save fails.
+   * The account's own lock and counter chunks never
+   * come through here, they stay inside the frame and go through its node.
+   */
+  private async handleStampChunk(
+    message: StampChunkMessage,
+    event: MessageEvent,
+  ): Promise<void> {
+    const { requestId, chunk } = message
+
+    try {
+      this.ensureCanUpload()
+      if (this.isSubsidisedModeActive()) throw subsidisedStampRefusal()
+      const prepared = prepareChunkToStamp(chunk, {
+        appSecret: this.appSecret!,
+        internalOwners: this.accountInternalOwners(),
+      })
+
+      const stamped = await this.withModeAwareWriteLock(
+        undefined,
+        async (target) => {
+          // The mode can change while the write waits on the lock.
+          if (!isStamperTarget(target)) throw subsidisedStampRefusal()
+          if (!(target.stamper instanceof UtilizationAwareStamper)) {
+            throw new SwarmIdError(
+              "internal",
+              "The write path has no utilization-aware stamper to stamp with.",
+            )
+          }
+          const result = this.stampWithinAppLimits(target.stamper, prepared)
+          await this.persistStamperStateForStamp()
+          return result
+        },
+      )
+      stamped.recordSlot?.()
+
+      this.postMessage(event, {
+        type: "stampChunkResponse",
+        requestId,
+        address: uint8ArrayToHex(prepared.address),
+        stamp: stamped.marshaled,
+        owner: prepared.owner?.toHex(),
+        signature: prepared.signature?.toHex(),
+      })
+    } catch (error) {
+      this.sendErrorToParent(event, requestId, error, "stampChunk failed")
+    }
+  }
+
+  /**
+   * Save the counter a stamp spent before the stamp is returned. The write
+   * path's own flush only logs a failure, which an upload can afford and a
+   * stamp cannot: an account on one device keeps its counter nowhere else, so
+   * after a reload the slot would be handed out a second time.
+   */
+  private async persistStamperStateForStamp(): Promise<void> {
+    try {
+      await this.persistStamperState()
+    } catch (error) {
+      console.error("[Proxy] Failed to save the stamp's counter:", error)
+      throw new SwarmIdError(
+        "internal",
+        "The stamp counter could not be saved, so no stamp was returned. Try again.",
+      )
+    }
+  }
+
+  /**
+   * Stamp for this app if its limits allow, and count the stamp. Synchronous
+   * from the read of the usage to its write, so two requests can never both
+   * take the last stamp an app is allowed. The usage is written before the
+   * stamp is returned, so a stamp that could not be counted is never handed
+   * out.
+   *
+   * A single-owner chunk this app had stamped before in this device's lane is
+   * stamped again at the same slot with a newer timestamp, which a mutable
+   * batch takes as a replacement. That spends no slot, so only the count and
+   * the rate apply. A content chunk always takes a new slot.
+   *
+   * The slot a single-owner chunk went to is not written here. The caller
+   * runs `recordSlot` only once the counter that spent it is saved and
+   * published: a record left by a stamp that failed to commit would outlive
+   * the counter, the slot would go to another chunk after a reload, and the
+   * next stamp of this address would replace that chunk on Bee.
+   */
+  private stampWithinAppLimits(
+    stamper: UtilizationAwareStamper,
+    chunk: ChunkToStamp,
+  ): StampedForApp {
+    if (!this.parentOrigin) {
+      throw new SwarmIdError(
+        "not-authenticated",
+        "No app has identified itself to this frame.",
+      )
+    }
+    const batchId = stamper.batchId.toHex()
+    const usageKey = appStampUsageStorageKey(this.parentOrigin, batchId)
+    const usage = parseAppStampUsage(localStorage.getItem(usageKey))
+    const now = Date.now()
+
+    if (!chunk.owner) {
+      const stamp = this.stampNewSlot(stamper, chunk.address, usage, now)
+      localStorage.setItem(usageKey, JSON.stringify(stamp.usage))
+      return { marshaled: stamp.marshaled }
+    }
+
+    const slotsKey = socRestampSlotsStorageKey(this.parentOrigin, batchId)
+    const lane = {
+      partition: stamper.currentPartition ?? 0,
+      partitionCount: stamper.partitionCount,
+    }
+    const slots = parseSocRestampSlots(localStorage.getItem(slotsKey), lane)
+    const addressHex = uint8ArrayToHex(chunk.address)
+    const held = slots.slots[addressHex]
+
+    let slot: number
+    let timestampMs: number
+    let marshaled: string
+    let nextUsage: AppStampUsage
+    if (held && stamper.isOwnDataSlot(chunk.address, held.slot)) {
+      const refusal = appRestampRefusal(usage, now)
+      if (refusal) throw refusal
+      slot = held.slot
+      const restampKey = `${slotsKey}:${addressHex}`
+      const previousMs = Math.max(
+        held.timestampMs,
+        this.lastRestampMs.get(restampKey) ?? 0,
+      )
+      timestampMs = restampTimestamp(previousMs, now)
+      marshaled = marshalStamp(
+        stamper.restampDataChunk(chunk.address, slot, timestampMs),
+      )
+      this.lastRestampMs.set(restampKey, timestampMs)
+      nextUsage = recordAppRestamp(usage, now)
+    } else {
+      const stamp = this.stampNewSlot(stamper, chunk.address, usage, now)
+      slot = stamp.slot
+      timestampMs = now
+      marshaled = stamp.marshaled
+      nextUsage = stamp.usage
+    }
+    localStorage.setItem(usageKey, JSON.stringify(nextUsage))
+    // Read again when recording, so a stamp committed meanwhile keeps its entry.
+    const recordSlot = () => {
+      const latest = parseSocRestampSlots(localStorage.getItem(slotsKey), lane)
+      localStorage.setItem(
+        slotsKey,
+        JSON.stringify(recordSocSlot(latest, addressHex, slot, timestampMs)),
+      )
+    }
+    return { marshaled, recordSlot }
+  }
+
+  /** Stamp at a new slot within the app's limits, and the usage that counts it */
+  private stampNewSlot(
+    stamper: UtilizationAwareStamper,
+    address: Uint8Array,
+    usage: AppStampUsage,
+    now: number,
+  ): { marshaled: string; slot: number; usage: AppStampUsage } {
+    const bucket = toBucket(address)
+    const refusal = appStampRefusal(usage, {
+      bucket,
+      laneCapacity: stamper.laneCapacity(),
+      now,
+    })
+    if (refusal) throw refusal
+    const envelope = stamper.stampDataChunk(address, now)
+    return {
+      marshaled: marshalStamp(envelope),
+      slot: slotOfStampIndex(envelope.index),
+      usage: recordAppStamp(usage, bucket, now),
+    }
+  }
+
+  /**
+   * The owner addresses of the account's own chunks and keys, for refusing a
+   * single-owner chunk an app asks to have signed as one of them.
+   */
+  private accountInternalOwners(): Set<string> {
+    const connection = this.findConnectionForParent()
+    if (!connection) {
+      throw new SwarmIdError(
+        "not-authenticated",
+        "No connected account for this app. Please login first.",
+      )
+    }
+    return accountInternalOwners({
+      accountAddress: connection.account.id.toHex(),
+      derivationKey: connection.account.derivationKey,
+      postageSignerKey: this.signerKey,
+    })
   }
 
   private parseFeedTimestamp(value: string | number): bigint {
