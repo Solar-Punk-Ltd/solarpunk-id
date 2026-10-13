@@ -98,4 +98,23 @@ describe("connectionInfoEqual", () => {
       ),
     ).toBe(false)
   })
+
+  it("returns false when the chat binding arrives or changes", () => {
+    const binding = { message: "first", signature: "0x01" }
+    expect(
+      connectionInfoEqual({ ...BASE }, { ...BASE, chatBinding: binding }),
+    ).toBe(false)
+    expect(
+      connectionInfoEqual(
+        { ...BASE, chatBinding: binding },
+        { ...BASE, chatBinding: { ...binding, message: "newer" } },
+      ),
+    ).toBe(false)
+    expect(
+      connectionInfoEqual(
+        { ...BASE, chatBinding: binding },
+        { ...BASE, chatBinding: { ...binding } },
+      ),
+    ).toBe(true)
+  })
 })

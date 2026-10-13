@@ -7,7 +7,11 @@
  * the proxy into a first-class writer; a payload without one is refused.
  */
 
-import { derivePostageSignerKeySync } from "./utils/key-derivation"
+import {
+  derivePostageSignerKeySync,
+  deriveSecretSync,
+} from "./utils/key-derivation"
+import { createChatBinding } from "./utils/chat-binding"
 import {
   describe,
   it,
@@ -1889,6 +1893,90 @@ describe("SwarmIdProxy partitioned write enablement", () => {
           (app) => app.appUrl === PARENT_ORIGIN,
         )?.lastConnectedAt,
       ).toBe(connectedAt)
+    })
+  })
+
+  // The account's statement that this site's chat key is its own
+  // (docs/Chat-Binding.md). It reaches the dApp only inside the checked
+  // handover, and only when it names this parent, this session's app key and
+  // the account that was handed over.
+  describe("the chat binding", () => {
+    const ACCOUNT_KEY = "5a".repeat(32)
+    const accountAddress = new PrivateKey(ACCOUNT_KEY).publicKey().address()
+    const appSecret = deriveSecretSync(ACCOUNT_KEY, PARENT_ORIGIN)
+    const binding = createChatBinding(
+      ACCOUNT_KEY,
+      PARENT_ORIGIN,
+      new Date("2026-10-14T12:00:00.000Z"),
+    )
+
+    async function connectWithBinding(chatBinding: unknown): Promise<void> {
+      const challenge = await startPartitionedConnect()
+      await sendSetSecret(challenge, {
+        secret: appSecret,
+        account: serializeSyncedAccount({
+          ...makeSyncedAccount(),
+          id: accountAddress,
+        }),
+        chatBinding,
+      })
+    }
+
+    const lastInfo = () => messagesOfType("connectionInfoChanged").at(-1)
+
+    it("hands the dApp the binding the handover carried", async () => {
+      await connectWithBinding(binding)
+
+      expect(messagesOfType("authSuccess")).toHaveLength(1)
+      expect(lastInfo()?.chatBinding).toEqual(binding)
+    })
+
+    it("keeps it across a reload", async () => {
+      await connectWithBinding(binding)
+
+      await reload()
+
+      expect(lastInfo()?.canUpload).toBe(true)
+      expect(lastInfo()?.chatBinding).toEqual(binding)
+    })
+
+    it("drops a binding signed for another site, and still connects", async () => {
+      await connectWithBinding(
+        createChatBinding(ACCOUNT_KEY, SIBLING_ORIGIN, new Date()),
+      )
+
+      expect(messagesOfType("authSuccess")).toHaveLength(1)
+      expect(lastInfo()?.canUpload).toBe(true)
+      expect(lastInfo()?.chatBinding).toBeUndefined()
+    })
+
+    it("drops a binding signed by another account", async () => {
+      await connectWithBinding(
+        createChatBinding("6b".repeat(32), PARENT_ORIGIN, new Date()),
+      )
+
+      expect(lastInfo()?.chatBinding).toBeUndefined()
+    })
+
+    it("drops a binding whose signature does not match its message", async () => {
+      await connectWithBinding({
+        message: binding.message.replace("12:00:00", "12:00:01"),
+        signature: binding.signature,
+      })
+
+      expect(lastInfo()?.chatBinding).toBeUndefined()
+    })
+
+    it("forgets the binding when the dApp disconnects", async () => {
+      await connectWithBinding(binding)
+
+      await dispatch(
+        { type: "disconnect", requestId: "r3" },
+        PARENT_ORIGIN,
+        parentWindow,
+      )
+
+      expect(lastInfo()?.chatBinding).toBeUndefined()
     })
   })
 
