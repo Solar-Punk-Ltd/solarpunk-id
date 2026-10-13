@@ -34,8 +34,9 @@ https://viewer.example.com https://chat.example.com
 
 Each entry must be a clean https origin, in the exact form a browser reports an
 origin: `https://`, a lower-case host in punycode, an optional port that is not
-443, and nothing else. No path, no trailing slash, no query, no fragment, no user
-info. An entry that is not clean is ignored and logged in the browser console,
+443, and nothing else. The host's labels are letters, digits and hyphens joined
+by single dots, so no wildcard, no underscore and no leading, trailing or doubled
+dot. No path, no trailing slash, no query, no fragment, no user info. An entry that is not clean is ignored and logged in the browser console,
 and the rest of the list still applies.
 
 A site matches only when its origin is the same string as an entry. There are no
