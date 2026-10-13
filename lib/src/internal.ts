@@ -121,6 +121,8 @@ export {
   mergeDevices,
 } from "./utils/device-id"
 
+export { createChatBinding } from "./utils/chat-binding"
+
 export { hexAddress } from "./utils/hex"
 
 export {
