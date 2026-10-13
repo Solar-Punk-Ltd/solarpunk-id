@@ -123,6 +123,18 @@ export {
 
 export { createChatBinding } from "./utils/chat-binding"
 
+export {
+  DEFAULT_SITE_ALLOW_LIST_ENS_NAME,
+  DEFAULT_SITE_ALLOW_LIST_RECORD_KEY,
+  createSiteAllowList,
+} from "./utils/site-allow-list"
+export type {
+  SiteAllowList,
+  SiteAllowListSettings,
+  SiteCheck,
+  SiteRefusal,
+} from "./utils/site-allow-list"
+
 export { hexAddress } from "./utils/hex"
 
 export {

@@ -50,6 +50,8 @@ export type {
 export const STORAGE_KEY_ACCOUNTS = "swarm-id-accounts"
 export const STORAGE_KEY_NETWORK_SETTINGS = "swarm-id-network-settings"
 export const STORAGE_CHALLENGE_KEY = "swarm-storage-challenge"
+/** The cached allow list of sites (`utils/site-allow-list.ts`). */
+export const STORAGE_KEY_SITE_ALLOW_LIST = "swarm-id-site-allow-list"
 export const STORAGE_KEY_LEASE_CACHE_PREFIX = "swarm-id-lease-v2"
 
 /**

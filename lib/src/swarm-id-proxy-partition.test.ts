@@ -350,7 +350,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     vi.stubGlobal("localStorage", localStorageFake)
 
     proxy = new SwarmIdProxy({
-      siteAllowList: allowingSites(PARENT_ORIGIN),
+      siteAllowList: allowingSites(PARENT_ORIGIN, SIBLING_ORIGIN),
       ...config,
     })
     messageListener = listeners["message"] as MessageListener

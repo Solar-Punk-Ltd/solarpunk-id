@@ -190,6 +190,7 @@ import {
 } from "./schemas"
 import { appSessionDuration } from "./utils/constants"
 import { buildAuthUrl } from "./utils/url"
+import type { SiteAllowList } from "./utils/site-allow-list"
 import {
   createActForContent,
   decryptActReference,
@@ -321,6 +322,13 @@ function deltaFoldView(snapshot: AccountStateSnapshot): DeviceStateSnapshot {
 export class SwarmIdProxy {
   private parentOrigin: string | undefined
   private parentIdentified: boolean = false
+  /**
+   * Set by the first `parentIdentify`, before its allow-list check awaits, so a
+   * second one cannot start a check of its own. A refused parent leaves it set:
+   * the frame answers nothing more until the page loads it again.
+   */
+  private parentIdentifyReceived: boolean = false
+  private siteAllowList: SiteAllowList
   private authenticated: boolean = false
   private authLoading: boolean = true // Start in loading state
   private appSecret: string | undefined
@@ -498,7 +506,8 @@ export class SwarmIdProxy {
    */
   private deviceId: string | undefined
 
-  constructor(config?: ProxyConfig) {
+  constructor(config: ProxyConfig) {
+    this.siteAllowList = config.siteAllowList
     // Load Bee API URL from network settings, falling back to default
     const networkSettings = createNetworkSettingsStorageManager().load()
     this.beeApiUrl = networkSettings?.beeNodeUrl || DEFAULT_BEE_NODE_URL
@@ -507,8 +516,8 @@ export class SwarmIdProxy {
     // supplies this from a build-time env so local dev can point at the
     // bee-compose anvil deployment; defaults to the Gnosis mainnet contract.
     this.postageStampContractAddress =
-      config?.postageStampContractAddress || POSTAGE_STAMP_CONTRACT_ADDRESS
-    this.signalingUrl = config?.signalingUrl
+      config.postageStampContractAddress || POSTAGE_STAMP_CONTRACT_ADDRESS
+    this.signalingUrl = config.signalingUrl
     if (!this.signalingUrl) {
       // Said out loud because the alternative is silence: without a URL the
       // bus never leaves this origin+partition, and a static build that lost
@@ -2248,9 +2257,18 @@ export class SwarmIdProxy {
     event: MessageEvent,
   ): Promise<void> {
     // Prevent parent from changing after first identification
-    if (this.parentIdentified) {
+    if (this.parentIdentifyReceived) {
       console.error("[Proxy] Parent already identified! Ignoring duplicate.")
       return
+    }
+    this.parentIdentifyReceived = true
+
+    // The browser-reported origin is checked before the frame reads or says
+    // anything for it. The refusal reaches the parent as an `initError`.
+    const siteCheck = await this.siteAllowList.check(event.origin)
+    if (!siteCheck.allowed) {
+      console.warn("[Proxy] Refused parent:", siteCheck.message)
+      throw new Error(siteCheck.message)
     }
 
     const parentPopupMode = message.popupMode
@@ -5919,6 +5937,11 @@ export class SwarmIdProxy {
  */
 export interface ProxyConfig {
   /**
+   * The sites this frame serves (docs/Site-Allow-List.md). A parent whose
+   * origin it refuses gets an `initError` and nothing else.
+   */
+  siteAllowList: SiteAllowList
+  /**
    * PostageStamp contract address for on-chain stamp-TTL reads. Defaults to the
    * Gnosis mainnet deployment; set this (from a build-time env) to the local
    * bee-compose anvil address when developing against a local chain.
@@ -5935,6 +5958,6 @@ export interface ProxyConfig {
 /**
  * Initialize the proxy (called from HTML page)
  */
-export function initProxy(config?: ProxyConfig): SwarmIdProxy {
+export function initProxy(config: ProxyConfig): SwarmIdProxy {
   return new SwarmIdProxy(config)
 }
