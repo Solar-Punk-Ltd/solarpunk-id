@@ -1,7 +1,10 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 /**
- * DEV ONLY — the payment rail that stands in for Relay on a local chain.
+ * DEV ONLY — the payment rail that rehearses paying from another chain on a
+ * local one. A production build has no such rail since Relay Protocol was
+ * removed, so this rehearses the shape a bridged rail would have, modelled on
+ * Relay's.
  *
  * Relay cannot be reproduced locally at all: it is an intent/solver network, so
  * the quote comes from a hosted API that resolves chains against its own
@@ -75,8 +78,8 @@ export function localSourceRpcUrl(): string {
 }
 
 /**
- * Deliberately anvil's own default, not 1: with the rail mocked the source
- * chain never talks to Relay, so its id is free, and one that reads as local
+ * Deliberately anvil's own default, not 1: the source chain never talks to a
+ * real bridge, so its id is free, and one that reads as local
  * cannot be confused with a real chain by a wallet that has both configured.
  */
 export const LOCAL_SOURCE_CHAIN_ID = 31337
@@ -423,7 +426,7 @@ async function executeLocalPayment(options: ExecutePaymentOptions): Promise<void
   options.onStatus?.('Confirming your payment')
   await waitForDeposit(transactionHash)
 
-  options.onStatus?.('Cross-swap xDAI on Relay')
+  options.onStatus?.('Delivering xDAI on Gnosis')
   await waitForDelivery(handle.recipient, before)
 }
 

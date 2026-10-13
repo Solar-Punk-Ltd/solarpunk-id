@@ -4,18 +4,14 @@
  * The payment rail seam: what carries the user's money from whatever chain
  * they hold funds on to native xDAI at the batch-owner address on Gnosis.
  *
- * Two rails serve it in production. Paying from Gnosis is not carried anywhere
- * at all — the destination is the source, so `gnosis-direct.ts` is a plain
- * transfer, in any of the assets that chain has a route to BZZ in. Every other
- * chain goes over Relay Protocol (`relay.ts`), an intent/solver network: the
- * user deposits on their own chain and an off-chain solver delivers on Gnosis
- * out of its own inventory.
+ * One rail serves it in production. Paying from Gnosis is not carried anywhere
+ * at all: the destination is the source, so `gnosis-direct.ts` is a plain
+ * transfer, in any of the assets that chain has a route to BZZ in. A
+ * production build has no rail for another chain.
  *
- * Relay cannot run locally — a local chain is invisible to a hosted quoting API
- * and to solvers paying out on real Gnosis — so the dev rail
- * (`$lib/dev/local-payment-rail`) stands in for it, taking a genuine signature
- * on a local source chain and having the baked faucet play the solver. The
- * direct rail needs no stand-in: it is the same code locally.
+ * Locally the dev rail (`$lib/dev/local-payment-rail`) adds one, taking a
+ * genuine signature on a local source chain and having the baked faucet play
+ * the solver that delivers on Gnosis. The direct rail is the same code locally.
  *
  * Everything downstream of a rail is untouched production code: whatever was
  * delivered is swapped to BZZ by `swapDelivered` and spent by the postage
@@ -39,9 +35,9 @@ export const NATIVE_CURRENCY = '0x0000000000000000000000000000000000000000'
  * shows them.
  *
  * Lives here, in the leaf, because two unrelated modules need the same list and
- * neither may import the other: the Relay rail offers them, and `onboard.ts`
- * has to DECLARE them or web3-onboard reports the user's network as
- * unsupported the moment they switch to one.
+ * neither may import the other: a rail may offer them, and `onboard.ts` has to
+ * DECLARE them or web3-onboard reports the user's network as unsupported the
+ * moment they switch to one.
  */
 export const WALLET_CHAINS: Chain[] = [mainnet, base, arbitrum, optimism, polygon, gnosis]
 
@@ -119,9 +115,9 @@ function significantDigits(amount: number, digits: number): string {
  * trailing zeros.
  *
  * Normalising here rather than trusting each rail is the point. Rails hand back
- * wildly different precision — Relay's `amountFormatted` carries the full wei
- * expansion (`0.000043465998997394` for a native token), the dev rail derives
- * its own — and the pay screen puts this figure directly above breakdown rows
+ * wildly different precision, a bridge's formatted amount can carry the full
+ * wei expansion (`0.000043465998997394` for a native token), the dev rail
+ * derives its own, and the pay screen puts this figure directly above breakdown rows
  * that ARE rounded. Eighteen decimals over four reads as a different product
  * depending on which rail happens to be behind it.
  */
@@ -179,12 +175,11 @@ export interface Delivery {
 
 export interface PaymentQuote {
   /**
-   * Rail-private payload, consumed only by the rail that produced it — Relay
-   * keeps its SDK `Execute` here, the dev rail its own record. Opaque so a
-   * second rail can exist at all — and it must reach `execute` exactly as
-   * produced: hold the quote in `$state.raw`, never deep-reactive state, since
-   * a proxy-wrapped handle cannot be structured-cloned and Relay's SDK clones
-   * its quote before walking the steps.
+   * Rail-private payload, consumed only by the rail that produced it, such as
+   * the dev rail's own record. Opaque so a second rail can exist at all, and it
+   * must reach `execute` exactly as produced: hold the quote in `$state.raw`,
+   * never deep-reactive state, since a proxy-wrapped handle cannot be
+   * structured-cloned and a rail may clone its quote.
    */
   handle: unknown
   /**
@@ -217,7 +212,7 @@ export interface ExecutePaymentOptions {
   address: string
   /**
    * Receives the rail's current step so the pending screen can name what is
-   * happening (e.g. the design's "Cross-swap xDAI on Relay").
+   * happening (e.g. "Confirming the approval").
    */
   onStatus?: (status: string) => void
 }
@@ -383,8 +378,8 @@ export async function switchWalletChain(
   }
   const reported = await walletGenesisHash(provider)
   // Silence is not a mismatch: a wallet that will not answer is judged at pay
-  // time by the rail that signs (`walletChainRefusal`, and the Relay rail's own
-  // check on a Gnosis source), where mainnet and dev earn different verdicts.
+  // time by the rail that signs (`walletChainRefusal`), where mainnet and dev
+  // earn different verdicts.
   if (reported === undefined || reported.toLowerCase() === expected.toLowerCase()) {
     return
   }

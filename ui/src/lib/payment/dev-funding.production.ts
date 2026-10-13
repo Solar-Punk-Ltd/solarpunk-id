@@ -6,9 +6,8 @@
  * Nothing here imports anything at runtime: being importless is the whole
  * point, since it is what lets Rollup leave the dev tree out of the shipped
  * bundle. Both answers are "there is no dev arrangement here", which is also
- * true: a shipped build has no local chain to rehearse against, so it pays over
- * Relay when the endpoint is proven Gnosis mainnet and offers nothing at all
- * when it is not (`resolve-rail.ts`).
+ * true: a shipped build has no local chain to rehearse against, so it pays on
+ * Gnosis through the direct rail alone (`resolve-rail.ts`).
  */
 import type { Chain } from 'viem'
 

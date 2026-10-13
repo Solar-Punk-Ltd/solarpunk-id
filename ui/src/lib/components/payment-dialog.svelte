@@ -57,8 +57,8 @@
    * rather than continuing through these screens.
    *
    * Which rail carries the money is the caller's choice (`resolve-rail.ts`),
-   * and nothing here depends on which one it is — the screens are identical
-   * against Relay and against the local dev rail.
+   * and nothing here depends on which one it is: the screens are identical
+   * against the direct Gnosis rail and the local dev rail.
    *
    * The connected wallet only ever signs on the source chain — it never sees
    * the owner key, so passkey and password accounts use this unchanged.
@@ -108,8 +108,8 @@
   let tokenAddress = $state(untrack(() => rail.tokens(rail.chains[0].id)[0].address))
   // Raw, not deep-reactive: the rail-private `handle` inside must reach
   // `execute` as the object the rail produced. Wrapped in a `$state` proxy it
-  // cannot be structured-cloned, and the Relay SDK clones its quote before
-  // walking the steps — every real payment then dies with a DataCloneError.
+  // cannot be structured-cloned, and a rail that clones its quote before
+  // walking the steps then fails every payment with a DataCloneError.
   let paymentQuote = $state.raw<PaymentQuote | undefined>(undefined)
   let quoting = $state(false)
   let relayStatus = $state('Sending your payment')

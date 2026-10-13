@@ -9,9 +9,9 @@ and no connected wallet required on the Gnosis side.
 Consumed by `ui/` for buying a drive as well as extending and resizing one, and by the dev
 funding helpers (see
 [docs/Postage-On-Chain-Engine.md](../docs/Postage-On-Chain-Engine.md) and
-[docs/Drive-Payment-Flow.md](../docs/Drive-Payment-Flow.md)). The cross-chain
-payment leg (Relay Protocol) lives in `ui/`, not here — this package starts
-where funds arrive on Gnosis.
+[docs/Drive-Payment-Flow.md](../docs/Drive-Payment-Flow.md)). This package
+starts where funds arrive on Gnosis. The identity UI ships no cross-chain
+payment leg of its own, and `local-solver.ts` rehearses one locally.
 
 ## Provenance
 
@@ -102,11 +102,9 @@ pnpm test:fork            # full purchase path, offline
 pnpm dev:chain:stop
 ```
 
-The one leg this cannot reproduce is the cross-chain bridge — Relay is an
-intent/solver network, so its quote comes from a hosted API and its delivery is
-an off-chain solver paying out on real Gnosis, none of which can see a local
-chain. Here the initial xDAI is simply minted with anvil's `setBalance`;
-everything downstream is genuine.
+The one leg this does not cover is paying from another chain. Here the initial
+xDAI is simply minted with anvil's `setBalance`, and everything downstream is
+genuine.
 
 Two things to know about the baked chain:
 

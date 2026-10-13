@@ -12,7 +12,6 @@ import { chainIdentity } from '$lib/payment/chain'
 import { resolveLocalRail } from '$lib/payment/dev-funding'
 import { resolveGnosisDirectRail } from '$lib/payment/gnosis-direct'
 import type { PaymentRail, PaymentToken } from '$lib/payment/payment-rail'
-import { relayRail } from '$lib/payment/relay'
 
 /**
  * Present several rails as one, dispatching on the chain AND token the user
@@ -27,8 +26,8 @@ import { relayRail } from '$lib/payment/relay'
  * Dispatch is per TOKEN, not per chain, because two rails can each serve part
  * of the same chain. The direct rail serves the Gnosis assets with a route to
  * BZZ and no others (`ACCEPTED` in `gnosis-direct.ts`: xDAI, WXDAI, USDC, BZZ),
- * so a chain-level claim took the rest — Relay's USDC.e among them — off the
- * picker. Each rail now wins the tokens it offers; the earlier one wins ties.
+ * so a chain-level claim would take a bridged rail's other Gnosis tokens off
+ * the picker. Each rail wins the tokens it offers, the earlier one wins ties.
  *
  * Exported for its test: the composition rule is the subtle part of this
  * module, and `resolvePaymentRail` cannot be asked about it without a chain.
@@ -71,25 +70,20 @@ export function combineRails(rails: PaymentRail[]): PaymentRail {
 }
 
 /**
- * Which rails — if any — this payment can be carried by.
+ * Which rails, if any, this payment can be carried by.
  *
  * **Gnosis first, always, when the endpoint is Gnosis.** Paying from the
  * destination chain needs no bridge at all: the wallet sends the asset to the
- * batch owner and the swap takes it from there. Cheaper and with fewer moving
- * parts than any bridged route, so it leads the list and wins every Gnosis
- * asset it can carry — xDAI, WXDAI, USDC, BZZ. The rest of Gnosis has no route
- * to BZZ from here and stays with the bridged rail.
+ * batch owner and the swap takes it from there. It carries every Gnosis asset
+ * with a route to BZZ: xDAI, WXDAI, USDC, BZZ.
  *
  * Then, for the other chains:
  *
- * - **Gnosis mainnet gets Relay**, judged by genesis hash, since a dev chain
- *   reports mainnet's chain id on purpose. That is the whole rule in a
- *   production build: Relay delivers to the real Gnosis only, so any other
- *   endpoint would be paid on a chain the app never reads. The endpoint is
- *   user-editable, so a shipped build can reach this.
- * - **A production build never fakes a payment.** What keeps the dev rail out
- *   of the bundle is not this check — a dead branch does not remove a static
- *   import — but the build-time swap behind `$lib/payment/dev-funding`.
+ * - **A production build has no bridged rail.** The built-in engine pays on
+ *   Gnosis only. Buying a drive from another chain goes through the
+ *   fund.bzz.limo widget, which is not a rail. What keeps the dev rail out of
+ *   the bundle is not this check, a dead branch does not remove a static
+ *   import, but the build-time swap behind `$lib/payment/dev-funding`.
  * - **On a PROVEN dev chain, a bridged rail exists only if the local source
  *   chain is up.** Without one there is still the direct path, which needs
  *   nothing but the chain the app is already talking to.
@@ -110,20 +104,14 @@ export async function resolvePaymentRail(): Promise<PaymentRail | undefined> {
   return rails.length > 0 ? combineRails(rails) : undefined
 }
 
-/** The rail for chains other than the destination itself. */
+/** The rail for chains other than the destination itself, on a dev chain only. */
 async function resolveBridgedRail(): Promise<PaymentRail | undefined> {
-  const identity = await chainIdentity().catch(() => undefined)
-  // Relay's delivery chain is fixed (`toChainId` in `relay.ts`) and no quote can
-  // redirect it, so it is offered only where the app watches that same chain —
-  // in a shipped build as much as a dev one.
-  if (identity?.kind === 'mainnet') {
-    return relayRail
-  }
   if (!import.meta.env.DEV) {
     return undefined
   }
-  // Proven, not merely "not mainnet" — the same rule `chain.ts` states for the
-  // dev answer, and the same one `resolveGnosisDirectRail` applies: an
+  const identity = await chainIdentity().catch(() => undefined)
+  // Proven, not merely "not mainnet": the same rule `chain.ts` states for the
+  // dev answer, and the same one `resolveGnosisDirectRail` applies. An
   // unidentified or non-Gnosis endpoint gets no local rail to sign into.
   return identity?.kind === 'dev' ? resolveLocalRail() : undefined
 }

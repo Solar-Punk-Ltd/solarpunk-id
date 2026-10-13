@@ -1,4 +1,4 @@
-# Drive payment flow — paying for storage in-app, from any chain
+# Drive payment flow — paying for storage in-app, on Gnosis
 
 Status: **implemented.** This describes how BZZ and xDAI reach the derived batch-owner address. What
 is then done with them on Gnosis is [`Postage-On-Chain-Engine.md`](./Postage-On-Chain-Engine.md),
@@ -7,9 +7,9 @@ consumed here as a library.
 ## What it is
 
 Buying, extending and resizing a drive can be paid for **inside the identity UI**, with no external
-popup and no Bee node. The user connects a wallet, picks a source chain and token, sees a quoted cost,
-and signs **one** transaction. Everything after that — cross-chain delivery of xDAI to the batch-owner
-address, the Gnosis-side xDAI→BZZ swap, and the postage operations themselves — runs in `ui/`, signed
+popup and no Bee node. The user connects a wallet, picks a token on Gnosis, sees a quoted cost, and
+signs **one** transaction. Everything after that — delivery to the batch-owner address, the
+Gnosis-side xDAI→BZZ swap, and the postage operations themselves — runs in `ui/`, signed
 by the owner key.
 
 That is the **built-in** method, and it is new. The widget popup it was written to replace is
@@ -38,7 +38,7 @@ Two properties hold throughout:
   drive-operation.ts ── FundingNeed ──▶ funding-request.svelte.ts ──▶ payment-dialog.svelte
         │                                    │  resolvePaymentRail()      (rail-agnostic screens)
         │                                    ▼                                    │
-        │       payment-rail.ts ◀── gnosis-direct.ts | relay.ts | dev rail        │ onUseWidget
+        │       payment-rail.ts ◀── gnosis-direct.ts | dev rail                   │ onUseWidget
         │                           (leaf module: imports no rail)                ▼
         │                                                              multichain-widget.ts
         ├── funding.ts        quoteFunding — sizes the Gnosis side; swapDelivered  (popup, add only)
@@ -107,9 +107,9 @@ to an opaque `handle` that only the rail which produced it consumes, which is wh
 implementation exist. The module is deliberately a **leaf** — it imports no rail, so rails can import
 values from it with no initialisation cycle.
 
-`resolve-rail.ts` picks and composes, dispatching **per token, not per chain** (a chain-level claim
-silently removed Gnosis USDC.e from the picker — the direct rail carries four of Gnosis's assets, not
-all of them):
+`resolve-rail.ts` picks and composes, dispatching **per token, not per chain**, because the direct
+rail carries four of Gnosis's assets, not all of them, and a chain-level claim would take a bridged
+rail's other Gnosis tokens off the picker:
 
 - **Gnosis direct** (`gnosis-direct.ts`) — resolved for any endpoint answering as chain 100. The destination is the source,
   so the wallet simply sends xDAI to the batch-owner address and the operation continues into the
@@ -117,28 +117,14 @@ all of them):
   between signing and delivery — and it is genuinely the same code locally, where the baked chain
   answers as Gnosis.
 
-- **Relay** (`relay.ts`) — the bridged rail, a thin wrapper over `@relayprotocol/relay-sdk` (plain TS
-  core, no React, public mainnet API, no API key). It is the same rail the widget uses, proven for
-  Gnosis with xDAI output. **Offered only for an endpoint proven to be Gnosis mainnet**, in a shipped
-  build as much as a dev one: Relay's delivery chain is fixed, so pointing the app at a fork or a
-  testnet and paying over Relay would land real money on a chain the app never reads. SDK progress
-  reports map onto the step model by their step `id`, and the card says what this app says about that
-  step — Relay's `action` is its own widget copy and is not passed through. On failure the SDK error
-  surfaces verbatim, and Relay-level refund semantics are the SDK's own. Ten minutes of **silence**
-  ends a delivery (`EXECUTE_STALL_TIMEOUT_MS`, restarted on every progress report) — the bound is on
-  an SDK that has stopped reporting, not on the payment, which would otherwise count the time a
-  person spends in their wallet and fail one that is going fine.
 - **The dev rail** (`ui/src/lib/dev/local-payment-rail.ts`) — only off mainnet, in a dev build, with
   a local source chain answering. See [Dev and testing](#dev-and-testing).
 
-Source chains mirror the widget's, in the order the picker shows them (`WALLET_CHAINS`): Ethereum,
-Base, Arbitrum, Optimism, Polygon, Gnosis. Token lists are a static table per chain (native plus the
-obvious stablecoin); Relay's chain/currency metadata call buys nothing for a six-chain, two-token
-picker. Gnosis is the one chain where the two tables
-meet, and its dollar tokens are two different contracts: Relay carries **USDC.e** (`0x2a22…`,
-Circle's bridged token), the direct rail the older Omnibridge **USDC** (`0xDDAf…`) that the swap side
-transacts in. Both rows reach the picker, so they are named apart — one label for two contracts sends
-a holder of either to the rail that cannot see their balance.
+A shipped build has no bridged rail, so the picker lists Gnosis alone and its four assets. Relay
+Protocol, which carried payments from Ethereum, Base, Arbitrum, Optimism, Polygon and Gnosis USDC.e,
+was removed on 2026-10-14. Buying a drive from another chain goes through the widget.
+`WALLET_CHAINS` still declares those chains to the wallet picker, so a wallet left on one of them is
+not reported as unsupported.
 
 ### What it accepts, and the second leg
 
@@ -214,10 +200,8 @@ side. `swapDelivered` lives here too, turning delivered xDAI into the BZZ the op
    the `FundingNeed`: the need is captured once, before the first payment screen, and every re-price
    after a failed attempt reuses it — so a gas leg that landed and then failed to swap was charged
    for a second time, while the same read was crediting it as surplus.
-4. The rail's own quote for the selected source chain and token. Relay is asked for an
-   `EXACT_OUTPUT` trade from the payment wallet to `recipient: ownerAddress` on `toChainId: 100` in
-   native xDAI, for `amount: totalXdai`; the direct and dev rails price it themselves and
-   synchronously, having no route to shop for — on the direct one the user pays exactly what must
+4. The rail's own quote for the selected source chain and token. The direct and dev rails price it
+   themselves and synchronously, having no route to shop for — on the direct one the user pays exactly what must
    arrive, because nothing takes a cut in between, and gas is the wallet's own business, which it
    prices itself.
 5. Surfaced as the source-token cost, the USD total, and the breakdown rows — an xDAI gas line and an
@@ -284,8 +268,8 @@ independent quotes of the same need drift as the pool moves.
   guard (spend-must-record, with the standard comment), so the flow finishes even if the dialog
   unmounts; the drive record lands via the engine's reconcile. The settlement handed back to
   `resolve()` is likewise not attempt-gated — see [Cancelling a payment](#cancelling-a-payment).
-- Steps map to progress labels on one card: the rail's own while it delivers ("Cross-swap xDAI on
-  Relay", `relay.ts`), then the operation's (`describeStep` in `funding-request.svelte.ts`) —
+- Steps map to progress labels on one card: the rail's own while it delivers ("Confirming the
+  approval", `gnosis-direct.ts`), then the operation's (`describeStep` in `funding-request.svelte.ts`) —
   "Waiting for the payment…" across the funding seam and the swap that ends it, then "Extending the
   lifespan…" / "Paying for the larger size…" / "Buying the drive…", and "Increasing the drive size…"
   for a resize's depth step.
@@ -354,8 +338,8 @@ So:
   pool than the real trade measures the spread between two pools rather than one trade's own impact.
   The size dropdown itself offers every larger size, so the refusal catches a too-large jump rather
   than the dropdown preventing it — [#543](https://github.com/snaha/swarm-id/issues/543).
-- The pay screen's USD total uses the rail's own pricing data (`currencyIn.amountUsd` for Relay; the
-  direct and dev rails derive it from the xDAI figure, xDAI being a dollar stablecoin). No
+- The pay screen's USD total uses the rail's own pricing data (the direct and dev rails derive it
+  from the xDAI figure, xDAI being a dollar stablecoin). No
   third-party feed. A **token** payment's gas leg is part of that total, being xDAI and so a dollar
   as well, and the headline names both legs ("10.84 USDC + 0.005 xDAI gas") — one figure for two
   transactions would be short of the bill, and the breakdown rows beneath it are each priced in the
@@ -395,7 +379,7 @@ budget by `quoteFunding`, which subtracts it from what the rail is asked to deli
 
 A rail reporting failure is not evidence that nothing was delivered. The common case is the opposite:
 the transfer lands and the confirmation wait times out — the direct rail says so in as many words
-("It may still land"), and Relay's own execute is bounded the same way. Offering Pay again at the
+("It may still land"). Offering Pay again at the
 price the screen already shows would charge the full amount a second time while the first payment
 sits at the owner address.
 
@@ -471,9 +455,7 @@ copy that currently promises otherwise, in
 
 **Locally only one method really settles, and it is the built-in one over the direct rail.**
 The widget settles on Gnosis mainnet against the mainnet PostageStamp; pointed at a local chain it
-has nothing to settle on. Relay cannot be reproduced locally either — it is an intent/solver network,
-so quotes come from a hosted API and deliveries from off-chain solvers paying out on real Gnosis. So
-everything below — and every chain-bound test — exercises the built-in path over the direct rail, and
+has nothing to settle on. So everything below — and every chain-bound test — exercises the built-in path over the direct rail, and
 the widget's own settlement is only ever proven on mainnet.
 
 What the default method has instead, off mainnet, is a simulation: `/dev` → **Chain** → **Simulated
@@ -482,13 +464,13 @@ the payment, which is what keeps that method's own screens reachable at all here
 nowhere on chain, so extend and resize cannot act on it; the toggles reach nothing but the widget,
 and are off in production.
 
-What can be exercised locally, for the built-in method, is the two rails that stand in for Relay:
+What can be exercised locally, for the built-in method, is two rails:
 
 - **Gnosis direct**, against any endpoint answering as chain 100 — no bridge, no solver, no invented
   price, and the same code as production. `resolvePaymentRail()` offers it first, so it is what a
   local payment normally takes.
 - **The local rail**, under `pnpm dev:local`, which adds a bare anvil on chain 31337 and a solver
-  that fills from it. The wallet signs a real deposit there, the faucet then plays solver and delivers
+  that fills from it. It rehearses paying from another chain, which a shipped build has no rail for. The wallet signs a real deposit there, the faucet then plays solver and delivers
   the xDAI, and the real Sushi swap runs on top. This is what makes the
   method → connect → configure → wallet-approval half of the flow exercisable at all. The chain is
   offered to the wallet through the `wallet_addEthereumChain` path already in the flow, but the
@@ -500,10 +482,8 @@ wallet that already has real Gnosis configured satisfies a switch to 100 without
 local RPC, and the transfer that follows would move REAL xDAI to an address only this machine holds
 the key for. `walletChainRefusal` compares **genesis hashes**, which a chain cannot borrow, and fails
 closed: a wallet that will not say which chain it is on is refused unless the app's own endpoint is
-proven mainnet. The Relay rail makes the mirror check before signing on a Gnosis source
-(`assertWalletOnGnosis` in `relay.ts`) — it signs on chain 100 too, and the dialog's own switch is
-skipped when the wallet is recorded as already there, so each rail proves the chain itself rather
-than trusting a record.
+proven mainnet. The dialog's own switch is skipped when the wallet is recorded as already there, so
+the rail proves the chain itself rather than trusting a record.
 
 The comparison is against the **endpoint's own** genesis (carried on `ChainIdentity`), not against
 "is either side mainnet". Two chains that are both not mainnet are still two chains, and a wallet
@@ -514,18 +494,10 @@ The `/dev` faucet hands out all four assets, because the baked chain stocks it
 with them (bee-compose #28, in 0.3.0) — testing a token payment otherwise starts
 with trading for the token, on the very pools the test is about.
 
-A green local run therefore says nothing about the bridged rail. `relay.live.test.ts` contract-tests
-Relay's **quote** against the live API (`pnpm --filter @swarm-id/ui test:live`, which CI runs from
-`./ui`; the root `pnpm test:live` is `lib/`'s own live suite) — the only thing that catches our
-request or response mapping drifting from theirs. Everything downstream of it — routing, the real
-step model, delivery, refunds — has no automated coverage; it has been verified by hand, with a real
-cross-chain payment carried end to end on the production rail. An automated canary is tracked in
-[#542](https://github.com/snaha/swarm-id/issues/542).
-
-A green local run must never be read as "the payment path works". The local rail rehearses the UX
-only — Relay's pricing, routing and refund semantics stay untested. The step shape is mirrored,
-though: paying in the mock USDC takes an approve before the deposit and the solver pulls the token,
-the way an ERC-20 source behaves on Relay.
+A green local run must never be read as "the payment path works" for another chain. The local rail
+rehearses the UX only, with invented prices and none of a real bridge's routing or refunds. Its step
+shape follows Relay Protocol's: paying in the mock USDC takes an approve before the deposit and the
+solver pulls the token.
 
 Tests that do not need a payment fund the postage signer **out of band** first (`fundPostageSigner` in
 `ui/tests/helpers.ts`, the same chain faucet a developer uses by hand). The operation then finds the
@@ -541,7 +513,7 @@ authorised an EIP-7702 delegate executes that delegate's fallback, so the 21 000
 plain EOA costs is not enough and the transfer reverts. Every postage signer authorises the delegate
 permanently on its first bundled operation, so from a drive's second paid operation onward the
 recipient is a delegated address. `estimateTransferGas` (`multichain/src/rpc.ts`) estimates rather
-than assumes; whether Relay's own solver does is what the canary has to establish.
+than assumes.
 
 ## Out of scope
 
@@ -556,7 +528,6 @@ than assumes; whether Relay's own solver does is what the canary has to establis
 | Path                                           | Role                                         |
 | ---------------------------------------------- | -------------------------------------------- |
 | `ui/src/lib/payment/payment-rail.ts`           | the `PaymentRail` contract (leaf module)     |
-| `ui/src/lib/payment/relay.ts`                  | bridged rail over `@relayprotocol/relay-sdk` |
 | `ui/src/lib/payment/gnosis-direct.ts`          | same-chain rail, native xDAI on Gnosis       |
 | `ui/src/lib/payment/resolve-rail.ts`           | per-token composition and selection          |
 | `ui/src/lib/payment/funding.ts`                | `quoteFunding`, `swapDelivered`              |
@@ -572,7 +543,6 @@ than assumes; whether Relay's own solver does is what the canary has to establis
   and add-then-switch), `funding-request.svelte.test.ts` (which quote settles the request, and what
   each kind of cancel — the widget choice included — does to a payment already in flight),
   `multichain-widget.test.ts` (the widget's message parsing, which is the untrusted half of that
-  path), `local-payment-rail.test.ts`, `relay.test.ts` (the delivery bound).
-- Live contract test: `relay.live.test.ts` (`pnpm --filter @swarm-id/ui test:live`).
+  path), `local-payment-rail.test.ts`.
 - E2E: `ui/tests/payment-rail.test.ts` (payment screens end to end),
   `ui/tests/drive-onchain.test.ts` (the engine's flows).

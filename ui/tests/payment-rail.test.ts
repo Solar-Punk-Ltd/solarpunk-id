@@ -15,11 +15,11 @@
  * is that the batch exists on chain and the account's own derived signer owns
  * it — so the money the wallet paid really did become storage.
  *
- * What is NOT covered, and must not be read as covered: Relay itself. Its
- * pricing, routing and refund semantics are a hosted service this cannot
- * reach — the local rail mirrors only the step shape, one signature for a
- * native payment and approve-then-deposit for a token one. A green run here
- * means the orchestration is right, not that the production rail works.
+ * What is NOT covered, and must not be read as covered: any real bridge. A
+ * production build has no bridged rail since Relay Protocol was removed, and
+ * the local rail mirrors only Relay's step shape, one signature for a native
+ * payment and approve-then-deposit for a token one. A green run here means the
+ * orchestration is right, nothing more.
  *
  * Needs `pnpm dev:local` — both chains AND the solver. The chains are probed
  * and the suite skips without them; a stopped solver cannot be probed, so it

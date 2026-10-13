@@ -45,7 +45,7 @@ describe('quoteLocalPayment', () => {
 
   it('caps the displayed precision rather than leaking every wei digit', () => {
     // Eighteen decimals beside the dialog's four-digit breakdown row reads as a
-    // different rail; Relay hands back a short figure and so must this.
+    // different rail, so this hands back a short figure.
     const quote = quoteLocalPayment(request(123456789012345678n))
     expect(quote.amountFormatted).toBe('0.00003086')
   })

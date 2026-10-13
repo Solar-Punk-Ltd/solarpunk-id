@@ -1,7 +1,9 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 /**
- * LOCAL DEV / TEST ONLY — the solver that stands in for Relay.
+ * LOCAL DEV / TEST ONLY — the solver that stands in for a bridge such as Relay.
+ * A production build has no bridged rail since Relay Protocol was removed from
+ * the identity UI, so this rehearses the shape such a rail would have.
  *
  * Relay is an intent/solver network: the user's wallet deposits on the source
  * chain, and an off-chain solver watching that chain delivers on the

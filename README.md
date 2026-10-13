@@ -167,13 +167,11 @@ See the [Local Development guide](https://swarm.snaha.net/docs/local-development
 
 ### Paying for storage locally
 
-Buying, extending and resizing a drive all cost money, and the payment is cross-chain: the user
-pays on whatever chain they hold funds on, and xDAI arrives on Gnosis. That leg runs on
-[Relay Protocol](https://relay.link), an intent/solver network — its quotes come from a hosted API
-and its deliveries from off-chain solvers paying out on real Gnosis, so **no local chain can make a
-real payment complete**. What can be rehearsed is everything around it, against a second local
-chain: your wallet signs a genuine deposit there, and the Gnosis-side chain's faucet plays the
-solver.
+Buying, extending and resizing a drive all cost money. The built-in engine pays on Gnosis: the
+wallet sends xDAI, WXDAI, USDC or BZZ to the drive's owner address. A shipped build has no rail for
+paying from another chain, and buying a drive from one goes through the fund.bzz.limo widget.
+Locally a second chain rehearses such a payment anyway: your wallet signs a genuine deposit there,
+and the Gnosis-side chain's faucet plays the solver.
 
 Where the chain carries the EIP-7702 delegate, as Gnosis mainnet does, the postage calls run as one
 atomic transaction. The baked snapshot cannot carry it — a state dump only keeps storage the bake
@@ -277,7 +275,7 @@ pnpm --filter @swarm-id/ui test:e2e              # browser, needs pnpm dev:local
 ```
 
 **Where the solver fits.** The browser signs the deposit and then waits for money it does not
-control, exactly as it waits on Relay; `multichain/src/local-solver.ts` is what watches the source
+control, as it would on a real bridge. `multichain/src/local-solver.ts` is what watches the source
 chain and pays out from the Gnosis-side faucet. The deposit carries its own delivery instruction in
 its calldata, so the solver is stateless. Stop the solver and a payment hangs and then fails —
 which is what a solver outage looks like.
@@ -287,9 +285,8 @@ for BZZ through a real SushiSwap pool and spent against the real PostageStamp co
 atomic EIP-7702 transaction using the same delegate contract mainnet uses. The rail
 itself is not: its prices are invented, and its failure and refund behaviour is nothing like the
 real one. The step shape is mirrored — paying in ETH is one signature, paying in the mock USDC is
-approve-then-deposit with the solver pulling the token, as on Relay. It rehearses the payment
-**experience** — connect, switch chain, quote, approve, progress, cancel, resume — which is
-otherwise untestable outside production.
+approve-then-deposit with the solver pulling the token. It rehearses the payment
+**experience** — connect, switch chain, quote, approve, progress, cancel, resume.
 
 With no source chain running the bridged route simply is not offered; paying from Gnosis
 still is, and it needs no solver. Funding never falls back to a free transfer. See

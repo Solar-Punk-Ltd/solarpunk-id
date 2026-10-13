@@ -77,8 +77,8 @@
 
   /**
    * The payment source chain, checked the same way. Dev builds only: it exists
-   * so a bridged payment can be rehearsed, and a production build has Relay's
-   * real chains instead. Reported by chain id rather than genesis, since it
+   * so a bridged payment can be rehearsed, and a production build pays on
+   * Gnosis alone. Reported by chain id rather than genesis, since it
    * stands in for a chain it is not pretending to be.
    *
    * Not probed at all when there is no such chain — a shipped page must not ask

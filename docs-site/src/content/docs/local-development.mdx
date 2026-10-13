@@ -51,7 +51,7 @@ Once the cluster is running, these endpoints are available:
 | Account bus signaling                | `ws://localhost:5520`    |
 
 `pnpm dev:local` also starts a fake source chain (an Anvil instance with chain id 31337) and the
-local solver that stands in for Relay, so a payment from another chain can be rehearsed end to
+local solver that stands in for a bridge, so a payment from another chain can be rehearsed end to
 end; see [Paying for a Drive](#paying-for-a-drive).
 
 Every node in the cluster allows all CORS origins, so the identity site can talk to
@@ -192,8 +192,8 @@ Reach for `pnpm dev:local:fresh` when the chain has drifted — every purchase t
 thin BZZ pool, and a fresh start restores the baked snapshot. It also wipes node state, so drives
 created earlier will point at batches that no longer exist; clear the UI's site data too.
 
-Paying from a chain other than Gnosis goes through Relay, which only exists on mainnet. Locally the
-fake source chain and the local solver started by `pnpm dev:local` stand in for it: the wallet
+A shipped build has no rail for paying from a chain other than Gnosis. Locally the fake source
+chain and the local solver started by `pnpm dev:local` rehearse one: the wallet
 deposits on the fake source chain, and the solver delivers to the batch owner on the local Gnosis
 chain out of its faucet. See
 [docs/Drive-Payment-Flow.md](https://github.com/snaha/swarm-id/blob/main/docs/Drive-Payment-Flow.md)
