@@ -141,8 +141,13 @@ than from the binding. A frame whose storage is shared with the identity site
 reads the whole account out of that storage. And a partitioned frame holds the
 account's derivation key, which the account bus and the write lease need, and
 that key also opens the account's synced feed on Swarm, where every binding is
-kept. A frame never reads the feed for bindings, but a script that took over
-the frame could.
+kept. A restored partitioned frame does read that feed: it folds the whole
+synced account to learn whether its session was ended while the page was closed
+(`verifyRestoredSession`, through `foldAccountFromSwarm`), so every site's
+binding passes through its memory for that moment. It looks only at its own
+site's entry and keeps nothing from the fold, so what it holds and reports is
+still its own site's binding alone. A script that took over the frame could read
+the feed for every binding.
 
 ## How it reaches the site
 
