@@ -132,7 +132,6 @@ export type {
   SiteAllowList,
   SiteAllowListSettings,
   SiteCheck,
-  SiteRefusal,
 } from "./utils/site-allow-list"
 
 export { hexAddress } from "./utils/hex"
