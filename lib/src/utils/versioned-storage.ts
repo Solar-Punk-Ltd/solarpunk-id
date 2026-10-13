@@ -175,9 +175,30 @@ const SAME_WINDOW_WRITE_EVENT = "swarm-id-storage-write"
 /**
  * Writes to a sealed key wait for sealing, so they are queued per key across
  * every manager instance in the window, in call order. Otherwise a write that
- * started first could land last.
+ * started first could land last. Across windows the Web Lock below orders them.
  */
 const writeQueues = new Map<string, Promise<void>>()
+
+/**
+ * The queue orders writes within one window. The identity tab and a frame of
+ * the same origin are two windows over one `localStorage`, so a read, the wait
+ * for sealing and the write also hold a Web Lock named for the key, or one
+ * window's write lands between the other's read and write and is lost.
+ * Without the Web Locks API only the window's own queue orders them.
+ */
+function withStorageWriteLock(
+  key: string,
+  task: () => Promise<void>,
+): Promise<void> {
+  if (typeof navigator !== "undefined" && navigator.locks) {
+    return navigator.locks.request(
+      `swarm-id-storage-write-${key}`,
+      { mode: "exclusive" },
+      task,
+    )
+  }
+  return task()
+}
 
 interface SameWindowWriteDetail {
   key: string
@@ -481,7 +502,9 @@ export class VersionedStorageManager<T> {
   /** The returned turn rejects on failure. The queue moves on regardless. */
   private enqueue(task: () => Promise<void>): Promise<void> {
     const key = this.options.key
-    const run = (writeQueues.get(key) ?? Promise.resolve()).then(task)
+    const run = (writeQueues.get(key) ?? Promise.resolve()).then(() =>
+      withStorageWriteLock(key, task),
+    )
     const settled = run.catch((e) => {
       console.error(`[${this.options.loggerName ?? "Storage"}] Save failed:`, e)
     })
