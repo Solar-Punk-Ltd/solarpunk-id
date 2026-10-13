@@ -84,3 +84,22 @@ export { withTimeout, TimeoutError } from "./utils/promise"
 // Checked JSON-RPC transport — the one contract for "is this an answer?"
 export { jsonRpcCall, jsonRpcBatch } from "./utils/json-rpc"
 export type { JsonRpcOptions } from "./utils/json-rpc"
+
+// The chat binding (docs/Chat-Binding.md): a reader checks that a chat
+// address on a site belongs to a Swarm ID account. The newest binding per
+// site is the one to trust.
+export {
+  CHAT_BINDING_TITLE,
+  acceptedChatBinding,
+  buildChatBindingMessage,
+  isCleanSiteOrigin,
+  parseChatBindingMessage,
+  verifyChatBinding,
+} from "./utils/chat-binding"
+export type {
+  ChatBinding,
+  ChatBindingFields,
+  ExpectedChatBinding,
+  SiteOriginOptions,
+  VerifiedChatBinding,
+} from "./utils/chat-binding"
