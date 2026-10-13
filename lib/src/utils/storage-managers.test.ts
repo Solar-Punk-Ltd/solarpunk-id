@@ -302,7 +302,7 @@ describe("a connected app's chat binding", () => {
   })
 })
 
-// Review P2-2: key material at rest is sealed with a non-extractable key kept
+// Key material at rest is sealed with a non-extractable key kept
 // in this origin's IndexedDB, opened into memory for the page. A key that
 // cannot be opened is absent, and the person signs in again.
 describe("the accounts document keeps its keys sealed", () => {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Whether a session restored from storage may still write (review P2-6).
+ * Whether a session restored from storage may still write.
  *
  * A saved session outlives the page that made it, and a revoke made while no
  * page of this site was open is written only to Swarm: the account's published

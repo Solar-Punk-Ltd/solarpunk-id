@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test'
 /**
  * The identity site cannot ask the host to forbid framing (bzz.link sends no
  * X-Frame-Options or frame-ancestors), so every page a person uses refuses to
- * run inside a frame and shows nothing to click (review P2-3). The proxy page
+ * run inside a frame and shows nothing to click. The proxy page
  * is the one that is meant to be framed.
  */
 const REFUSED_PATHS = ['/', '/connect', '/connect/done', '/account/new', '/account/import']

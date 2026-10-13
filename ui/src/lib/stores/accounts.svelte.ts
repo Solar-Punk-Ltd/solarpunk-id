@@ -688,7 +688,7 @@ function load(): Account[] {
 
 /**
  * Resolves once the stored accounts are read with their keys opened
- * (`@snaha/swarm-id`'s sealed storage, review P2-2). Until then the store is
+ * (`@snaha/swarm-id`'s sealed storage). Until then the store is
  * empty, and the root layout renders no page, because a page that changed an
  * account before its keys were open would write it back without them.
  */

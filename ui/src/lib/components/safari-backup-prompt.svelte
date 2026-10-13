@@ -6,7 +6,7 @@
 <!--
   Asks a Safari visitor once, after an account is created or imported on this
   device, to save a backup before Safari's 7-day storage limit can delete the
-  account here (review P2-7, `$lib/backup-prompt`). The backup itself is the
+  account here (`$lib/backup-prompt`). The backup itself is the
   Account tab's existing recovery phrase and backup file sections.
 -->
 <script lang="ts">

@@ -3,7 +3,7 @@
 /**
  * The identity site is served from Swarm through bzz.link, which sends no
  * X-Frame-Options and no frame-ancestors header, and a meta CSP cannot carry
- * frame-ancestors. So the pages refuse a frame themselves (review P2-3): only
+ * frame-ancestors. So the pages refuse a frame themselves: only
  * the hidden proxy page is meant to be framed.
  */
 import { describe, expect, it } from 'vitest'

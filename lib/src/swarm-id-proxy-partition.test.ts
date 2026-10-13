@@ -1274,7 +1274,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
   // The device id is the frame's own: the lease and the roster identify this
   // device by it, and nothing an app does needs it. Handing it to every page
   // that embeds the frame gave each of them a stable per-browser identifier, so
-  // it stays inside the frame (review P2-4).
+  // it stays inside the frame.
   it("keeps the device id inside the frame, out of the connection info", async () => {
     const challenge = await startPartitionedConnect()
     await sendSetSecret(challenge, {
@@ -1730,8 +1730,9 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       expect(window.open).not.toHaveBeenCalled()
     })
 
-    // Review P2-2: the handed-over secret, the derivation key and the stamp's
-    // signer key are sealed at rest with this partition's own wrapping key.
+    // The handed-over secret, the derivation key and the stamp's signer key
+    // are sealed at rest with this partition's own wrapping key, so none of
+    // them is plain text on disk.
     it("keeps no key in plain text in the stored session", async () => {
       await connectPartitioned()
 
@@ -1857,7 +1858,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     // The deadline cannot see a revoke made while the tab was closed, and a
     // revoke on another device reaches this frame only through Swarm when no
     // signaling server is set. So a restored session checks the published
-    // account before its first write (review P2-6). Writes wait for the
+    // account before its first write. Writes wait for the
     // answer, reads do not.
     describe("the check before the first write", () => {
       type GateInternals = {

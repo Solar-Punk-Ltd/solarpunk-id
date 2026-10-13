@@ -279,8 +279,7 @@ describe('the chat binding at connect', () => {
 
   // The site is a derivation label and a storage key. It reaches here from the
   // window's own link, which the connect store checks, but every caller of
-  // these two functions gets the same check rather than trusting that one
-  // (review P3-1).
+  // these two functions gets the same check rather than trusting that one.
   describe('refuses a site that is not a clean origin', () => {
     const DIRTY_SITES = [
       'https://dapp.example.com/',

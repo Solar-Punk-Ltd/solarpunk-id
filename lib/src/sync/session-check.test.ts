@@ -3,7 +3,7 @@
 
 /**
  * The check a session restored from storage runs before its first write
- * (review P2-6). A revoke made while the page was closed is only on Swarm, so
+ * A revoke made while the page was closed is only on Swarm, so
  * the published account decides, and an answer that did not arrive is never
  * read as "not revoked".
  */

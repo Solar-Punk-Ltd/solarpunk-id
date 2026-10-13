@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Key material at rest, sealed (review P2-2).
+ * Key material at rest, sealed so it is not plain text on disk.
  *
  * A value is encrypted with AES-GCM under a wrapping key that WebCrypto
  * created non-extractable and that lives in IndexedDB in the same storage as

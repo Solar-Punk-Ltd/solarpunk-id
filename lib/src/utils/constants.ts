@@ -22,7 +22,7 @@ export const DAY = 24 * HOUR
 
 /**
  * A saved session lets a site keep writing until its next load notices a
- * revoke, so it is kept short (review P2-6). An account can set its own.
+ * revoke, so it is kept short. An account can set its own.
  */
 export const DEFAULT_SESSION_DURATION = 7 * DAY
 

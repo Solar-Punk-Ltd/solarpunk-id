@@ -124,7 +124,8 @@ describe('runChecks', () => {
     expect(results.find((result) => result.id === 'upload')?.detail).toContain('invalid batch id')
   })
 
-  // The proxy no longer hands its device id to apps (review P2-4), so this
+  // The proxy no longer hands its device id to apps, which gave each site a
+  // stable identifier for the browser, so this
   // page has nothing to compare across reloads and makes no claim about it.
   it('makes no claim about storage persistence', () => {
     const results = runChecks({ connection: connected() })

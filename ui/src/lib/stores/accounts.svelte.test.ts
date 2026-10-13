@@ -146,11 +146,6 @@ describe('persist read-merge-write (two-tab race)', () => {
   })
 })
 
-// The proxy inside the proxy iframe subscribes beside this store and publishes
-// what it is told about — unless the write says peers must not hear of it.
-// A regression in this plumb reintroduces the echo of #707 silently.
-// Review P2-2: a connect leaves the app secret, the derivation key and every
-// signer key sealed in storage, never in plain text.
 describe('a save that fails', () => {
   it('tells the person with a toast', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -167,6 +162,8 @@ describe('a save that fails', () => {
   })
 })
 
+// A connect leaves the app secret, the derivation key and every signer key
+// sealed in storage, never in plain text.
 describe('persist keeps no key in plain text', () => {
   it('after an account is added and an app connected', async () => {
     const APP_SECRET = '5a'.repeat(32)
@@ -189,6 +186,9 @@ describe('persist keeps no key in plain text', () => {
   })
 })
 
+// The proxy inside the proxy iframe subscribes beside this store and publishes
+// what it is told about — unless the write says peers must not hear of it.
+// A regression in this plumb reintroduces the echo of #707 silently.
 describe('persist tells the same-window proxy which writes not to republish', () => {
   function detailOfLastWrite(): { noRepublish?: boolean } {
     const spy = vi.mocked(window.dispatchEvent)
@@ -414,7 +414,7 @@ describe('Account.setAppStamp', () => {
 })
 
 // An app entry is keyed by its site, and the site comes from the connect
-// window's link. Both writers that take one check it (review P3-1).
+// window's link. Both writers that take one check it.
 describe('Account refuses a site that is not a clean origin', () => {
   const DIRTY_SITE = 'https://app.example.com/path'
 

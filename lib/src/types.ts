@@ -763,7 +763,7 @@ export type UploadMode = z.infer<typeof UploadModeSchema>
  * - `app-slice-full`: only in a refused `stampChunk`. The chunk's bucket has
  *   no slot left for app stamps, the rest is kept for the account's own
  *   uploads (`ACCOUNT_RESERVED_LANE_SHARE`).
- * - `session-unconfirmed` — the session was restored from storage and the
+ * - `session-unconfirmed`: the session was restored from storage and the
  *   check that it was not ended while no page was open could not read the
  *   account's published state. Writes stay refused until a later check, made
  *   on the next write, can.
@@ -2145,7 +2145,8 @@ export const PartitionSessionSchemaV1 = z.object({
   connectedUntil: z.number(),
   /**
    * The handed-over payload's wire form, as JSON, sealed with this
-   * partition's wrapping key (`utils/sealed-values.ts`, review P2-2). Only
+   * partition's wrapping key (`utils/sealed-values.ts`), so no key in it is
+   * plain text on disk. Only
    * the parts that say nothing secret, whose session this is and when it
    * ends, stay readable.
    */

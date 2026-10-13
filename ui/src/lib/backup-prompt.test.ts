@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * Safari deletes a site's script-written storage after 7 days without the
- * person using the site (review P2-7), and the account on this device goes
+ * person using the site, and the account on this device goes
  * with it. So after an account is created or imported here, a Safari visitor
  * is asked once to save a backup.
  */

@@ -6,7 +6,7 @@ import { DAY, DEFAULT_SESSION_DURATION, appSessionDuration } from "./constants"
 
 describe("appSessionDuration", () => {
   // A saved session is a key a revoked site keeps until it next loads, so the
-  // default is a week rather than a month (review P2-6).
+  // default is a week rather than a month.
   it("defaults to 7 days", () => {
     expect(DEFAULT_SESSION_DURATION).toBe(7 * DAY)
     expect(appSessionDuration(undefined)).toBe(7 * DAY)

@@ -1,7 +1,7 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 /**
- * The one-time backup prompt for Safari's storage limit (review P2-7).
+ * The one-time backup prompt for Safari's storage limit.
  *
  * Safari deletes everything a site's scripts stored after 7 days in which the
  * person did not use the site, and the account on this device is stored that

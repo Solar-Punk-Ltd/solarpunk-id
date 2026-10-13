@@ -1,7 +1,7 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Keys at rest (review P2-2): the account's keys are sealed in storage with a
+ * Keys at rest: the account's keys are sealed in storage with a
  * non-extractable wrapping key kept in this origin's IndexedDB. A reload opens
  * them with no prompt, and a lost wrapping key reads as signed out, never as
  * plain text.

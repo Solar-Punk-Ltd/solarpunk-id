@@ -232,7 +232,7 @@ export function serializePostageStamp(
 }
 
 // ============================================================================
-// Keys at rest (review P2-2)
+// Keys at rest, sealed so none is plain text on disk
 // ============================================================================
 
 /**

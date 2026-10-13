@@ -575,7 +575,8 @@ export class SwarmIdProxy {
   private deviceId: string | undefined
   /**
    * A session this load restored from storage, rather than one the person
-   * connected in it, waits on this before its first write (review P2-6).
+   * connected in it, waits on this before its first write, so a session ended
+   * while no page of the site was open cannot write.
    * Unset for a fresh connection. Kept through `clearAuthData`, so a write
    * that was waiting when the check ended the session is told why.
    */
@@ -1068,9 +1069,9 @@ export class SwarmIdProxy {
   }
 
   /**
-   * Write the handed-over session to this partition's own store, sealed
-   * (review P2-2): it holds the app secret, the derivation key and the stamp's
-   * signer key.
+   * Write the handed-over session to this partition's own store, sealed so
+   * none of it is plain text on disk: it holds the app secret, the derivation
+   * key and the stamp's signer key.
    *
    * The wire form, not the parsed one: `AuthDataSchema` revives `BatchId` and
    * `PrivateKey` instances, which do not survive `JSON.stringify`, so what goes
@@ -1219,7 +1220,7 @@ export class SwarmIdProxy {
    * `parentOrigin` check below is now the belt to that pair of braces rather
    * than the only thing keeping two dApps apart. An expired, malformed or
    * unopenable record is removed on the way past: it will never become valid
-   * again, and a record whose seal does not open is no session (review P2-2).
+   * again, and a record whose seal does not open is no session.
    */
   private async readPartitionSession(): Promise<PartitionSession | undefined> {
     if (!this.parentOrigin) return undefined
@@ -2784,7 +2785,7 @@ export class SwarmIdProxy {
 
   /**
    * Ask the account's published state whether this restored session was ended
-   * while no page of the site was open (review P2-6). Ended means what it means
+   * while no page of the site was open. Ended means what it means
    * everywhere else: the entry is gone, `revokedAt` (Remove), or a
    * `disconnectedAt` newer than the connection this session came from
    * (Disconnect, #667), with the rules in `sync/session-check.ts`.

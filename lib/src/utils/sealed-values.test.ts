@@ -3,7 +3,7 @@
 
 /**
  * Key material at rest is sealed with a non-extractable AES-GCM key kept in
- * IndexedDB beside it (review P2-2). A value that cannot be opened is absent,
+ * IndexedDB beside it. A value that cannot be opened is absent,
  * never read some other way.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
