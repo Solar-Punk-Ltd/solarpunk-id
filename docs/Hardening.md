@@ -15,13 +15,15 @@ root layout renders one line of text, with nothing a person can click, and
 runs none of the page's logic. The one exception is `/proxy`, the hidden frame,
 which exists to be framed. The answer is worked out again on every navigation,
 so a framed `/proxy` that moves to another page inside the frame is refused
-there too. A framed page also gets none of the layout's prompts, such as the
+there too, and the account sync, the account bus and the fold timer the layout
+started for `/proxy` stop at that moment. A framed page also gets none of the layout's prompts, such as the
 Safari backup prompt, because those navigate to the account pages.
 
-- Code: `ui/src/lib/frame-guard.ts` (`layoutView`, `refusesToRunFramed`), used by
-  `ui/src/routes/+layout.svelte`.
+- Code: `ui/src/lib/frame-guard.ts` (`layoutView`, `refusesToRunFramed`) and
+  `ui/src/lib/while-allowed.ts`, used by `ui/src/routes/+layout.svelte`.
 - The framed route is `routes.PROXY` in `ui/src/lib/routes.ts`.
-- Tests: `ui/src/lib/frame-guard.test.ts`, and the browser journey
+- Tests: `ui/src/lib/frame-guard.test.ts`, `ui/src/lib/while-allowed.test.ts`,
+  and the browser journey
   `ui/tests/framing.test.ts`.
 
 ## Every use of the connect window's site checks it first

@@ -4,7 +4,7 @@
 -->
 
 <script lang="ts">
-  import { onMount, untrack } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
 
   import { isSignedOutAccount, markFirstPartyStorage } from '@snaha/swarm-id/internal'
   import type { SyncedAccount } from '@snaha/swarm-id/internal'
@@ -25,6 +25,7 @@
   import { sessionStore } from '$lib/stores/session.svelte'
   import { themeStore } from '$lib/stores/theme.svelte'
   import { toastStore } from '$lib/stores/toast.svelte'
+  import { whileAllowed } from '$lib/while-allowed'
 
   import '../app.css'
 
@@ -43,8 +44,7 @@
     return record && !isSignedOutAccount(record) ? record : undefined
   }
 
-  onMount(() => {
-    if (refused) return
+  const pageServices = whileAllowed(() => {
     themeStore.init()
     // Leave the marker a proxy iframe reads back to learn whether it shares
     // this store (#613) — it decides which transport the auth popup can take,
@@ -66,9 +66,16 @@
     const stopFolding = startFoldInterval()
     return () => {
       stopFolding()
+      setAccountsSyncHook(undefined)
       accountBusStore.leave()
     }
   })
+  // Only the refusal is tracked: what starts reads stores of its own.
+  $effect(() => {
+    const isRefused = refused
+    untrack(() => pageServices.follow(isRefused))
+  })
+  onDestroy(pageServices.stop)
 
   // The bus room is the CURRENT account's: join on select/switch, leave on
   // sign-out.
