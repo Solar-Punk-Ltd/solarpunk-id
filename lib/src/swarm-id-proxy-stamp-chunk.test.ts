@@ -682,6 +682,48 @@ describe("SwarmIdProxy stampChunk", () => {
       expect(first.timestampNs).toBe(BigInt(now) * 1_000_000n)
       expect(again.timestampNs).toBe(BigInt(now + 1) * 1_000_000n)
     })
+
+    it("gives two stamps again in one millisecond newer timestamps each, though the first's slot is not yet recorded", async () => {
+      const now = 1_800_000_000_000
+      vi.spyOn(Date, "now").mockReturnValue(now)
+      await identify()
+      const stamper = await userStampMode()
+      await stampChunk(inbox("first message"), "r1")
+      const first = unmarshalStamp(lastReply().stamp)
+
+      // The lock admits one op at a time, and the counter publish after each op
+      // waits, so the third stamp is made before the second's slot is recorded.
+      const target = { mode: "stamper", bee: {}, stamper }
+      let publish!: () => void
+      const published = new Promise<void>((resolve) => {
+        publish = resolve
+      })
+      let lock: Promise<unknown> = Promise.resolve()
+      const withWrite = vi.fn((op: (target: unknown) => unknown) => {
+        const ran = lock.then(() => op(target))
+        lock = ran
+        return ran.then(async (result) => {
+          await published
+          return result
+        })
+      })
+      internals(proxy).coordinator = { withWrite }
+      const second = stampChunk(inbox("second message"), "r2")
+      const third = stampChunk(inbox("third message"), "r3")
+      await vi.waitFor(() => expect(withWrite).toHaveBeenCalledTimes(2))
+      await lock
+      publish()
+      await Promise.all([second, third])
+
+      const stampOf = (requestId: string) =>
+        unmarshalStamp(replies().find((r) => r.requestId === requestId)?.stamp)
+      const again = stampOf("r2")
+      const againAgain = stampOf("r3")
+      expect(again.index).toEqual(first.index)
+      expect(againAgain.index).toEqual(first.index)
+      expect(again.timestampNs).toBeGreaterThan(first.timestampNs)
+      expect(againAgain.timestampNs).toBeGreaterThan(again.timestampNs)
+    })
   })
 
   describe("limits per app", () => {
