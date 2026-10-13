@@ -80,21 +80,20 @@ vi.mock("./utils/batch-utilization", async (importActual) => {
   }
 })
 /**
- * The background verify a restored session runs (#635). Left answering
- * `undefined` — "nothing published" — so the tests that do not care about it
- * are not steered by it; the one that does sets a folded account.
+ * The check a session restored from storage runs before its first write.
+ * Left answering "allowed", so the tests that do not care about it are not
+ * steered by it. Its rules are `sync/session-check.test.ts`'s, and the tests
+ * here set the verdict to see what the frame does with it.
  */
-const foldedFromSwarm = vi.hoisted(
-  () => ({ value: undefined }) as { value: unknown },
+const restoredSessionVerdict = vi.hoisted(
+  () =>
+    ({ value: Promise.resolve("allowed") }) as {
+      value: Promise<"allowed" | "ended" | "unconfirmed">
+    },
 )
-vi.mock("./sync/fold-account-from-swarm", async (importActual) => {
-  const actual =
-    await importActual<typeof import("./sync/fold-account-from-swarm")>()
-  return {
-    ...actual,
-    foldAccountFromSwarm: vi.fn(() => Promise.resolve(foldedFromSwarm.value)),
-  }
-})
+vi.mock("./sync/session-check", () => ({
+  checkRestoredSession: vi.fn(() => restoredSessionVerdict.value),
+}))
 
 vi.mock("./storage/utilization-store", () => ({
   UtilizationStoreDB: vi.fn(function () {
@@ -231,7 +230,7 @@ import {
 import { KNOWN_DEVICE_MAX_AGE_MS } from "./utils/active-devices"
 import { PRESENCE_INTERVAL_MS, PRESENCE_MAX_AGE_MS } from "./bus/presence"
 import { mergeDevicesList } from "./sync/merge-snapshot"
-import { foldAccountFromSwarm } from "./sync/fold-account-from-swarm"
+import { checkRestoredSession } from "./sync/session-check"
 import { DEFAULT_BEE_NODE_URL } from "./schemas"
 import type {
   ConnectedApp,
@@ -1690,10 +1689,10 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     it("keeps the deadline the session was given, not a fresh one", async () => {
       await connectPartitioned()
       const record = storedSession()!
-      // 30 days, give or take the test's own runtime.
+      // 7 days, give or take the test's own runtime.
       const remaining = (record.connectedUntil as number) - Date.now()
-      expect(remaining).toBeGreaterThan(29 * 24 * 60 * 60 * 1000)
-      expect(remaining).toBeLessThanOrEqual(30 * 24 * 60 * 60 * 1000)
+      expect(remaining).toBeGreaterThan(6 * 24 * 60 * 60 * 1000)
+      expect(remaining).toBeLessThanOrEqual(7 * 24 * 60 * 60 * 1000)
     })
 
     it("refuses a session stored for another parent origin", async () => {
@@ -1770,110 +1769,165 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       expect(storedSession()).toBeUndefined()
     })
 
-    // The deadline cannot see a revoke made while the tab was closed — the
-    // re-handshake used to be what caught that, and persisting removes it. So
-    // a restored session checks the account's own Swarm state in the
-    // background and tears itself down on a tombstone.
-    it("ends a restored session the account has since revoked", async () => {
-      await connectPartitioned()
-      const revoked = makeSyncedAccount()
-      foldedFromSwarm.value = {
-        account: {
-          ...revoked,
-          connectedApps: [
-            {
-              appUrl: PARENT_ORIGIN,
-              appName: "dApp",
-              lastConnectedAt: Date.now(),
-              revokedAt: Date.now(),
-            },
-          ],
-        },
-        devices: [],
+    // The deadline cannot see a revoke made while the tab was closed, and a
+    // revoke on another device reaches this frame only through Swarm when no
+    // signaling server is set. So a restored session checks the published
+    // account before its first write (review P2-6). Writes wait for the
+    // answer, reads do not.
+    describe("the check before the first write", () => {
+      type GateInternals = {
+        ensureCanWrite(): Promise<void>
+        buildConnectionInfo(): {
+          canUpload: boolean
+          uploadUnavailableReason?: string
+        }
+      }
+      const gate = () => proxy as unknown as GateInternals
+
+      function deferredVerdict() {
+        let settle!: (verdict: "allowed" | "ended" | "unconfirmed") => void
+        restoredSessionVerdict.value = new Promise((resolve) => {
+          settle = resolve
+        })
+        return (verdict: "allowed" | "ended" | "unconfirmed") => settle(verdict)
       }
 
-      await reload()
+      const lastCoordinator = () =>
+        vi.mocked(BatchWriteCoordinator).mock.results.at(-1)?.value as {
+          startLease: ReturnType<typeof vi.fn>
+        }
 
-      await vi.waitFor(() => {
-        const infos = messagesOfType("connectionInfoChanged")
-        expect(infos[infos.length - 1]?.canUpload).toBe(false)
+      afterEach(() => {
+        restoredSessionVerdict.value = Promise.resolve("allowed")
       })
-      expect(storedSession()).toBeUndefined()
-      foldedFromSwarm.value = undefined
-    })
 
-    // Disconnect and Remove both end a session, and both state it on the entry
-    // — but only Remove wrote the marker this check looked at. So a Disconnect
-    // made while the tab was closed came back still connected and still able to
-    // upload, for the rest of the session's 30 days (#667).
-    it("ends a restored session the account has since disconnected", async () => {
-      const connectedAt = Date.now()
-      await connectPartitionedAt(connectedAt)
-      foldedFromSwarm.value = {
-        account: {
-          ...makeSyncedAccount(),
-          connectedApps: [
-            {
-              appUrl: PARENT_ORIGIN,
-              appName: "dApp",
-              lastConnectedAt: connectedAt,
-              disconnectedAt: connectedAt + 1,
-            },
-          ],
-        },
-        devices: [],
-      }
+      it("holds a restored session's writes until the check allows them", async () => {
+        await connectPartitioned()
+        const settle = deferredVerdict()
+        await reload()
 
-      await reload()
+        let written = false
+        const write = gate()
+          .ensureCanWrite()
+          .then(() => (written = true))
+        await flushBus()
+        expect(written).toBe(false)
+        expect(lastCoordinator().startLease).not.toHaveBeenCalled()
 
-      await vi.waitFor(() => {
-        const infos = messagesOfType("connectionInfoChanged")
-        expect(infos[infos.length - 1]?.canUpload).toBe(false)
+        settle("allowed")
+        await write
+
+        expect(written).toBe(true)
+        await vi.waitFor(() =>
+          expect(lastCoordinator().startLease).toHaveBeenCalled(),
+        )
       })
-      expect(storedSession()).toBeUndefined()
-      foldedFromSwarm.value = undefined
-    })
 
-    // The other half of the rule, and the reason the comparison exists: a
-    // disconnect this session already reconnected past says nothing about it.
-    // Waiting on the fold first, so this proves the check RAN and declined
-    // rather than that it never happened.
-    it("keeps a restored session it reconnected after the disconnect", async () => {
-      const connectedAt = Date.now()
-      await connectPartitionedAt(connectedAt)
-      foldedFromSwarm.value = {
-        account: {
-          ...makeSyncedAccount(),
-          connectedApps: [
-            {
-              appUrl: PARENT_ORIGIN,
-              appName: "dApp",
-              lastConnectedAt: connectedAt,
-              disconnectedAt: connectedAt - 1000,
-            },
-          ],
-        },
-        devices: [],
-      }
-      vi.mocked(foldAccountFromSwarm).mockClear()
+      it("answers while the check is pending, since reads need no answer", async () => {
+        await connectPartitioned()
+        deferredVerdict()
+        await reload()
 
-      await reload()
+        await dispatch(
+          { type: "checkAuth", requestId: "r5" },
+          PARENT_ORIGIN,
+          parentWindow,
+        )
 
-      await vi.waitFor(() =>
-        expect(vi.mocked(foldAccountFromSwarm)).toHaveBeenCalled(),
-      )
-      // The CALL is recorded before the continuation that would tear the
-      // session down, so waiting on it alone would also pass if the check had
-      // simply not got there yet. Settle the read and drain the microtasks
-      // behind it, and a surviving session means the check ran and declined.
-      await vi.mocked(foldAccountFromSwarm).mock.results.at(-1)?.value
-      await Promise.resolve()
-      await Promise.resolve()
+        const answer = messagesOfType("authStatusResponse").at(-1)
+        expect(answer?.authenticated).toBe(true)
+      })
 
-      const infos = messagesOfType("connectionInfoChanged")
-      expect(infos[infos.length - 1]?.canUpload).toBe(true)
-      expect(storedSession()).toBeTruthy()
-      foldedFromSwarm.value = undefined
+      it("ends a restored session the check says was ended", async () => {
+        await connectPartitioned()
+        restoredSessionVerdict.value = Promise.resolve("ended")
+
+        await reload()
+
+        await expect(gate().ensureCanWrite()).rejects.toThrow(/ended/)
+        await vi.waitFor(() => {
+          const infos = messagesOfType("connectionInfoChanged")
+          expect(infos[infos.length - 1]?.canUpload).toBe(false)
+        })
+        expect(storedSession()).toBeUndefined()
+        expect(lastCoordinator().startLease).not.toHaveBeenCalled()
+      })
+
+      // An unreachable Swarm says nothing about a revoke, so it can neither
+      // end the session nor let it write. The session stays signed in for
+      // reads and tells the dApp why it cannot write.
+      it("refuses writes, and says so, when the check cannot complete", async () => {
+        await connectPartitioned()
+        restoredSessionVerdict.value = Promise.resolve("unconfirmed")
+
+        await reload()
+
+        await expect(gate().ensureCanWrite()).rejects.toThrow(
+          /could not confirm/i,
+        )
+        const info = gate().buildConnectionInfo()
+        expect(info.canUpload).toBe(false)
+        expect(info.uploadUnavailableReason).toBe("session-unconfirmed")
+        expect(storedSession()).toBeTruthy()
+        expect(lastCoordinator().startLease).not.toHaveBeenCalled()
+      })
+
+      it("asks again on the next write after a check that could not complete", async () => {
+        await connectPartitioned()
+        restoredSessionVerdict.value = Promise.resolve("unconfirmed")
+        await reload()
+        await expect(gate().ensureCanWrite()).rejects.toThrow()
+
+        restoredSessionVerdict.value = Promise.resolve("allowed")
+
+        await expect(gate().ensureCanWrite()).resolves.toBeUndefined()
+        expect(gate().buildConnectionInfo().uploadUnavailableReason).not.toBe(
+          "session-unconfirmed",
+        )
+      })
+
+      it("checks with the instant the session connected", async () => {
+        const connectedAt = Date.now() - 60_000
+        await connectPartitionedAt(connectedAt)
+        vi.mocked(checkRestoredSession).mockClear()
+
+        await reload()
+
+        expect(vi.mocked(checkRestoredSession)).toHaveBeenCalledWith(
+          expect.objectContaining({
+            appOrigin: PARENT_ORIGIN,
+            connectedAt,
+            accountId: "aa".repeat(20),
+          }),
+        )
+      })
+
+      it("does not check a session the person just connected", async () => {
+        vi.mocked(checkRestoredSession).mockClear()
+        await connectPartitioned()
+
+        await expect(gate().ensureCanWrite()).resolves.toBeUndefined()
+        expect(vi.mocked(checkRestoredSession)).not.toHaveBeenCalled()
+      })
+
+      it("checks a session restored from shared storage too", async () => {
+        seedConnectedAccount()
+        restoredSessionVerdict.value = Promise.resolve("ended")
+        vi.mocked(checkRestoredSession).mockClear()
+
+        await dispatch(
+          {
+            type: "parentIdentify",
+            requestId: "r1",
+            metadata: { name: "dApp" },
+          },
+          PARENT_ORIGIN,
+          parentWindow,
+        )
+
+        expect(vi.mocked(checkRestoredSession)).toHaveBeenCalled()
+        await expect(gate().ensureCanWrite()).rejects.toThrow(/ended/)
+      })
     })
 
     // A reload is not a connection, and `hydratePartitionAccount` used to
