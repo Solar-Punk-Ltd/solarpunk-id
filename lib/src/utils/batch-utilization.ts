@@ -57,6 +57,21 @@ export class PartitionLeaseLostError extends Error {
   }
 }
 
+/**
+ * Thrown by `UtilizationAwareStamper.stampDataChunk()` when the address is one
+ * the stamper routes to a reserved slot: a lock SOC, a counter or state chunk,
+ * or an intent SOC. Those slots hold the account's own bookkeeping, so their
+ * stamp is never handed to an app.
+ */
+export class ReservedSlotError extends Error {
+  constructor(
+    message = "This chunk address belongs to the account's own bookkeeping and cannot be stamped for an app.",
+  ) {
+    super(message)
+    this.name = "ReservedSlotError"
+  }
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -1672,20 +1687,10 @@ export class UtilizationAwareStamper implements Stamper, SlotAssigner {
   }
 
   /**
-   * Pick the slot `chunkAddress` is stamped at within its bucket, and spend it.
-   *
-   * Synchronous on purpose: callers fire stamps concurrently, and with no await
-   * in here each assignment runs to completion before the next starts. Whoever
-   * signs — {@link stamp} here, a `StampWorkerPool` worker — must take the slot
-   * from this method and nowhere else.
-   *
-   * @throws PartitionLeaseLostError when the bound partition's lease is gone
+   * The reserved slot `chunkAddress` overstamps, if it is one of the account's
+   * own bookkeeping chunks, else undefined.
    */
-  assignSlot(chunkAddress: Uint8Array): number {
-    // The three reserved-slot returns below skip the `maxSlot` bound: every
-    // reserved slot is below `partitionCount`, so it always fits. A data slot
-    // must never be returned from here — those take the bounded path at the end.
-    //
+  private reservedSlotFor(chunkAddress: Uint8Array): number | undefined {
     // Lock-SOC short-circuit: when stamping our own per-partition lock SOC,
     // overstamp the fixed reserved slot (= partition index, 0 or 1) within
     // its bucket. Doesn't consume new slot budget, doesn't bump our local
@@ -1705,9 +1710,9 @@ export class UtilizationAwareStamper implements Stamper, SlotAssigner {
     // counter changes), so writers register the current save's addresses via
     // `markReservedUtilizationChunk` before uploading them.
     const addressHex = uint8ArrayToHex(chunkAddress)
-    const reservedSlot = this.reservedUtilizationChunks?.get(addressHex)
-    if (reservedSlot !== undefined) {
-      return reservedSlot
+    const utilizationSlot = this.reservedUtilizationChunks?.get(addressHex)
+    if (utilizationSlot !== undefined) {
+      return utilizationSlot
     }
 
     // Intent-SOC short-circuit: a partition-intent chunk (Phase 2) overstamps
@@ -1717,6 +1722,27 @@ export class UtilizationAwareStamper implements Stamper, SlotAssigner {
     // while no lease is held.
     if (this.intentSoc?.addressHex === addressHex) {
       return this.intentSoc.slot
+    }
+    return undefined
+  }
+
+  /**
+   * Pick the slot `chunkAddress` is stamped at within its bucket, and spend it.
+   *
+   * Synchronous on purpose: callers fire stamps concurrently, and with no await
+   * in here each assignment runs to completion before the next starts. Whoever
+   * signs — {@link stamp} here, a `StampWorkerPool` worker — must take the slot
+   * from this method and nowhere else.
+   *
+   * @throws PartitionLeaseLostError when the bound partition's lease is gone
+   */
+  assignSlot(chunkAddress: Uint8Array): number {
+    // The reserved-slot return below skips the `maxSlot` bound: every reserved
+    // slot is below `partitionCount`, so it always fits. A data slot must never
+    // be returned from there, those take the bounded path at the end.
+    const reservedSlot = this.reservedSlotFor(chunkAddress)
+    if (reservedSlot !== undefined) {
+      return reservedSlot
     }
 
     // Partition lease was reclaimed — abort cleanly before the stamp lands in
@@ -1778,6 +1804,25 @@ export class UtilizationAwareStamper implements Stamper, SlotAssigner {
       this.assignSlot(chunkAddress),
       timestampMs,
     )
+  }
+
+  /**
+   * Stamp a chunk an app will send through its own Swarm access. Always a
+   * data slot: an address the stamper would route to a reserved slot is
+   * refused, so an app can never be handed the stamp that overwrites the
+   * account's lock, counter, state or intent chunks.
+   *
+   * @throws ReservedSlotError for one of the account's own bookkeeping chunks
+   * @throws PartitionLeaseLostError when the bound partition's lease is gone
+   */
+  stampDataChunk(
+    chunkAddress: Uint8Array,
+    timestampMs?: number,
+  ): EnvelopeWithBatchId {
+    if (this.reservedSlotFor(chunkAddress) !== undefined) {
+      throw new ReservedSlotError()
+    }
+    return this.stamp(chunkAddress, timestampMs)
   }
 
   /**
