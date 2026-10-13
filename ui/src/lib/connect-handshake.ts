@@ -26,6 +26,7 @@ import {
   appSessionDuration,
   createChatBinding,
   deriveSecret,
+  onlySiteChatBinding,
   serializeSyncedAccount,
   stampsReachableByApp,
 } from '@snaha/swarm-id/internal'
@@ -107,6 +108,10 @@ function keptChatBinding(
  * collection (the publisher is unpartitioned and does not know its receivers'
  * apps), so script execution in that iframe can wait for one message. Bounding
  * that as well needs per-app deltas in a per-app room — out of scope for #578.
+ *
+ * Chat bindings are narrowed the same way, to this app's own: each one links
+ * the account to its chat on another site (docs/Chat-Binding.md). The bus
+ * carries none, so for them the narrowing holds on the wire too.
  */
 export function partitionHandoverAccount(
   account: SyncedAccount,
@@ -115,6 +120,7 @@ export function partitionHandoverAccount(
   const app = account.connectedApps.find((entry) => entry.appUrl === appOrigin)
   return serializeSyncedAccount({
     ...account,
+    connectedApps: onlySiteChatBinding(account.connectedApps, appOrigin),
     postageStamps: stampsReachableByApp(
       { postageStampBatchID: app?.postageStampBatchID },
       account,
