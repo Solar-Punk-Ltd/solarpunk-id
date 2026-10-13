@@ -21,6 +21,13 @@ import {
   PARTITION_COUNT,
   UtilizationAwareStamper,
 } from "./utils/batch-utilization"
+import {
+  APP_STAMP_COUNT_LIMIT,
+  appBucketCap,
+  emptyAppStampUsage,
+  parseAppStampUsage,
+} from "./proxy/app-stamp-limits"
+import { appStampUsageStorageKey } from "./types"
 import type { UtilizationStoreDB } from "./storage/utilization-store"
 import {
   BACKUP_KEY_LABEL,
@@ -56,6 +63,7 @@ const PARENT_ORIGIN = "https://dapp.example.com"
 const GATEWAY_URL = "https://gateway.example.com/"
 const APP_SECRET = "11".repeat(32)
 const BATCH_ID = "22".repeat(32)
+const OTHER_BATCH_ID = "23".repeat(32)
 const SIGNER_KEY = "33".repeat(32)
 const DERIVATION_KEY = "44".repeat(32)
 const ACCOUNT_ADDRESS = "55".repeat(20)
@@ -104,6 +112,12 @@ function stampSigner(stampHex: string, chunkAddress: Uint8Array): string {
     .toHex()
 }
 
+/** The bucket a content chunk's address lands in */
+function bucketOf(data: Uint8Array): number {
+  const address = calculateChunkAddress(data).toUint8Array()
+  return (address[0] << 8) | address[1]
+}
+
 function spanAndPayload(text: string): Uint8Array {
   const payload = new TextEncoder().encode(text)
   const span = new Uint8Array(SPAN_SIZE)
@@ -116,6 +130,8 @@ describe("SwarmIdProxy stampChunk", () => {
   let source: { postMessage: ReturnType<typeof vi.fn> }
   let parentWindow: { postMessage: ReturnType<typeof vi.fn> }
   let messageListener: (event: MessageEvent) => Promise<void>
+  let listeners: Record<string, unknown>
+  let store: Map<string, string>
   let order: string[]
 
   const replies = () =>
@@ -140,7 +156,21 @@ describe("SwarmIdProxy stampChunk", () => {
       source: parentWindow,
     } as unknown as MessageEvent)
 
-  async function userStampMode(): Promise<UtilizationAwareStamper> {
+  /** A fresh frame over the same storage, as a reload leaves it */
+  const reloadProxy = () => {
+    proxy = new SwarmIdProxy()
+    messageListener = listeners["message"] as typeof messageListener
+  }
+
+  const storedUsage = (batchId = BATCH_ID) =>
+    parseAppStampUsage(
+      store.get(appStampUsageStorageKey(PARENT_ORIGIN, batchId)) ?? null,
+    )
+
+  async function userStampMode({
+    batchId = BATCH_ID,
+    localCounter = new Uint32Array(NUM_BUCKETS),
+  } = {}): Promise<UtilizationAwareStamper> {
     const cache = {
       getAllChunks: async () => [],
       putChunk: async () => undefined,
@@ -151,7 +181,7 @@ describe("SwarmIdProxy stampChunk", () => {
     )
     const stamper = await UtilizationAwareStamper.create(
       SIGNER_KEY,
-      new BatchId(BATCH_ID),
+      new BatchId(batchId),
       DEPTH,
       cache,
       new EthAddress(ACCOUNT_ADDRESS),
@@ -160,13 +190,13 @@ describe("SwarmIdProxy stampChunk", () => {
     stamper.bindPartition({
       partition: 0,
       partitionCount: PARTITION_COUNT,
-      localCounter: new Uint32Array(NUM_BUCKETS),
+      localCounter,
     })
     const target = { mode: "stamper", bee: {}, stamper }
     const p = internals(proxy)
     p.authenticated = true
     p.appSecret = APP_SECRET
-    p.postageBatchId = BATCH_ID
+    p.postageBatchId = batchId
     p.signerKey = SIGNER_KEY
     p.stamper = stamper
     // Stands in for the write coordinator: the op runs under the lock, and the
@@ -191,7 +221,7 @@ describe("SwarmIdProxy stampChunk", () => {
 
   beforeEach(async () => {
     vi.restoreAllMocks()
-    const store = new Map<string, string>()
+    store = new Map<string, string>()
     const localStorageFake = {
       getItem: (key: string) => store.get(key) ?? null,
       setItem: (key: string, value: string) => store.set(key, value),
@@ -199,7 +229,7 @@ describe("SwarmIdProxy stampChunk", () => {
     } as unknown as Storage
     vi.stubGlobal("localStorage", localStorageFake)
 
-    const listeners: Record<string, unknown> = {}
+    listeners = {}
     parentWindow = { postMessage: vi.fn() }
     vi.stubGlobal("window", {
       addEventListener: vi.fn((type: string, listener: unknown) => {
@@ -211,8 +241,7 @@ describe("SwarmIdProxy stampChunk", () => {
       location: { origin: "https://id.example.com", pathname: "/proxy" },
       localStorage: localStorageFake,
     })
-    proxy = new SwarmIdProxy()
-    messageListener = listeners["message"] as typeof messageListener
+    reloadProxy()
     order = []
     source = {
       postMessage: vi.fn((message: { type: string }) =>
@@ -382,5 +411,109 @@ describe("SwarmIdProxy stampChunk", () => {
     )
     expect(answered).toHaveLength(0)
     expect(internals(proxy).coordinator?.withWrite).not.toHaveBeenCalled()
+  })
+
+  describe("limits per app", () => {
+    it("counts each stamp under the app's origin and the stamp it spent", async () => {
+      await identify()
+      await userStampMode()
+
+      await stampChunk({ kind: "content", data: spanAndPayload("counted") })
+
+      expect(lastReply()).toMatchObject({ type: "stampChunkResponse" })
+      expect(storedUsage().count).toBe(1)
+      expect(storedUsage().windowCount).toBe(1)
+    })
+
+    it("refuses past the count limit, and the count survives a reload", async () => {
+      store.set(
+        appStampUsageStorageKey(PARENT_ORIGIN, BATCH_ID),
+        JSON.stringify({
+          ...emptyAppStampUsage(),
+          count: APP_STAMP_COUNT_LIMIT - 1,
+        }),
+      )
+      await identify()
+      await userStampMode()
+      await stampChunk({ kind: "content", data: spanAndPayload("last one") })
+      expect(lastReply()).toMatchObject({ type: "stampChunkResponse" })
+
+      reloadProxy()
+      await identify()
+      await userStampMode()
+      await stampChunk(
+        { kind: "content", data: spanAndPayload("one too many") },
+        "r2",
+      )
+
+      expect(lastReply()).toMatchObject({
+        type: "error",
+        requestId: "r2",
+        code: "upload-unavailable",
+        reason: "app-stamp-count",
+        error: expect.stringContaining("count limit"),
+      })
+      expect(storedUsage().count).toBe(APP_STAMP_COUNT_LIMIT)
+    })
+
+    it("starts a new count on another stamp", async () => {
+      store.set(
+        appStampUsageStorageKey(PARENT_ORIGIN, BATCH_ID),
+        JSON.stringify({
+          ...emptyAppStampUsage(),
+          count: APP_STAMP_COUNT_LIMIT,
+        }),
+      )
+      await identify()
+      await userStampMode({ batchId: OTHER_BATCH_ID })
+
+      await stampChunk({ kind: "content", data: spanAndPayload("new stamp") })
+
+      expect(lastReply()).toMatchObject({ type: "stampChunkResponse" })
+      expect(storedUsage(OTHER_BATCH_ID).count).toBe(1)
+    })
+
+    it("refuses an app past its share of one bucket, without spending a slot", async () => {
+      await identify()
+      const stamper = await userStampMode()
+      const data = spanAndPayload("the same bucket every time")
+      const bucket = bucketOf(data)
+      const cap = appBucketCap(stamper.laneCapacity())
+
+      for (let i = 0; i < cap; i++) {
+        await stampChunk({ kind: "content", data }, `r${i}`)
+        expect(lastReply()).toMatchObject({ type: "stampChunkResponse" })
+      }
+      await stampChunk({ kind: "content", data }, "over")
+
+      expect(lastReply()).toMatchObject({
+        type: "error",
+        requestId: "over",
+        code: "upload-unavailable",
+        reason: "app-bucket-share",
+      })
+      expect(stamper.getLocalCounter()?.[bucket]).toBe(cap)
+      expect(storedUsage().count).toBe(cap)
+    })
+
+    it("refuses an app stamp in a bucket whose app slice the account has used, naming the slice", async () => {
+      await identify()
+      const data = spanAndPayload("a bucket the account filled")
+      const bucket = bucketOf(data)
+      const localCounter = new Uint32Array(NUM_BUCKETS)
+      const probe = await userStampMode()
+      localCounter[bucket] = probe.appSliceCapacity()
+      await userStampMode({ localCounter })
+
+      await stampChunk({ kind: "content", data })
+
+      expect(lastReply()).toMatchObject({
+        type: "error",
+        code: "upload-unavailable",
+        reason: "app-slice-full",
+        error: expect.stringContaining("own uploads"),
+      })
+      expect(storedUsage().count).toBe(0)
+    })
   })
 })
