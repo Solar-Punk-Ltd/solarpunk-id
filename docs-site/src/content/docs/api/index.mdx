@@ -888,6 +888,73 @@ console.log('Chunk size:', chunk.length)
 
 ---
 
+### `stampChunk(chunk)`
+
+Stamps a chunk with the account's own postage stamp and hands the stamp back, so the app sends the chunk itself, through whatever Swarm access it chose: a gateway, its own Bee node or a browser node. The person's stamp still pays, the app only carries the bytes.
+
+The whole chunk goes in, never an address: the iframe computes the address itself, so a stamp is only ever issued for bytes it has seen. Two shapes are accepted:
+
+- **A content chunk**: `{ kind: 'content', data }`, where `data` is the 8-byte little-endian span followed by the payload.
+- **A single-owner chunk the iframe signs in the same call**: `{ kind: 'soc', identifier, data, signer }`. `signer: 'app'` signs with the app's own secret, the same key [`makeSOCWriter()`](#makesocwritersigner-requestoptions) uses by default. `signer: { privateKey }` signs with a key the app supplies, such as a chat's shared GSOC inbox key.
+
+Anything else is refused with `invalid-request`: a chunk that also names an address, an owner or a signature, a pre-signed chunk, and a single-owner chunk whose owner would be one of the account's own keys (the backup signer that owns its lock, partition state, device state and roster chunks, its postage signer, its ACT sharing key, its derivation and encryption keys, and the account address).
+
+The stamp goes through the same write path as an upload: the cross-tab write lock, the device's partition lease, and a fresh slot in the bucket. It is returned only once the bucket counter it spent is saved and, for an account shared between devices, published, which is the guarantee an upload's acknowledgement carries. Two calls never return the same bucket slot, and the slots the account keeps for its own bookkeeping are never handed out. The account's own lock and counter chunks stay inside the iframe and go through its own node.
+
+In [subsidised mode](../subsidised-gateway/) the gateway stamps every upload, so there is no stamp of the account's to return: the call is refused with `upload-unavailable` and reason `subsidised`.
+
+**Parameters:**
+
+| Parameter          | Type                                            | Required | Description                                                     |
+| ------------------ | ----------------------------------------------- | -------- | --------------------------------------------------------------- |
+| `chunk.kind`       | `'content' \| 'soc'`                            | Yes      | Which of the two shapes                                         |
+| `chunk.data`       | `Uint8Array`                                    | Yes      | Span plus payload, 8 to 4104 bytes                              |
+| `chunk.identifier` | `Uint8Array \| string`                          | SOC only | The 32-byte SOC identifier                                      |
+| `chunk.signer`     | `'app' \| { privateKey: Uint8Array \| string }` | SOC only | The app's own secret, or a 32-byte private key the app supplies |
+
+**Returns:** `Promise<StampedChunk>`
+
+| Field       | Type     | Description                                                                                                                           |
+| ----------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `address`   | `string` | The chunk's address, as the iframe computed it                                                                                        |
+| `stamp`     | `string` | The postage stamp as hex: batch id, index, timestamp and signature, 113 bytes. The value of Bee's `swarm-postage-stamp` upload header |
+| `owner`     | `string` | Single-owner chunk only: the owner it was signed as                                                                                   |
+| `signature` | `string` | Single-owner chunk only: the signature, for `/soc/<owner>/<identifier>?sig=`                                                          |
+
+**Throws:**
+
+- `SwarmIdError` `not-authenticated` if no session is connected
+- `SwarmIdError` `upload-unavailable` if the account cannot stamp, with reason `subsidised` in subsidised mode
+- `SwarmIdError` `invalid-request` for a chunk of the wrong shape or an owner that is one of the account's keys
+- `SwarmIdError` `partition-contended` or `lease-lost` as for an upload
+
+**Example:**
+
+```typescript
+// A content chunk, sent to the app's own gateway
+const { address, stamp } = await client.stampChunk({ kind: 'content', data })
+await fetch(`${gatewayUrl}/chunks`, {
+  method: 'POST',
+  headers: { 'swarm-postage-stamp': stamp },
+  body: data,
+})
+
+// A single-owner chunk signed with the chat's shared inbox key
+const soc = await client.stampChunk({
+  kind: 'soc',
+  identifier,
+  data,
+  signer: { privateKey: inboxKey },
+})
+await fetch(`${gatewayUrl}/soc/${soc.owner}/${identifierHex}?sig=${soc.signature}`, {
+  method: 'POST',
+  headers: { 'swarm-postage-stamp': soc.stamp },
+  body: data,
+})
+```
+
+---
+
 ## SOC Methods
 
 SOC (Single Owner Chunk) methods provide read/write helpers for SOCs, which are signed chunks owned by an Ethereum address. Uploads via `SOCWriter.upload` are encrypted by default and return an `encryptionKey` for later decryption.
@@ -1695,6 +1762,10 @@ import type {
 
   // SOC
   SingleOwnerChunk,
+
+  // Stamp and return
+  StampChunkInput,
+  StampedChunk,
 
   // Feed types
   FeedReader,

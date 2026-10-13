@@ -79,6 +79,8 @@ When `uploadMode` is `unavailable`, `ConnectionInfo.uploadUnavailableReason` nam
 
 The reason is `undefined` while the session is unauthenticated, and while `canUpload` is `true`.
 
+One more reason exists that `ConnectionInfo` never carries: `subsidised`, on a refused [`stampChunk`](../api/#stampchunkchunk). In subsidised mode the gateway stamps every upload, so there is no stamp of the account's for the iframe to hand back.
+
 ## Checking Upload Mode
 
 Read `client.connectionInfo` to check the current upload mode (synchronous, populated as soon as `initialize()` resolves):
