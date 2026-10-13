@@ -7,8 +7,9 @@
  * rail deliver that xDAI to the owner, then swap it to BZZ with the owner key.
  *
  * The swap leg is the same either way: the local chain carries a real BZZ
- * market at the mainnet addresses, so only the delivery differs (Relay in
- * production, the baked faucet playing solver locally — see `payment-rail.ts`).
+ * market at the mainnet addresses, so only the delivery differs (a direct
+ * transfer on Gnosis, or locally the baked faucet playing solver for another
+ * chain, see `payment-rail.ts`).
  */
 import { withTimeout } from '@snaha/swarm-id'
 import type { SwapInput } from '@swarm-id/multichain'

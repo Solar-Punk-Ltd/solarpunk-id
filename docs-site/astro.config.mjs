@@ -24,7 +24,7 @@ export default defineConfig({
         {
           icon: 'github',
           label: 'GitHub',
-          href: 'https://github.com/snaha/swarm-id',
+          href: 'https://github.com/Solar-Punk-Ltd/solarpunk-id',
         },
       ],
       sidebar: [
@@ -39,6 +39,7 @@ export default defineConfig({
             { label: 'Subsidised Gateway', slug: 'subsidised-gateway' },
             { label: 'The Public Gateway', slug: 'public-gateway' },
             { label: 'Self-Hosting the Identity Site', slug: 'self-hosting' },
+            { label: 'Hosting on Swarm', slug: 'swarm-hosting' },
             { label: 'Using Your Own Bee Node', slug: 'own-bee-node' },
             { label: 'Local Development', slug: 'local-development' },
             { label: 'Troubleshooting', slug: 'troubleshooting' },

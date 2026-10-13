@@ -22,9 +22,9 @@ const XDAI: PaymentToken = { address: NATIVE_CURRENCY, symbol: 'xDAI', name: 'xD
 const ETH: PaymentToken = { address: NATIVE_CURRENCY, symbol: 'ETH', name: 'Ether', decimals: 18 }
 
 /**
- * The three rails `resolvePaymentRail` chooses between, each mocked at its own
- * module so the choice is all that is under test — the real ones probe an RPC
- * endpoint, a hosted quoting API and localhost respectively.
+ * The two rails `resolvePaymentRail` chooses between, each mocked at its own
+ * module so the choice is all that is under test. The real ones probe an RPC
+ * endpoint and localhost.
  */
 const { chainIdentity, resolveLocalRail, resolveGnosisDirectRail } = vi.hoisted(() => ({
   chainIdentity: vi.fn(),
@@ -35,7 +35,6 @@ const { chainIdentity, resolveLocalRail, resolveGnosisDirectRail } = vi.hoisted(
 vi.mock('$lib/payment/chain', () => ({ chainIdentity }))
 vi.mock('$lib/payment/dev-funding', () => ({ resolveLocalRail }))
 vi.mock('$lib/payment/gnosis-direct', () => ({ resolveGnosisDirectRail }))
-vi.mock('$lib/payment/relay', () => ({ relayRail: stubRail([mainnet], {}) }))
 
 function stubRail(chains: PaymentRail['chains'], tokens: Record<number, PaymentToken[]>) {
   return {
@@ -86,7 +85,7 @@ describe('combineRails', () => {
   /**
    * Dispatch is per TOKEN, not per chain: offered first, the direct rail would
    * otherwise claim all of Gnosis including the tokens it has no route for, and
-   * USDC.e would vanish from the picker. Invisible locally, where nobody has it.
+   * a token only the bridged rail carries would vanish from the picker.
    */
   it('keeps a chain’s other tokens with the rail that can carry them', () => {
     const combined = combineRails([direct, bridged])
@@ -110,10 +109,9 @@ describe('combineRails', () => {
 })
 
 /**
- * Which bridged rail — if any — each answer about the configured endpoint
- * earns. A test run is a dev build, so this is the branch that decides between
- * Relay and the local stand-in; a production build shares the mainnet arm and
- * has no local one to fall to.
+ * Which bridged rail, if any, each answer about the configured endpoint earns.
+ * A test run is a dev build, so this is the branch that decides whether the
+ * local stand-in is offered. A production build has no bridged rail at all.
  *
  * The direct rail is stubbed present throughout, so what changes between these
  * cases is only the bridged half.
@@ -146,22 +144,9 @@ describe('resolvePaymentRail', () => {
       kind,
     })
 
-  it('sends real Gnosis to Relay, not to a local stand-in', async () => {
-    expect(await resolvedChains(identity('mainnet'))).toEqual([gnosis.id, mainnet.id])
+  it('pays real Gnosis through the direct rail alone', async () => {
+    expect(await resolvedChains(identity('mainnet'))).toEqual([gnosis.id])
     expect(resolveLocalRail).not.toHaveBeenCalled()
-  })
-
-  /**
-   * Relay's delivery chain is fixed, so proving the endpoint IS that chain gates
-   * the bridged rail in every build — the endpoint is user-editable, and a
-   * shipped build pointed at a fork would pay where the app never looks. An
-   * unidentifiable endpoint is the separate test below.
-   */
-  it('never offers Relay for an endpoint that is not the chain Relay delivers to', async () => {
-    for (const endpoint of ['dev', 'unsupported'] as const) {
-      vi.clearAllMocks()
-      expect(await resolvedChains(identity(endpoint))).not.toContain(mainnet.id)
-    }
   })
 
   it('offers the local rail on a chain proven to be a dev one', async () => {

@@ -103,7 +103,7 @@ describe('quoteDirectPayment', () => {
 
   it('formats a small amount the way the pay screen renders it', async () => {
     // Shares the rail contract's formatter, so it cannot drift from the
-    // breakdown rows beneath it the way Relay's raw figure did.
+    // breakdown rows beneath it.
     expect(
       (await quoteDirectPayment(request(parseUnits('0.0000434659', 18)))).amountFormatted,
     ).toBe('0.00004347')

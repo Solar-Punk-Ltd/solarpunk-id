@@ -3,29 +3,25 @@
 import { base, gnosis, mainnet } from 'viem/chains'
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_PROJECT_ID, walletConnectOptions } from './wallet-connect'
+import { walletConnectOptions } from './wallet-connect'
 
 const CHAINS = [mainnet, base, gnosis]
-const ORIGIN = 'https://swarm-id.snaha.net'
+const ORIGIN = 'https://id.example.com'
 const PROJECT_ID = 'f00ba4'
 
 describe('walletConnectOptions', () => {
   // The guard that matters: `@web3-onboard/walletconnect` throws on a missing
-  // project id, and it would throw while `onboard.ts` initialises — so a build
-  // left with no id at all has to skip the module rather than pass it nothing.
-  // Written against DEFAULT_PROJECT_ID rather than `undefined` so it keeps
-  // testing the guard once a project is committed there.
+  // project id, and it would throw while `onboard.ts` initialises, so a build
+  // with no id has to skip the module rather than pass it nothing.
   it.each([
     ['unset', undefined],
     ['empty', ''],
     ['whitespace', '   '],
-  ])('falls back to the committed default when the environment is %s', (_label, projectId) => {
-    const options = walletConnectOptions(projectId, ORIGIN, CHAINS)
-
-    expect(options?.projectId).toBe(DEFAULT_PROJECT_ID.trim() || undefined)
+  ])('offers no WalletConnect when the environment is %s', (_label, projectId) => {
+    expect(walletConnectOptions(projectId, ORIGIN, CHAINS)).toBeUndefined()
   })
 
-  it('prefers the environment over the committed default', () => {
+  it('uses the project id the environment names', () => {
     expect(walletConnectOptions(PROJECT_ID, ORIGIN, CHAINS)?.projectId).toBe(PROJECT_ID)
   })
 

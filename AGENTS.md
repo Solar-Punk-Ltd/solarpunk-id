@@ -130,7 +130,7 @@ Chain-backed suites are NOT in `check:all` — they need a chain running. `pnpm 
 - E2E and browser tests (`tests/*.test.ts` in `ui/` and `demo/`): Playwright
 - Integration tests against a local Bee cluster (`lib/test/integration/`): Vitest, run in CI by
   `integration-tests.yml`
-- Live tests against a real Bee (`lib/test/live/`, `ui/`'s `test:live`): Vitest/Playwright, opt-in
+- Live tests against a real Bee (`lib/test/live/`): Vitest, opt-in
 
 ## Version control conventions
 

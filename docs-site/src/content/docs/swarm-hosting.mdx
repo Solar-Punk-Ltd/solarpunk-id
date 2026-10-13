@@ -1,0 +1,98 @@
+---
+title: Hosting on Swarm
+description: How the identity site is served from a Swarm website, and how to upload it
+---
+
+The identity site (`ui/`) is a static SvelteKit build. It is served from Swarm as a
+**website**, a folder upload whose manifest names an index document and an error document,
+at `https://solarpunkid.bzz.link`, with the ENS name `solarpunkid.eth` pointing at the upload.
+
+## How Bee answers a path
+
+Bee resolves every path of a website in one handler, `serveReference` in
+[`pkg/api/bzz.go`](https://github.com/ethersphere/bee/blob/v2.7.0/pkg/api/bzz.go) (read at
+v2.7.0). The `bzz.link` and ENS gateways hand it the path unchanged. It tries, in order:
+
+1. The site root: the index document, or 404.
+2. An entry whose path is exactly the request path. No extension is added, so `/proxy` does
+   not find a `proxy.html`.
+3. When some entry starts with the path plus `/`, a 308 redirect to the path with a trailing
+   slash. A `connect.html` beside a `connect/done.html` turns `/connect` into `/connect/`.
+4. The path joined with the index document, so `/docs/` finds `docs/index.html`.
+5. The error document, served with status 200.
+6. 404.
+
+Trailing slashes collapse to one first, so `/proxy///` is `/proxy/`.
+
+## What the build gives Bee
+
+The build prerenders no route. It is the adapter's single `index.html` page and the assets
+under `_app/`, so no route path is a folder and nothing is redirected. Uploaded with
+`index.html` as both documents:
+
+| Path                                                 | Bee serves   | Step |
+| ---------------------------------------------------- | ------------ | ---- |
+| `/`                                                  | `index.html` | 1    |
+| `/_app/...`, `/favicon.png`, `/manifest.json`        | that file    | 2    |
+| `/proxy`, `/connect`, `/connect/done`, `/product`    | `index.html` | 5    |
+| `/account/new`, `/account/new/access` and the others | `index.html` | 5    |
+
+The page then routes itself from the URL. The library opens the frame at `/proxy` and the
+popup at `/connect`, both without a trailing slash, and the frame works out its own base path
+by stripping `/proxy` from the end of its URL. A frame loaded at `/proxy/` would not find it,
+which is one more reason no route may become a folder.
+
+`ui/src/lib/hosting/swarm-website.test.ts` holds this rule as code and checks the real
+`ui/build` against every route under `ui/src/routes`. It runs in the ui unit suite once the
+UI is built (CI builds first), and is skipped on a machine that has not built.
+
+## Building
+
+From the repository root, with `BASE_PATH` unset, because the site is served from the root
+of its host:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm --filter @snaha/swarm-id build
+PUBLIC_WALLETCONNECT_PROJECT_ID=<reown-project-id> pnpm --filter @swarm-id/ui build
+```
+
+Every `PUBLIC_*` setting is read at build time and written into the build
+(`ui/.env.example` lists them). `<reown-project-id>` is a Reown project whose allowlist names
+`https://solarpunkid.bzz.link`. Without it the wallet picker offers no WalletConnect, only the
+injected wallets and Coinbase Wallet.
+
+## Uploading
+
+The upload is a folder upload of `ui/build` with `index.html` as both the index and the error
+document. With [swarm-cli](https://github.com/ethersphere/swarm-cli):
+
+```sh
+swarm-cli upload ui/build --stamp <batch-id> --index-document index.html --error-document index.html
+```
+
+Or straight against the Bee API, as a tar of the folder's contents:
+
+```sh
+tar -C ui/build -cf solarpunk-id.tar .
+curl -X POST http://localhost:1633/bzz \
+  -H "Content-Type: application/x-tar" \
+  -H "Swarm-Collection: true" \
+  -H "Swarm-Postage-Batch-Id: <batch-id>" \
+  -H "Swarm-Index-Document: index.html" \
+  -H "Swarm-Error-Document: index.html" \
+  --data-binary @solarpunk-id.tar
+```
+
+`<batch-id>` is a usable postage batch on that Bee node, and the answer carries the reference.
+Bee takes each file's content type from its extension, which every file in the build has.
+Then set the content hash of `solarpunkid.eth` to `bzz://<reference>`, and
+`https://solarpunkid.bzz.link` serves it.
+
+## Passkeys stay on their host
+
+A passkey is bound to the host name it was made on (`ui/src/lib/crypto/passkey.ts` uses
+`location.hostname` as its relying party). A passkey made on `solarpunkid.bzz.link` does not
+unlock the account on `solarpunkid.eth.limo`, `localhost` or any other host, and one made
+elsewhere does not work here. The account itself is not lost: its recovery phrase restores it
+on any host, where a new access method is chosen.

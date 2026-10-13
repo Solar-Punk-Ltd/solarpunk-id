@@ -11,8 +11,9 @@
   import SidebarAuth from './sidebar-auth.svelte'
   import SidebarStamp from './sidebar-stamp.svelte'
 
-  /** The docs site is published from `main` to GitHub Pages only. */
-  const DOCS_URL = 'https://swarm.snaha.net/docs/'
+  /** The fork does not publish the docs site yet, so this is its source. */
+  const DOCS_URL =
+    'https://github.com/Solar-Punk-Ltd/solarpunk-id/tree/main/docs-site/src/content/docs'
 
   // A function, not a constant: the SwarmID origin depends on the page URL.
   const externalLinks = () => [

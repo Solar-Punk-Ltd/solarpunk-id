@@ -29,7 +29,7 @@
   import type { CancelOptions } from '$lib/payment/funding-request.svelte'
   import {
     BUILT_IN_LABEL,
-    type FundingMethod,
+    type PaymentMethod,
     WIDGET_CONTINUE_LABEL,
     WIDGET_EXPLAINER,
     WIDGET_LABEL,
@@ -57,8 +57,8 @@
    * rather than continuing through these screens.
    *
    * Which rail carries the money is the caller's choice (`resolve-rail.ts`),
-   * and nothing here depends on which one it is — the screens are identical
-   * against Relay and against the local dev rail.
+   * and nothing here depends on which one it is: the screens are identical
+   * against the direct Gnosis rail and the local dev rail.
    *
    * The connected wallet only ever signs on the source chain — it never sees
    * the owner key, so passkey and password accounts use this unchanged.
@@ -84,11 +84,9 @@
      * Which method the chooser opens on. Passed by a caller that has already
      * asked — buying a drive chooses before it touches the chain, and finding
      * the choice flipped back here would read as the answer not having landed.
-     * Defaults to the widget wherever it is on offer. The card shop is not a
-     * method this screen can run — it is a popup of its own, chosen before the
-     * funding seam is reached — so it is excluded by type.
+     * Defaults to the widget wherever it is on offer.
      */
-    initialMethod?: FundingMethod
+    initialMethod?: PaymentMethod
   }
 
   let { need, rail, onPaid, onCancel, onUseWidget, initialMethod }: Props = $props()
@@ -110,8 +108,8 @@
   let tokenAddress = $state(untrack(() => rail.tokens(rail.chains[0].id)[0].address))
   // Raw, not deep-reactive: the rail-private `handle` inside must reach
   // `execute` as the object the rail produced. Wrapped in a `$state` proxy it
-  // cannot be structured-cloned, and the Relay SDK clones its quote before
-  // walking the steps — every real payment then dies with a DataCloneError.
+  // cannot be structured-cloned, and a rail that clones its quote before
+  // walking the steps then fails every payment with a DataCloneError.
   let paymentQuote = $state.raw<PaymentQuote | undefined>(undefined)
   let quoting = $state(false)
   let relayStatus = $state('Sending your payment')
@@ -127,7 +125,7 @@
   /** Which method the chooser is on. Which methods exist is fixed for the life
    * of one payment — the dialog is created fresh per pending request — so this
    * is read ONCE, as the user's starting selection, not tracked. */
-  let method = $state<FundingMethod>(
+  let method = $state<PaymentMethod>(
     untrack(() => initialMethod ?? (onUseWidget ? 'widget' : 'built-in')),
   )
   /** True while `quoteFunding` is pricing the built-in method's side. */
