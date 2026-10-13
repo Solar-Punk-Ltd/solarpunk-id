@@ -17,6 +17,7 @@ import {
 
 import { browser } from '$app/environment'
 
+import { isCleanSite, requireCleanSite } from '$lib/clean-site'
 import { drivesNeedingAttention, soonestDriveExpiry } from '$lib/drives'
 import { daysToMs } from '$lib/duration'
 
@@ -355,6 +356,7 @@ export class Account {
 
   /** Record a (re)connection — replaces any previous entry for the same app. */
   connectApp(app: ConnectedApp) {
+    requireCleanSite(app.appUrl)
     const has = this.connectedApps.some((existing) => existing.appUrl === app.appUrl)
     this.connectedApps = has
       ? this.connectedApps.map((existing) =>
@@ -380,10 +382,11 @@ export class Account {
    * `undefined`. The choice carries through the cross-device merge on its OWN
    * clock: it says nothing about whether the app is still connected, and a
    * clock that ranked the whole entry let this edit outrank a revoke made on
-   * another device (#681). No-op when the app has no entry (nothing to point).
+   * another device (#681). No-op when the app has no entry (nothing to point)
+   * or its site is not a clean origin.
    */
   setAppStamp(appUrl: string, batchID: BatchId | undefined) {
-    if (!this.connectedApps.some((app) => app.appUrl === appUrl)) {
+    if (!isCleanSite(appUrl) || !this.connectedApps.some((app) => app.appUrl === appUrl)) {
       return
     }
     const now = Date.now()
