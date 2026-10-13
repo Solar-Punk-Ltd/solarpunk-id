@@ -905,9 +905,9 @@ The stamp goes through the same write path as an upload: the cross-tab write loc
 
 A chat sends every message as a new version of one single-owner chunk, its inbox, whose address never changes. The account's stamp is mutable, and on a mutable stamp Bee replaces a chunk stamped at the same slot when the new stamp has a newer timestamp. So when an app asks to stamp a single-owner chunk this device already stamped for it on this stamp, the iframe stamps it again at the same slot with a newer timestamp instead of spending a new one. A chat then keeps one slot for its inbox however many messages it sends.
 
-- Stamping again spends no slot, so it does not count against the bucket share or the account's own half. It still counts against the app's count and rate.
+- Stamping again spends no slot, so it does not count against the app's count, its bucket share or the account's own half. It still counts against the app's rate, and it is refused once the app has spent its whole count of new slots on that stamp.
 - The timestamp is the current time, or one millisecond past the last stamp at that slot when the device's clock went back, so the new stamp always wins.
-- The iframe remembers the slot per app origin and per stamp in its own storage, beside the app's limits, so a reload keeps it. It remembers up to 256 addresses per app and stamp (`SOC_RESTAMP_SLOT_LIMIT` in `lib/src/proxy/soc-restamp-slots.ts`). Past that, a new address takes a new slot each time, as a content chunk does.
+- The iframe remembers the slot per app origin and per stamp in its own storage, beside the app's limits, so a reload keeps it. It remembers a slot only once the counter that spent it is saved and published, so a call refused for an unsaved or unpublished counter leaves nothing behind, and the next stamp of that address takes a new slot. It remembers up to 256 addresses per app and stamp (`SOC_RESTAMP_SLOT_LIMIT` in `lib/src/proxy/soc-restamp-slots.ts`). Past that, a new address takes a new slot each time, as a content chunk does.
 - Only a slot this device took in its current partition lane is reused. On another device, or once this device holds another lane, the same address takes a new slot.
 - A content chunk always takes a new slot.
 
@@ -919,7 +919,7 @@ The stamp is the person's, so an app may only use part of it. Each app origin ha
 
 | Limit              | Default                                                                    | Resets                                       | Reason when refused |
 | ------------------ | -------------------------------------------------------------------------- | -------------------------------------------- | ------------------- |
-| Count              | 10,000 stamps per app on one stamp                                         | Never on that stamp. A new stamp starts at 0 | `app-stamp-count`   |
+| Count              | 10,000 new slots per app on one stamp                                      | Never on that stamp. A new stamp starts at 0 | `app-stamp-count`   |
 | Rate               | 60 stamps per app per 60 seconds                                           | When the 60 seconds are over                 | `app-stamp-rate`    |
 | Bucket share       | A third of a bucket's data lane per app, rounded down (2 of 7 at depth 20) | Never on that stamp                          | `app-bucket-share`  |
 | Account's own half | Apps together use only the lower half of a bucket's data lane              | Never on that stamp                          | `app-slice-full`    |
