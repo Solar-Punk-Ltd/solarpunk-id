@@ -14,29 +14,6 @@
 import type { Chain } from 'viem'
 
 /**
- * The Reown project the app connects with unless a build overrides it,
- * committed on purpose.
- *
- * A project id is not a secret. SvelteKit bakes every `PUBLIC_*` var into the
- * client bundle, so whatever is configured ships to anyone who opens the page;
- * withholding it from the repo protects nothing, and would cost a setup step on
- * every dev machine and a configured value in every deployment — which is how a
- * picker silently ends up injected-only in one of them. Same shape as
- * `busSignalingUrl` in `$lib/bus-signaling-url`.
- *
- * What keeps a committed id from being someone else's free relay quota is the
- * allowlist on the Reown project, which must name every origin that serves this
- * app and nothing else. That is dashboard state this file cannot assert, so it
- * is the thing to re-check when an origin is added — a new deployment or a
- * developer on a port other than 5500 reads as a blank QR code rather than an
- * error ([#732](https://github.com/snaha/swarm-id/issues/732)).
- *
- * Empty is still handled: it leaves the picker injected-only rather than
- * offering a WalletConnect that cannot complete a connection.
- */
-export const DEFAULT_PROJECT_ID = '26aa4608b06ec5ebd013b57900b550e6'
-
-/**
  * The options we pass, declared here rather than imported.
  *
  * `@web3-onboard/walletconnect` does not export its own `WalletConnectOptions`
@@ -54,10 +31,12 @@ export interface WalletConnectOptions {
 /**
  * Options for the WalletConnect module, or `undefined` for "do not register it".
  *
- * @param projectId Reown Cloud project id from `PUBLIC_WALLETCONNECT_PROJECT_ID`,
- *   overriding {@link DEFAULT_PROJECT_ID}. Blank or absent falls back to that;
- *   blank on both leaves the wallet picker injected-only, which is where it was
- *   before this existed.
+ * @param projectId Reown Cloud project id from `PUBLIC_WALLETCONNECT_PROJECT_ID`.
+ *   Blank or absent leaves the wallet picker without WalletConnect. A project id
+ *   is not a secret, it ships in the bundle, and what keeps it from being anyone's
+ *   free relay quota is the project's origin allowlist on the Reown dashboard,
+ *   which must name every origin that serves this build. An origin it does not
+ *   name shows a blank QR code rather than an error.
  * @param dappUrl This origin. Some wallets (MetaMask among them) refuse a
  *   connection whose metadata carries no url, and the library falls back to
  *   `appMetadata.explore`, which we do not set.
@@ -68,7 +47,7 @@ export function walletConnectOptions(
   dappUrl: string | undefined,
   chains: Chain[],
 ): WalletConnectOptions | undefined {
-  const trimmed = projectId?.trim() || DEFAULT_PROJECT_ID.trim()
+  const trimmed = projectId?.trim()
   if (!trimmed) {
     return undefined
   }

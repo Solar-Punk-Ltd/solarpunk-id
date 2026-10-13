@@ -54,11 +54,13 @@ of its host:
 ```sh
 pnpm install --frozen-lockfile
 pnpm --filter @snaha/swarm-id build
-pnpm --filter @swarm-id/ui build
+PUBLIC_WALLETCONNECT_PROJECT_ID=<reown-project-id> pnpm --filter @swarm-id/ui build
 ```
 
 Every `PUBLIC_*` setting is read at build time and written into the build
-(`ui/.env.example` lists them).
+(`ui/.env.example` lists them). `<reown-project-id>` is a Reown project whose allowlist names
+`https://solarpunkid.bzz.link`. Without it the wallet picker offers no WalletConnect, only the
+injected wallets and Coinbase Wallet.
 
 ## Uploading
 
