@@ -167,14 +167,14 @@ describe("app stamp limits", () => {
     ).toMatchObject({ reason: "app-stamp-rate" })
   })
 
-  it("records a stamp again in the count and the window, never in a bucket", () => {
+  it("records a stamp again in the window only, never in the count or a bucket", () => {
     const usage = recordAppRestamp(
       recordAppStamp(emptyAppStampUsage(), BUCKET, NOW),
       NOW + 1,
     )
 
     expect(usage).toEqual({
-      count: 2,
+      count: 1,
       windowStart: NOW,
       windowCount: 2,
       buckets: { [BUCKET]: 1 },

@@ -494,7 +494,8 @@ describe("SwarmIdProxy stampChunk", () => {
         new PrivateKey(SIGNER_KEY).publicKey().address().toHex(),
       )
       expect(stamper.getLocalCounter()?.[bucket]).toBe(1)
-      expect(storedUsage().count).toBe(2)
+      expect(storedUsage().count).toBe(1)
+      expect(storedUsage().windowCount).toBe(2)
       expect(storedUsage().buckets[bucket]).toBe(1)
     })
 
@@ -644,6 +645,25 @@ describe("SwarmIdProxy stampChunk", () => {
       await stampChunk(inbox("full two"), "r2")
 
       expect(unmarshalStamp(lastReply().stamp).slot).not.toBe(first.slot)
+    })
+
+    it("keeps stamping again once the app has spent its count of new slots", async () => {
+      await identify()
+      await userStampMode()
+      await stampChunk(inbox("first message"), "r1")
+      store.set(
+        appStampUsageStorageKey(PARENT_ORIGIN, BATCH_ID),
+        JSON.stringify({
+          ...storedUsage(),
+          count: APP_STAMP_COUNT_LIMIT - 1,
+        }),
+      )
+
+      for (let i = 0; i < 3; i++) {
+        await stampChunk(inbox(`message ${i}`), `again${i}`)
+        expect(lastReply()).toMatchObject({ type: "stampChunkResponse" })
+      }
+      expect(storedUsage().count).toBe(APP_STAMP_COUNT_LIMIT - 1)
     })
 
     it("stamps one millisecond past the last when the clock went back", async () => {
