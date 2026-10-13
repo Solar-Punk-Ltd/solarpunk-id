@@ -98,8 +98,9 @@ key in the window, in call order, and a read-modify-write runs in its own turn
 (`VersionedStorageManager.update`). Each turn also holds a Web Lock named
 `swarm-id-storage-write-<key>`, so the identity tab and a frame of the same
 origin cannot interleave a read and a write and lose one window's change, such
-as a disconnect. Where the Web Locks API is missing, only the window's own
-queue orders the writes. The identity UI renders no page until the
+as a disconnect. Where the Web Locks API is missing or refuses the lock
+request, only the window's own queue orders the writes. The identity UI
+renders no page until the
 stored accounts are read with their keys open (`accountsLoaded`).
 
 - Code: `lib/src/utils/sealed-values.ts`, the account fields in

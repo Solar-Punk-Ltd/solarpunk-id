@@ -184,20 +184,29 @@ const writeQueues = new Map<string, Promise<void>>()
  * the same origin are two windows over one `localStorage`, so a read, the wait
  * for sealing and the write also hold a Web Lock named for the key, or one
  * window's write lands between the other's read and write and is lost.
- * Without the Web Locks API only the window's own queue orders them.
+ * Without the Web Locks API, or when the lock request itself is refused (a
+ * SecurityError where the page may not use it), only the window's own queue
+ * orders them.
  */
-function withStorageWriteLock(
+async function withStorageWriteLock(
   key: string,
   task: () => Promise<void>,
 ): Promise<void> {
-  if (typeof navigator !== "undefined" && navigator.locks) {
-    return navigator.locks.request(
+  if (typeof navigator === "undefined" || !navigator.locks) return task()
+  let started = false
+  try {
+    await navigator.locks.request(
       `swarm-id-storage-write-${key}`,
       { mode: "exclusive" },
-      task,
+      () => {
+        started = true
+        return task()
+      },
     )
+  } catch (error) {
+    if (started) throw error
+    await task()
   }
-  return task()
 }
 
 interface SameWindowWriteDetail {
