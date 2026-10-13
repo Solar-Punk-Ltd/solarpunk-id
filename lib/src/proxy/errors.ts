@@ -21,6 +21,7 @@ import type { WireError } from "../types"
 const LIB_ERROR_CODES: Record<string, WireError["code"]> = {
   PartitionContendedError: "partition-contended",
   PartitionLeaseLostError: "lease-lost",
+  ReservedSlotError: "invalid-request",
   TimeoutError: "timeout",
 }
 

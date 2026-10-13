@@ -11,6 +11,7 @@ import type {
   UploadDataMessage,
   DownloadDataMessage,
   DeriveAppSecretMessage,
+  StampChunkMessage,
   UploadFileMessage,
   DownloadFileMessage,
   UploadFilesMessage,
@@ -85,8 +86,14 @@ import {
   uploadData,
   uploadSOC,
   uploadChunk,
+  isStamperTarget,
   type UploadTarget,
 } from "./proxy/upload"
+import {
+  accountInternalOwners,
+  marshalStamp,
+  prepareChunkToStamp,
+} from "./proxy/stamp-chunk"
 import {
   downloadDataWithChunkAPI,
   downloadSOC,
@@ -304,6 +311,14 @@ function deltaFoldView(snapshot: AccountStateSnapshot): DeviceStateSnapshot {
     timestamp: snapshot.timestamp,
     ...accountStateToDeviceView(snapshot),
   }
+}
+
+function subsidisedStampRefusal(): SwarmIdError {
+  return new SwarmIdError(
+    "upload-unavailable",
+    "The account is in subsidised mode: the gateway pays for and stamps every upload, so there is no stamp of the account's to return.",
+    { reason: "subsidised" },
+  )
 }
 
 /**
@@ -2307,6 +2322,10 @@ export class SwarmIdProxy {
 
       case "deriveAppSecret":
         await this.handleDeriveAppSecret(message, event)
+        break
+
+      case "stampChunk":
+        await this.handleStampChunk(message, event)
         break
 
       case "uploadFile":
@@ -4479,6 +4498,75 @@ export class SwarmIdProxy {
     } catch (error) {
       this.sendErrorToParent(event, requestId, error, "deriveAppSecret failed")
     }
+  }
+
+  /**
+   * Stamp a chunk with the account's own stamp and hand the stamp back, for
+   * the app to send through its own Swarm access. The stamp takes the same
+   * write path as an upload, so it is returned only after the coordinator has
+   * published the partition counter and saved the stamper state, the guarantee
+   * an upload's ack carries. The account's own lock and counter chunks never
+   * come through here, they stay inside the frame and go through its node.
+   */
+  private async handleStampChunk(
+    message: StampChunkMessage,
+    event: MessageEvent,
+  ): Promise<void> {
+    const { requestId, chunk } = message
+
+    try {
+      this.ensureCanUpload()
+      if (this.isSubsidisedModeActive()) throw subsidisedStampRefusal()
+      const prepared = prepareChunkToStamp(chunk, {
+        appSecret: this.appSecret!,
+        internalOwners: this.accountInternalOwners(),
+      })
+
+      const stamp = await this.withModeAwareWriteLock(
+        undefined,
+        async (target) => {
+          // The mode can change while the write waits on the lock.
+          if (!isStamperTarget(target)) throw subsidisedStampRefusal()
+          if (!(target.stamper instanceof UtilizationAwareStamper)) {
+            throw new SwarmIdError(
+              "internal",
+              "The write path has no utilization-aware stamper to stamp with.",
+            )
+          }
+          return marshalStamp(target.stamper.stampDataChunk(prepared.address))
+        },
+      )
+
+      this.postMessage(event, {
+        type: "stampChunkResponse",
+        requestId,
+        address: uint8ArrayToHex(prepared.address),
+        stamp,
+        owner: prepared.owner?.toHex(),
+        signature: prepared.signature?.toHex(),
+      })
+    } catch (error) {
+      this.sendErrorToParent(event, requestId, error, "stampChunk failed")
+    }
+  }
+
+  /**
+   * The owner addresses of the account's own chunks and keys, for refusing a
+   * single-owner chunk an app asks to have signed as one of them.
+   */
+  private accountInternalOwners(): Set<string> {
+    const connection = this.findConnectionForParent()
+    if (!connection) {
+      throw new SwarmIdError(
+        "not-authenticated",
+        "No connected account for this app. Please login first.",
+      )
+    }
+    return accountInternalOwners({
+      accountAddress: connection.account.id.toHex(),
+      derivationKey: connection.account.derivationKey,
+      postageSignerKey: this.signerKey,
+    })
   }
 
   private parseFeedTimestamp(value: string | number): bigint {

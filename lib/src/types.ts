@@ -17,6 +17,8 @@ import {
   EncryptionKeySchema,
   IdentifierSchema,
   SignatureSchema,
+  ChunkAddressSchema,
+  MarshaledStampSchema,
   TimestampSchema,
   FeedIndexSchema,
 } from "./schemas"
@@ -298,6 +300,32 @@ export interface SingleOwnerChunk {
   payload: Uint8Array
   address: Reference
   owner: Address
+}
+
+/**
+ * The chunk `SwarmIdClient.stampChunk` asks the frame to stamp. `data` is the
+ * whole chunk body, the 8-byte little-endian span followed by the payload.
+ */
+export type StampChunkInput =
+  | { kind: "content"; data: Uint8Array }
+  | {
+      kind: "soc"
+      identifier: Identifier | Uint8Array | string
+      data: Uint8Array
+      /** `"app"` signs with the site's own app secret */
+      signer: "app" | { privateKey: Uint8Array | string }
+    }
+
+/** What `SwarmIdClient.stampChunk` returns, enough to send the exact chunk */
+export interface StampedChunk {
+  /** The chunk's address, computed by the frame */
+  address: string
+  /** The postage stamp as hex, the value of Bee's `swarm-postage-stamp` header */
+  stamp: string
+  /** For a single-owner chunk: the owner the frame signed as */
+  owner?: Address
+  /** For a single-owner chunk: the signature, for `/soc/<owner>/<id>?sig=` */
+  signature?: Signature
 }
 
 /**
@@ -696,12 +724,16 @@ export type UploadMode = z.infer<typeof UploadModeSchema>
  *   stored record says the node does not have the batch (`exists: false`) or
  *   cannot use it (`usable: false`). Opening the drive in the identity UI
  *   refreshes the record from the chain (#765).
+ * - `subsidised`: only in a refused `stampChunk`, never in ConnectionInfo.
+ *   The account is in subsidised mode, the gateway stamps every upload, so
+ *   there is no stamp of the person's to hand back.
  */
 export const UploadUnavailableReasonSchema = z.enum([
   "no-stamp",
   "stamper-failed",
   "stamp-expired",
   "stamp-not-usable",
+  "subsidised",
 ])
 
 export type UploadUnavailableReason = z.infer<
@@ -926,6 +958,42 @@ export const DeriveAppSecretMessageSchema = z.object({
   type: z.literal("deriveAppSecret"),
   requestId: z.string(),
   label: z.string(),
+})
+
+/**
+ * Who signs a single-owner chunk in `stampChunk`: the site's own app secret,
+ * or a private key the site supplies (a chat's shared GSOC inbox key).
+ */
+export const StampChunkSignerSchema = z.union([
+  z.literal("app"),
+  z.strictObject({ privateKey: PrivateKeySchema }),
+])
+
+/**
+ * The chunk `stampChunk` stamps, always whole so the frame computes its
+ * address itself. `data` is span plus payload. Strict, so a chunk that also
+ * carries an address, an owner or a signature is refused: the frame never
+ * stamps an address it did not compute, nor a chunk somebody else signed.
+ */
+export const StampChunkRequestSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("content"),
+    data: z.instanceof(Uint8Array),
+  }),
+  z.strictObject({
+    kind: z.literal("soc"),
+    identifier: IdentifierSchema,
+    data: z.instanceof(Uint8Array),
+    signer: StampChunkSignerSchema,
+  }),
+])
+
+// Stamp a chunk with the account's own stamp and hand the stamp back, so the
+// app sends the chunk through the Swarm access it chose.
+export const StampChunkMessageSchema = z.strictObject({
+  type: z.literal("stampChunk"),
+  requestId: z.string(),
+  chunk: StampChunkRequestSchema,
 })
 
 export const UploadFileMessageSchema = z.object({
@@ -1259,6 +1327,7 @@ export const ParentToIframeMessageSchema = z.discriminatedUnion("type", [
   UploadDataMessageSchema,
   DownloadDataMessageSchema,
   DeriveAppSecretMessageSchema,
+  StampChunkMessageSchema,
   UploadFileMessageSchema,
   DownloadFileMessageSchema,
   UploadFilesMessageSchema,
@@ -1302,6 +1371,9 @@ export type DownloadDataMessage = z.infer<typeof DownloadDataMessageSchema>
 export type DeriveAppSecretMessage = z.infer<
   typeof DeriveAppSecretMessageSchema
 >
+export type StampChunkSigner = z.infer<typeof StampChunkSignerSchema>
+export type StampChunkRequest = z.infer<typeof StampChunkRequestSchema>
+export type StampChunkMessage = z.infer<typeof StampChunkMessageSchema>
 export type UploadFileMessage = z.infer<typeof UploadFileMessageSchema>
 export type DownloadFileMessage = z.infer<typeof DownloadFileMessageSchema>
 export type UploadFilesMessage = z.infer<typeof UploadFilesMessageSchema>
@@ -1421,6 +1493,17 @@ export const DeriveAppSecretResponseMessageSchema = z.object({
   type: z.literal("deriveAppSecretResponse"),
   requestId: z.string(),
   secret: z.instanceof(Uint8Array),
+})
+
+export const StampChunkResponseMessageSchema = z.object({
+  type: z.literal("stampChunkResponse"),
+  requestId: z.string(),
+  address: ChunkAddressSchema,
+  stamp: MarshaledStampSchema,
+  /** A single-owner chunk's owner, set only for one */
+  owner: AddressSchema.optional(),
+  /** A single-owner chunk's signature, set only for one */
+  signature: SignatureSchema.optional(),
 })
 
 export const UploadFileResponseMessageSchema = z.object({
@@ -1790,6 +1873,7 @@ export const IframeToParentMessageSchema = z.discriminatedUnion("type", [
   UploadDataResponseMessageSchema,
   DownloadDataResponseMessageSchema,
   DeriveAppSecretResponseMessageSchema,
+  StampChunkResponseMessageSchema,
   UploadFileResponseMessageSchema,
   DownloadFileResponseMessageSchema,
   UploadFilesResponseMessageSchema,
@@ -1845,6 +1929,9 @@ export type DownloadDataResponseMessage = z.infer<
 >
 export type DeriveAppSecretResponseMessage = z.infer<
   typeof DeriveAppSecretResponseMessageSchema
+>
+export type StampChunkResponseMessage = z.infer<
+  typeof StampChunkResponseMessageSchema
 >
 export type UploadFileResponseMessage = z.infer<
   typeof UploadFileResponseMessageSchema
