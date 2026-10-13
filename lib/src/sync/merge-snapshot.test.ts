@@ -4,10 +4,12 @@
 import { describe, it, expect } from "vitest"
 import { BatchId, PrivateKey } from "@ethersphere/bee-js"
 import {
+  mergeConnectedApps,
   mergeSnapshotWithRemote,
   snapshotContainsContribution,
 } from "./merge-snapshot"
 import type { AccountStateSnapshot } from "../utils/account-state-snapshot"
+import { createChatBinding } from "../utils/chat-binding"
 import type { Device, ConnectedApp, PostageStamp } from "../schemas"
 
 const SELF_DEVICE_ID = "device-self-111"
@@ -542,5 +544,70 @@ describe("snapshotContainsContribution", () => {
     const mine = makeSnapshot({ postageStamps: [makeStamp("aa".repeat(32))] })
     const latest = makeSnapshot({ postageStamps: [makeStamp("bb".repeat(32))] })
     expect(snapshotContainsContribution(mine, latest)).toBe(false)
+  })
+})
+
+// A frame running for one site holds only that site's chat binding, and the
+// bus carries none, so an entry can arrive without the binding its peer has.
+// A binding is never withdrawn, only replaced by a newer one
+// (docs/Chat-Binding.md), so it merges on its own date rather than riding the
+// entry's membership clock.
+describe("mergeConnectedApps — chat binding", () => {
+  const SITE = "https://viewer.example.com"
+  const ACCOUNT_KEY = "5a".repeat(32)
+  const older = createChatBinding(
+    ACCOUNT_KEY,
+    SITE,
+    new Date("2026-10-14T12:00:00.000Z"),
+  )
+  const newer = createChatBinding(
+    ACCOUNT_KEY,
+    SITE,
+    new Date("2026-10-15T12:00:00.000Z"),
+  )
+  const app = (overrides: Partial<ConnectedApp>): ConnectedApp => ({
+    ...makeConnectedApp(SITE),
+    ...overrides,
+  })
+
+  it("keeps the binding when the winning entry carries none", () => {
+    const [merged] = mergeConnectedApps(
+      [app({ lastConnectedAt: 1_000_000, chatBinding: older })],
+      [app({ lastConnectedAt: 2_000_000 })],
+    )
+
+    expect(merged.lastConnectedAt).toBe(2_000_000)
+    expect(merged.chatBinding).toEqual(older)
+  })
+
+  it("keeps the binding on a tie with an entry that carries none", () => {
+    expect(
+      mergeConnectedApps([app({})], [app({ chatBinding: older })])[0]
+        .chatBinding,
+    ).toEqual(older)
+    expect(
+      mergeConnectedApps([app({ chatBinding: older })], [app({})])[0]
+        .chatBinding,
+    ).toEqual(older)
+  })
+
+  it("takes the newer binding even from the losing entry", () => {
+    const [merged] = mergeConnectedApps(
+      [app({ lastConnectedAt: 2_000_000, chatBinding: older })],
+      [app({ lastConnectedAt: 1_000_000, chatBinding: newer })],
+    )
+
+    expect(merged.lastConnectedAt).toBe(2_000_000)
+    expect(merged.chatBinding).toEqual(newer)
+  })
+
+  it("keeps the binding past a revoke", () => {
+    const [merged] = mergeConnectedApps(
+      [app({ chatBinding: older })],
+      [app({ revokedAt: 2_000_000, disconnectedAt: 2_000_000 })],
+    )
+
+    expect(merged.revokedAt).toBe(2_000_000)
+    expect(merged.chatBinding).toEqual(older)
   })
 })

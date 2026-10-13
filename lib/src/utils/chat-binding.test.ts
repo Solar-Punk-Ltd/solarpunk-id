@@ -10,6 +10,8 @@ import {
   buildChatBindingMessage,
   createChatBinding,
   isCleanSiteOrigin,
+  newerChatBinding,
+  onlySiteChatBinding,
   parseChatBindingMessage,
   verifyChatBinding,
 } from "./chat-binding"
@@ -299,5 +301,67 @@ describe("acceptedChatBinding", () => {
 
   it("has nothing to keep when it was given nothing", () => {
     expect(acceptedChatBinding(undefined, expected)).toBeUndefined()
+  })
+})
+
+describe("onlySiteChatBinding", () => {
+  const OTHER_SITE = "https://other.example.com"
+  const apps = [
+    {
+      appUrl: SITE,
+      chatBinding: createChatBinding(ACCOUNT_KEY, SITE, DATE),
+    },
+    {
+      appUrl: OTHER_SITE,
+      chatBinding: createChatBinding(ACCOUNT_KEY, OTHER_SITE, DATE),
+    },
+    { appUrl: "https://third.example.com" },
+  ]
+
+  it("keeps the binding of the named site and drops every other", () => {
+    const kept = onlySiteChatBinding(apps, SITE)
+
+    expect(kept.map((app) => app.appUrl)).toEqual(apps.map((a) => a.appUrl))
+    expect(kept[0].chatBinding).toEqual(apps[0].chatBinding)
+    expect(kept[1].chatBinding).toBeUndefined()
+    expect("chatBinding" in kept[1]).toBe(false)
+    expect(kept[2].chatBinding).toBeUndefined()
+  })
+
+  it("drops them all for a site with no entry", () => {
+    const kept = onlySiteChatBinding(apps, "https://new.example.com")
+
+    expect(kept.every((app) => app.chatBinding === undefined)).toBe(true)
+  })
+})
+
+describe("newerChatBinding", () => {
+  const older = createChatBinding(ACCOUNT_KEY, SITE, DATE)
+  const newer = createChatBinding(
+    ACCOUNT_KEY,
+    SITE,
+    new Date("2026-10-15T12:00:00.000Z"),
+  )
+
+  it("picks the binding with the later date, whichever side it is on", () => {
+    expect(newerChatBinding(older, newer)).toEqual(newer)
+    expect(newerChatBinding(newer, older)).toEqual(newer)
+  })
+
+  it("picks the one that is there over none", () => {
+    expect(newerChatBinding(undefined, older)).toEqual(older)
+    expect(newerChatBinding(older, undefined)).toEqual(older)
+    expect(newerChatBinding(undefined, undefined)).toBeUndefined()
+  })
+
+  it("keeps the first on a tie", () => {
+    const same = { ...older }
+    expect(newerChatBinding(older, same)).toBe(older)
+  })
+
+  it("ranks a binding whose message does not parse below any that does", () => {
+    const broken = { message: "not a binding", signature: older.signature }
+    expect(newerChatBinding(broken, older)).toEqual(older)
+    expect(newerChatBinding(older, broken)).toEqual(older)
   })
 })
