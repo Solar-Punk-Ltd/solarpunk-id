@@ -73,7 +73,7 @@ delete propagates), not dropped.
    (per device)        │     latest pointer = that device's FULL current view (apps/stamps/scalars)       │  NO cross-device contention
                        └───────────────────────────────────────────────────────────────────────────────┘
   read        ────────▶  foldAccountFromSwarm = read roster → read each non-removed device's latest view
-                          (in parallel) → foldAccount(views, rosterDevices)  → converged account
+                          (in parallel) → foldAccount(views, rosterDevices, accountId) → converged account
 ```
 
 All feeds share **one owner** — the account backup key,
@@ -131,7 +131,7 @@ partition lease still keeps two devices' writes slot-disjoint on the shared batc
 
 `foldAccountFromSwarm({ bee, derivationKey, accountId })` (`fold-account-from-swarm.ts`): derive the
 owner/encryption key → `readRoster` (empty ⇒ `undefined`, i.e. "no backup") → read each non-removed
-device's latest view **in parallel** (`Promise.all`) → `foldAccount(views, rosterDevices)`. Two callers:
+device's latest view **in parallel** (`Promise.all`) → `foldAccount(views, rosterDevices, accountId)`. Two callers:
 
 - **Restore (a new device signing in)** — ui `sign-back-in.ts` and the import page →
   `foldedToSyncedAccount` → the account record the sign-in/import flow stores.

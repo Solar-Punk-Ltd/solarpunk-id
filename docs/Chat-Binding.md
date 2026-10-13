@@ -115,9 +115,13 @@ The binding is public and is the same on every device of the account, so it
 syncs with the connection, unlike the app secret. Two copies of one connection
 merge their bindings on the binding's own date, the newer kept, and a copy
 without one never removes the other's (`mergeConnectedApps`). Because that date
-is only the signer's claim, a binding that verifies and names the connection's
-own site always beats one that does not, whatever date the other claims, and
-only two of the same standing are ordered by date. The account's own
+is only the signer's claim, a binding the account itself signed for the
+connection's own site always beats one that does not pass that test, whatever
+date the other claims, and only two of the same standing are ordered by date.
+A signature only says who signed the exact message it covers: a real binding
+with its date edited still recovers a signer, just not the account, so the
+merge compares the signer with the account whose state it merges and does not
+stop at a signature that recovers someone. The account's own
 copy, in the window and on its other devices, keeps the binding of every site.
 
 ## What a frame holds
