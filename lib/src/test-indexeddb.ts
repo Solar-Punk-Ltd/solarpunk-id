@@ -34,13 +34,35 @@ function later(fn: () => void): void {
   setTimeout(fn, 0)
 }
 
+/**
+ * Transactions run one after another, as the browser runs read-write
+ * transactions over the same store, so a read and an add in one transaction
+ * see no other transaction's add in between.
+ */
 class FakeTransaction {
   oncomplete: Handler = null
   onerror: Handler = null
   onabort: Handler = null
+  error: unknown = null
   private pending = 0
+  private finish!: () => void
+  readonly done = new Promise<void>((resolve) => {
+    this.finish = resolve
+  })
 
-  constructor(private readonly stores: Map<string, Map<unknown, unknown>>) {}
+  constructor(
+    private readonly stores: Map<string, Map<unknown, unknown>>,
+    private readonly turn: Promise<void>,
+  ) {}
+
+  private settle(): void {
+    if (this.pending > 0) return
+    later(() => {
+      if (this.error) this.onerror?.({})
+      else this.oncomplete?.({})
+      this.finish()
+    })
+  }
 
   objectStore(name: string) {
     const rows = this.stores.get(name)
@@ -48,20 +70,21 @@ class FakeTransaction {
     const run = <T>(work: () => T): FakeRequest<T> => {
       const req = request<T>()
       this.pending++
-      later(() => {
-        try {
-          req.result = work()
-          req.onsuccess?.({ target: req })
-        } catch (error) {
-          req.error = error
-          req.onerror?.({ target: req })
-          this.onerror?.({ target: req })
-          return
-        } finally {
-          this.pending--
-        }
-        if (this.pending === 0) later(() => this.oncomplete?.({}))
-      })
+      void this.turn.then(() =>
+        later(() => {
+          try {
+            req.result = work()
+            req.onsuccess?.({ target: req })
+          } catch (error) {
+            req.error = error
+            this.error = error
+            req.onerror?.({ target: req })
+          } finally {
+            this.pending--
+            this.settle()
+          }
+        }),
+      )
       return req
     }
     return {
@@ -80,6 +103,7 @@ class FakeTransaction {
 class FakeDatabase {
   readonly stores = new Map<string, Map<unknown, unknown>>()
   version = 0
+  private last: Promise<void> = Promise.resolve()
 
   get objectStoreNames() {
     return { contains: (name: string) => this.stores.has(name) }
@@ -90,7 +114,9 @@ class FakeDatabase {
   }
 
   transaction(_names: string | string[], _mode?: string): FakeTransaction {
-    return new FakeTransaction(this.stores)
+    const tx = new FakeTransaction(this.stores, this.last)
+    this.last = tx.done
+    return tx
   }
 
   close(): void {}
