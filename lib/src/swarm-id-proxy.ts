@@ -2059,48 +2059,57 @@ export class SwarmIdProxy {
   }
 
   /**
-   * Save stamper bucket state to IndexedDB
-   * Utilization-aware stamper persists bucket state automatically
+   * Save stamper bucket state to IndexedDB, logging a failure rather than
+   * throwing. The upload path relies on this: the coordinator flushes in a
+   * `finally`, after the upload has already gone out.
    */
   private async saveStamperState(): Promise<void> {
+    try {
+      await this.persistStamperState()
+    } catch (error) {
+      console.error("[Proxy] Failed to save stamper state:", error)
+    }
+  }
+
+  /**
+   * Save stamper bucket state to IndexedDB and tell local peers, throwing when
+   * the save fails.
+   */
+  private async persistStamperState(): Promise<void> {
     if (!this.stamper) {
       return
     }
 
-    try {
-      // Capture bucket updates BEFORE flush clears dirtyBuckets — and the lane
-      // they belong to in the same breath. Reading the lane after the await
-      // instead lets a teardown landing mid-flush (`unbindPartition` resets the
-      // partition to undefined and the count to 1) relabel partition-p counters
-      // as the legacy `{0, 1}` lane, which every momentarily-unbound same-batch
-      // peer then folds — the exact resume-pointer skip the lane guard exists
-      // to prevent.
-      const buckets = this.stamper.getBucketUpdatesForBroadcast()
-      const partition = this.stamper.currentPartition ?? 0
-      const partitionCount = this.stamper.partitionCount
+    // Capture bucket updates BEFORE flush clears dirtyBuckets — and the lane
+    // they belong to in the same breath. Reading the lane after the await
+    // instead lets a teardown landing mid-flush (`unbindPartition` resets the
+    // partition to undefined and the count to 1) relabel partition-p counters
+    // as the legacy `{0, 1}` lane, which every momentarily-unbound same-batch
+    // peer then folds — the exact resume-pointer skip the lane guard exists
+    // to prevent.
+    const buckets = this.stamper.getBucketUpdatesForBroadcast()
+    const partition = this.stamper.currentPartition ?? 0
+    const partitionCount = this.stamper.partitionCount
 
-      await this.stamper.flush()
+    await this.stamper.flush()
 
-      // Broadcast the utilization update to peers with pre-captured buckets.
-      // Local transports only: the counters are per-partition, and every peer
-      // a remote transport reaches is a different device holding a different
-      // lane, so a remote copy is dropped at the receive guard after paying for
-      // encryption and a frame the signaling server's payload cap may refuse
-      // outright (one entry per dirty bucket, up to NUM_BUCKETS of them).
-      if (this.postageBatchId && buckets.length > 0) {
-        this.bus.publish(
-          {
-            type: "utilization-updated",
-            batchId: this.postageBatchId,
-            partition,
-            partitionCount,
-            buckets,
-          },
-          { localOnly: true },
-        )
-      }
-    } catch (error) {
-      console.error("[Proxy] Failed to save stamper state:", error)
+    // Broadcast the utilization update to peers with pre-captured buckets.
+    // Local transports only: the counters are per-partition, and every peer
+    // a remote transport reaches is a different device holding a different
+    // lane, so a remote copy is dropped at the receive guard after paying for
+    // encryption and a frame the signaling server's payload cap may refuse
+    // outright (one entry per dirty bucket, up to NUM_BUCKETS of them).
+    if (this.postageBatchId && buckets.length > 0) {
+      this.bus.publish(
+        {
+          type: "utilization-updated",
+          batchId: this.postageBatchId,
+          partition,
+          partitionCount,
+          buckets,
+        },
+        { localOnly: true },
+      )
     }
   }
 
@@ -4510,8 +4519,9 @@ export class SwarmIdProxy {
    * Stamp a chunk with the account's own stamp and hand the stamp back, for
    * the app to send through its own Swarm access. The stamp takes the same
    * write path as an upload, so it is returned only after the coordinator has
-   * published the partition counter and saved the stamper state, the guarantee
-   * an upload's ack carries. The account's own lock and counter chunks never
+   * published the partition counter, the guarantee an upload's ack carries.
+   * It also needs the stamper state saved, and refuses when that save fails.
+   * The account's own lock and counter chunks never
    * come through here, they stay inside the frame and go through its node.
    */
   private async handleStampChunk(
@@ -4539,7 +4549,12 @@ export class SwarmIdProxy {
               "The write path has no utilization-aware stamper to stamp with.",
             )
           }
-          return this.stampWithinAppLimits(target.stamper, prepared.address)
+          const stamped = this.stampWithinAppLimits(
+            target.stamper,
+            prepared.address,
+          )
+          await this.persistStamperStateForStamp()
+          return stamped
         },
       )
 
@@ -4553,6 +4568,24 @@ export class SwarmIdProxy {
       })
     } catch (error) {
       this.sendErrorToParent(event, requestId, error, "stampChunk failed")
+    }
+  }
+
+  /**
+   * Save the counter a stamp spent before the stamp is returned. The write
+   * path's own flush only logs a failure, which an upload can afford and a
+   * stamp cannot: an account on one device keeps its counter nowhere else, so
+   * after a reload the slot would be handed out a second time.
+   */
+  private async persistStamperStateForStamp(): Promise<void> {
+    try {
+      await this.persistStamperState()
+    } catch (error) {
+      console.error("[Proxy] Failed to save the stamp's counter:", error)
+      throw new SwarmIdError(
+        "internal",
+        "The stamp counter could not be saved, so no stamp was returned. Try again.",
+      )
     }
   }
 
