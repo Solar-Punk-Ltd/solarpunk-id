@@ -170,7 +170,8 @@ transient and backs off with jitter.
   `AccountDeltaMessageSchema.snapshot` extends `AccountStateSnapshotSchemaV1`
   (`lib/src/bus/messages.ts`), assembled by `serializeAccountStateSnapshot` + `portableConnectedApp`
   (`lib/src/bus/account-delta.ts`), minus the per-context session
-  material (`appSecret`, `connectedUntil` — stripped on send _and_ on receive), and merging
+  material (`appSecret`, `connectedUntil` — stripped on send _and_ on receive) and every
+  site's chat binding (stripped the same way, see [Chat-Binding.md](Chat-Binding.md)), and merging
   reuses the LWW fold rules of `lib/src/sync/merge-snapshot.ts` — a delta received over the bus
   merges exactly like a device-state feed payload, metadata scalars included on their per-field
   clocks (#610). Revocation notices ride the same channel so a live iframe drops its session

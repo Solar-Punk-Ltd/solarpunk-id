@@ -98,11 +98,48 @@ a person is not asked again. A revoke or a disconnect leaves it, because it stay
 true for as long as the account and the site do. When the window signs a new one
 for the same site, with a new date, it replaces the old.
 
+A kept binding is reused for as long as it still verifies and still names this
+site, this chat address and this account, so it keeps the date it was first
+signed with. A reconnect months later hands over the same statement with the
+same old date. Only a binding that no longer passes those checks is replaced by
+a fresh one.
+
 A reader that sees several bindings for the same site and the same account
-trusts the one with the newest `Date`, and ignores the rest.
+trusts the one with the newest `Date`, and ignores the rest. That date is the
+signer's own claim, written by the window that signed it from the device's
+clock. Nothing else vouches for it, so a reader uses it only to order one
+account's bindings for one site against each other, never as a trusted time
+of signing.
 
 The binding is public and is the same on every device of the account, so it
-syncs with the connection, unlike the app secret.
+syncs with the connection, unlike the app secret. Two copies of one connection
+merge their bindings on the binding's own date, the newer kept, and a copy
+without one never removes the other's (`mergeConnectedApps`). The account's own
+copy, in the window and on its other devices, keeps the binding of every site.
+
+## What a frame holds
+
+The proxy frame runs inside the page of the site it serves, so anything it holds
+that page's scripts may be able to reach. Another site's binding there would
+link the account to its chat on that other site, which that other site may
+never have published. So a frame holds its own site's binding and no other:
+
+- The handover's account projection carries only the connecting site's binding
+  (`partitionHandoverAccount`).
+- The frame drops any other site's binding from the view it builds, on a
+  handover and on a restored session alike, and from the session it stores.
+- The account bus carries no binding at all, on send and on receive, because
+  its room is shared with the frames of every connected site
+  ([Account-Bus.md](Account-Bus.md)). The windows get bindings from storage
+  and the synced feed instead.
+
+Two ways in stay open, and both come from what a frame needs to work rather
+than from the binding. A frame whose storage is shared with the identity site
+reads the whole account out of that storage. And a partitioned frame holds the
+account's derivation key, which the account bus and the write lease need, and
+that key also opens the account's synced feed on Swarm, where every binding is
+kept. A frame never reads the feed for bindings, but a script that took over
+the frame could.
 
 ## How it reaches the site
 
