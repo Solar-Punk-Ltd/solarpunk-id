@@ -80,8 +80,9 @@ stored record is kept for a later load to open.
 
 Without IndexedDB, where `indexedDB` is missing or null, there is nowhere to
 keep the key beside the data, so it lasts as long as the page and the next
-load reads as signed out. Where IndexedDB is there but cannot be opened, the
-page does the same for what it writes, and what was stored before is
+load reads as signed out. Where IndexedDB is there but cannot be opened,
+including an open that is blocked or takes longer than ten seconds
+(`KEY_DB_OPEN_TIMEOUT_MS`), the page does the same for what it writes, and what was stored before is
 unavailable rather than lost, as above, so a later load that can open
 IndexedDB still reads it. Signing in to such an account on that page would
 write keys sealed with the page's own key over the stored ones, so that write

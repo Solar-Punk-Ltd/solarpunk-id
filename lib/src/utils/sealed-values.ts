@@ -31,6 +31,11 @@ const KEY_DB_VERSION = 1
 const KEY_STORE = "wrapping-keys"
 const WRAPPING_KEY_ID = "at-rest-v1"
 const IV_BYTES = 12
+/**
+ * How long an IndexedDB open may take before it counts as failed. A hung open
+ * would otherwise hold the storage write lock until the window closes.
+ */
+const KEY_DB_OPEN_TIMEOUT_MS = 10_000
 
 /** Where the wrapping key is kept. */
 interface WrappingKeyStore {
@@ -46,16 +51,41 @@ function idbRequest<T>(request: IDBRequest<T>): Promise<T> {
   })
 }
 
+/**
+ * Opens the key database, or rejects when the open fails, is blocked, or takes
+ * longer than `KEY_DB_OPEN_TIMEOUT_MS`. An open that succeeds after giving up
+ * is closed at once.
+ */
 function openKeyDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
+    let settled = false
+    const fail = (error: unknown) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      reject(error)
+    }
+    const timer = setTimeout(
+      () => fail(new Error("IndexedDB open timed out")),
+      KEY_DB_OPEN_TIMEOUT_MS,
+    )
     const request = indexedDB.open(KEY_DB_NAME, KEY_DB_VERSION)
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(KEY_STORE)) {
         request.result.createObjectStore(KEY_STORE)
       }
     }
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      if (settled) {
+        request.result.close()
+        return
+      }
+      settled = true
+      clearTimeout(timer)
+      resolve(request.result)
+    }
+    request.onerror = () => fail(request.error)
+    request.onblocked = () => fail(new Error("IndexedDB open was blocked"))
   })
 }
 
