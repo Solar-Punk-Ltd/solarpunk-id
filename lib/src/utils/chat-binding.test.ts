@@ -60,6 +60,9 @@ describe("isCleanSiteOrigin", () => {
     ["no host", "https://"],
     ["a wildcard host", "https://*.example.com"],
     ["a host with an underscore", "https://view_er.example.com"],
+    ["a host with a leading dot", "https://.example.com"],
+    ["a host with a trailing dot", "https://example.com."],
+    ["a host with a doubled dot", "https://a..b"],
     ["not a URL", "viewer.example.com"],
     ["empty", ""],
   ])("refuses %s", (_label, value) => {
