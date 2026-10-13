@@ -11,6 +11,7 @@
 
   import { resolve } from '$app/paths'
 
+  import SafariBackupPrompt from '$lib/components/safari-backup-prompt.svelte'
   import Toast from '$lib/components/toast.svelte'
   // ponytail: the sync engine lives under `$lib/dev` but operates on real account
   // data — #389 can relocate it out of `$lib/dev`; not worth the churn here.
@@ -102,6 +103,7 @@
 {:else}
   {#await accountsLoaded then}
     {@render children()}
+    <SafariBackupPrompt />
   {/await}
 
   <Toast message={toastStore.message} />
