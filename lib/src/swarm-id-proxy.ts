@@ -418,6 +418,14 @@ export class SwarmIdProxy {
    * Bounded by the account's partition count.
    */
   private pendingLaneUpdates = new Map<string, Map<number, number>>()
+  /**
+   * The newest timestamp this frame gave a stamp again of a single-owner
+   * chunk, in milliseconds, by site, stamp and chunk address. Set under the
+   * write lock when the stamp is made, while the stored slot record is
+   * written only after the lock, so a second stamp of that address inside
+   * the lock still gets a newer timestamp than the first.
+   */
+  private lastRestampMs = new Map<string, number>()
   private utilizationStore: UtilizationStoreDB | undefined
   private beeApiUrl: string
   private gnosisRpcUrl: string
@@ -4661,10 +4669,16 @@ export class SwarmIdProxy {
       const refusal = appRestampRefusal(usage, now)
       if (refusal) throw refusal
       slot = held.slot
-      timestampMs = restampTimestamp(held.timestampMs, now)
+      const restampKey = `${slotsKey}:${addressHex}`
+      const previousMs = Math.max(
+        held.timestampMs,
+        this.lastRestampMs.get(restampKey) ?? 0,
+      )
+      timestampMs = restampTimestamp(previousMs, now)
       marshaled = marshalStamp(
         stamper.restampDataChunk(chunk.address, slot, timestampMs),
       )
+      this.lastRestampMs.set(restampKey, timestampMs)
       nextUsage = recordAppRestamp(usage, now)
     } else {
       const stamp = this.stampNewSlot(stamper, chunk.address, usage, now)
