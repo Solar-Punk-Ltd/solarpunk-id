@@ -53,6 +53,7 @@ export const STORAGE_KEY_NETWORK_SETTINGS = "swarm-id-network-settings"
 export const STORAGE_CHALLENGE_KEY = "swarm-storage-challenge"
 export const STORAGE_KEY_LEASE_CACHE_PREFIX = "swarm-id-lease-v2"
 export const STORAGE_KEY_APP_STAMP_USAGE_PREFIX = "swarm-id-app-stamp-usage"
+export const STORAGE_KEY_SOC_RESTAMP_SLOTS_PREFIX = "swarm-id-soc-restamp-slots"
 
 /**
  * Key PREFIX for the handed-over session a PARTITIONED proxy keeps, so a reload
@@ -104,6 +105,18 @@ export function appStampUsageStorageKey(
   batchId: string,
 ): string {
   return `${STORAGE_KEY_APP_STAMP_USAGE_PREFIX}:${appOrigin}:${batchId.toLowerCase()}`
+}
+
+/**
+ * Where the frame keeps which slot each single-owner chunk one app had
+ * stamped went to (`proxy/soc-restamp-slots.ts`), per app origin and per
+ * batch, so stamping the same address again after a reload reuses the slot.
+ */
+export function socRestampSlotsStorageKey(
+  appOrigin: string,
+  batchId: string,
+): string {
+  return `${STORAGE_KEY_SOC_RESTAMP_SLOTS_PREFIX}:${appOrigin}:${batchId.toLowerCase()}`
 }
 
 /**

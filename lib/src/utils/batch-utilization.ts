@@ -1751,6 +1751,31 @@ export class UtilizationAwareStamper implements Stamper, SlotAssigner {
   }
 
   /**
+   * Partition lease was reclaimed: abort cleanly before a data stamp lands in
+   * slot space the peer now controls. Single-device legacy mode has no lease
+   * to invalidate, so neither condition can hold there. Two conditions:
+   *  - `leaseStale`: the refresh tick CONFIRMED a peer took over (write-verify
+   *    failed / displacement beacon seen), or the coordinator tore the lease
+   *    down. Holds across the unbind that follows, where the fall-through
+   *    in `assignSlot` would stamp at legacy slots.
+   *  - `leaseLocallyLapsed()`: this device's own clock says the lease expired
+   *    (skew margin applied). Catches the un-renewable case a disjoint-gateway
+   *    refresh can't confirm by reading, stopping a long op mid-stream the
+   *    moment the lease lapses locally, so the data write is fenced to the same
+   *    skew bound as the ack (Postage-Batch-Partitioning.md §12, "ack-safe").
+   *
+   * @throws PartitionLeaseLostError
+   */
+  private requireLiveLease(): void {
+    if (
+      this.leaseStale ||
+      (this.partition !== undefined && this.leaseLocallyLapsed())
+    ) {
+      throw new PartitionLeaseLostError()
+    }
+  }
+
+  /**
    * Pick the slot `chunkAddress` is stamped at within its bucket, and spend it.
    *
    * Synchronous on purpose: callers fire stamps concurrently, and with no await
@@ -1769,24 +1794,7 @@ export class UtilizationAwareStamper implements Stamper, SlotAssigner {
       return reservedSlot
     }
 
-    // Partition lease was reclaimed — abort cleanly before the stamp lands in
-    // slot space the peer now controls. Single-device legacy mode has no lease
-    // to invalidate, so neither condition can hold there. Two conditions:
-    //  - `leaseStale`: the refresh tick CONFIRMED a peer took over (write-verify
-    //    failed / displacement beacon seen), or the coordinator tore the lease
-    //    down. Holds across the unbind that follows, where the fall-through
-    //    below would stamp at legacy slots.
-    //  - `leaseLocallyLapsed()`: this device's own clock says the lease expired
-    //    (skew margin applied). Catches the un-renewable case a disjoint-gateway
-    //    refresh can't confirm by reading — stops a long op mid-stream the moment
-    //    the lease lapses locally, so the data write is fenced to the same skew
-    //    bound as the ack (Postage-Batch-Partitioning.md §12, "ack-safe").
-    if (
-      this.leaseStale ||
-      (this.partition !== undefined && this.leaseLocallyLapsed())
-    ) {
-      throw new PartitionLeaseLostError()
-    }
+    this.requireLiveLease()
 
     // This device's next slot in its partition's lane: slot = partitionCount +
     // partition + partitionCount·j, where j is the per-partition counter.
@@ -1854,6 +1862,55 @@ export class UtilizationAwareStamper implements Stamper, SlotAssigner {
       throw new AppSliceFullError()
     }
     return this.stamp(chunkAddress, timestampMs)
+  }
+
+  /**
+   * Whether `slot` is a data slot this device's current lane has already
+   * taken in `chunkAddress`'s bucket, so stamping `chunkAddress` there again
+   * replaces only a chunk this lane put there. A reserved chunk's address is
+   * never one.
+   */
+  isOwnDataSlot(chunkAddress: Uint8Array, slot: number): boolean {
+    if (this.reservedSlotFor(chunkAddress) !== undefined) return false
+    const lane = this.partitionCountValue
+    const offset = slot - dataSlot(this.partition ?? 0, 0, lane)
+    if (offset < 0 || offset % lane !== 0) return false
+    const j = offset / lane
+    return j < this.utilizationState.dataCounters[toBucket(chunkAddress)]
+  }
+
+  /**
+   * Stamp a single-owner chunk an app had stamped before at the same slot,
+   * with a newer timestamp, so a mutable batch replaces the old chunk at that
+   * slot rather than spending a new one. No slot is taken and the counter
+   * does not move.
+   *
+   * @param slot - A slot {@link isOwnDataSlot} accepts for `chunkAddress`
+   * @param timestampMs - Must be newer than the last stamp at this slot
+   * @throws ReservedSlotError for one of the account's own bookkeeping chunks
+   * @throws PartitionLeaseLostError when the bound partition's lease is gone
+   */
+  restampDataChunk(
+    chunkAddress: Uint8Array,
+    slot: number,
+    timestampMs?: number,
+  ): EnvelopeWithBatchId {
+    if (this.reservedSlotFor(chunkAddress) !== undefined) {
+      throw new ReservedSlotError()
+    }
+    this.requireLiveLease()
+    if (!this.isOwnDataSlot(chunkAddress, slot)) {
+      throw new Error(
+        `Slot ${slot} is not a slot this device took in this chunk's bucket.`,
+      )
+    }
+    return stampAtSlot(
+      this.signer,
+      this.batchId,
+      chunkAddress,
+      slot,
+      timestampMs,
+    )
   }
 
   /** How many data chunks this device's partition lane holds in one bucket */

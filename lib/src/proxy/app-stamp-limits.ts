@@ -79,6 +79,33 @@ function limitRefusal(
 }
 
 /**
+ * Why stamping a single-owner chunk again at the slot it already holds is
+ * refused for this app, or undefined when it is allowed. No slot is spent, so
+ * only the count and the rate apply, not the bucket share.
+ */
+export function appRestampRefusal(
+  usage: AppStampUsage,
+  now: number,
+): SwarmIdError | undefined {
+  if (usage.count >= APP_STAMP_COUNT_LIMIT) {
+    return limitRefusal(
+      "app-stamp-count",
+      `This app has used its count limit of ${APP_STAMP_COUNT_LIMIT} stamps on this stamp.`,
+    )
+  }
+  if (
+    windowIsCurrent(usage, now) &&
+    usage.windowCount >= APP_STAMP_RATE_LIMIT
+  ) {
+    return limitRefusal(
+      "app-stamp-rate",
+      `This app has reached its rate limit of ${APP_STAMP_RATE_LIMIT} stamps per ${APP_STAMP_RATE_WINDOW_MS / MS_PER_SECOND} seconds. Try again shortly.`,
+    )
+  }
+  return undefined
+}
+
+/**
  * Why the next stamp for this app is refused, or undefined when it is allowed.
  *
  * @param target.bucket - The bucket the chunk's address lands in
@@ -88,21 +115,8 @@ export function appStampRefusal(
   usage: AppStampUsage,
   target: { bucket: number; laneCapacity: number; now: number },
 ): SwarmIdError | undefined {
-  if (usage.count >= APP_STAMP_COUNT_LIMIT) {
-    return limitRefusal(
-      "app-stamp-count",
-      `This app has used its count limit of ${APP_STAMP_COUNT_LIMIT} stamps on this stamp.`,
-    )
-  }
-  if (
-    windowIsCurrent(usage, target.now) &&
-    usage.windowCount >= APP_STAMP_RATE_LIMIT
-  ) {
-    return limitRefusal(
-      "app-stamp-rate",
-      `This app has reached its rate limit of ${APP_STAMP_RATE_LIMIT} stamps per ${APP_STAMP_RATE_WINDOW_MS / MS_PER_SECOND} seconds. Try again shortly.`,
-    )
-  }
+  const refusal = appRestampRefusal(usage, target.now)
+  if (refusal) return refusal
   const cap = appBucketCap(target.laneCapacity)
   if ((usage.buckets[target.bucket] ?? 0) >= cap) {
     return limitRefusal(
@@ -113,10 +127,9 @@ export function appStampRefusal(
   return undefined
 }
 
-/** The usage once one more stamp in `bucket` is counted */
-export function recordAppStamp(
+/** The usage once one more stamp at a slot already held is counted */
+export function recordAppRestamp(
   usage: AppStampUsage,
-  bucket: number,
   now: number,
 ): AppStampUsage {
   const current = windowIsCurrent(usage, now)
@@ -124,6 +137,18 @@ export function recordAppStamp(
     count: usage.count + 1,
     windowStart: current ? usage.windowStart : now,
     windowCount: current ? usage.windowCount + 1 : 1,
+    buckets: usage.buckets,
+  }
+}
+
+/** The usage once one more stamp in `bucket` is counted */
+export function recordAppStamp(
+  usage: AppStampUsage,
+  bucket: number,
+  now: number,
+): AppStampUsage {
+  return {
+    ...recordAppRestamp(usage, now),
     buckets: { ...usage.buckets, [bucket]: (usage.buckets[bucket] ?? 0) + 1 },
   }
 }

@@ -63,6 +63,7 @@ import {
   PartitionSessionSchemaV1,
   leaseCacheStorageKey,
   appStampUsageStorageKey,
+  socRestampSlotsStorageKey,
 } from "./types"
 import type { PopupToIframeMessage } from "./types"
 import {
@@ -94,12 +95,22 @@ import {
   accountInternalOwners,
   marshalStamp,
   prepareChunkToStamp,
+  type ChunkToStamp,
 } from "./proxy/stamp-chunk"
 import {
+  appRestampRefusal,
   appStampRefusal,
   parseAppStampUsage,
+  recordAppRestamp,
   recordAppStamp,
+  type AppStampUsage,
 } from "./proxy/app-stamp-limits"
+import {
+  parseSocRestampSlots,
+  recordSocSlot,
+  restampTimestamp,
+  slotOfStampIndex,
+} from "./proxy/soc-restamp-slots"
 import {
   downloadDataWithChunkAPI,
   downloadSOC,
@@ -4549,10 +4560,7 @@ export class SwarmIdProxy {
               "The write path has no utilization-aware stamper to stamp with.",
             )
           }
-          const stamped = this.stampWithinAppLimits(
-            target.stamper,
-            prepared.address,
-          )
+          const stamped = this.stampWithinAppLimits(target.stamper, prepared)
           await this.persistStamperStateForStamp()
           return stamped
         },
@@ -4592,13 +4600,18 @@ export class SwarmIdProxy {
   /**
    * Stamp for this app if its limits allow, and count the stamp. Synchronous
    * from the read of the usage to its write, so two requests can never both
-   * take the last stamp an app is allowed. The usage is written before the
-   * stamp is returned, so a stamp that could not be counted is never handed
-   * out.
+   * take the last stamp an app is allowed. The usage, and for a single-owner
+   * chunk the slot it went to, are written before the stamp is returned, so a
+   * stamp that could not be counted is never handed out.
+   *
+   * A single-owner chunk this app had stamped before in this device's lane is
+   * stamped again at the same slot with a newer timestamp, which a mutable
+   * batch takes as a replacement. That spends no slot, so only the count and
+   * the rate apply. A content chunk always takes a new slot.
    */
   private stampWithinAppLimits(
     stamper: UtilizationAwareStamper,
-    address: Uint8Array,
+    chunk: ChunkToStamp,
   ): string {
     if (!this.parentOrigin) {
       throw new SwarmIdError(
@@ -4606,26 +4619,73 @@ export class SwarmIdProxy {
         "No app has identified itself to this frame.",
       )
     }
-    const key = appStampUsageStorageKey(
-      this.parentOrigin,
-      stamper.batchId.toHex(),
-    )
-    const usage = parseAppStampUsage(localStorage.getItem(key))
-    const bucket = toBucket(address)
+    const batchId = stamper.batchId.toHex()
+    const usageKey = appStampUsageStorageKey(this.parentOrigin, batchId)
+    const usage = parseAppStampUsage(localStorage.getItem(usageKey))
     const now = Date.now()
+
+    if (!chunk.owner) {
+      const stamp = this.stampNewSlot(stamper, chunk.address, usage, now)
+      localStorage.setItem(usageKey, JSON.stringify(stamp.usage))
+      return stamp.marshaled
+    }
+
+    const slotsKey = socRestampSlotsStorageKey(this.parentOrigin, batchId)
+    const slots = parseSocRestampSlots(localStorage.getItem(slotsKey), {
+      partition: stamper.currentPartition ?? 0,
+      partitionCount: stamper.partitionCount,
+    })
+    const addressHex = uint8ArrayToHex(chunk.address)
+    const held = slots.slots[addressHex]
+
+    let slot: number
+    let timestampMs: number
+    let marshaled: string
+    let nextUsage: AppStampUsage
+    if (held && stamper.isOwnDataSlot(chunk.address, held.slot)) {
+      const refusal = appRestampRefusal(usage, now)
+      if (refusal) throw refusal
+      slot = held.slot
+      timestampMs = restampTimestamp(held.timestampMs, now)
+      marshaled = marshalStamp(
+        stamper.restampDataChunk(chunk.address, slot, timestampMs),
+      )
+      nextUsage = recordAppRestamp(usage, now)
+    } else {
+      const stamp = this.stampNewSlot(stamper, chunk.address, usage, now)
+      slot = stamp.slot
+      timestampMs = now
+      marshaled = stamp.marshaled
+      nextUsage = stamp.usage
+    }
+    localStorage.setItem(usageKey, JSON.stringify(nextUsage))
+    localStorage.setItem(
+      slotsKey,
+      JSON.stringify(recordSocSlot(slots, addressHex, slot, timestampMs)),
+    )
+    return marshaled
+  }
+
+  /** Stamp at a new slot within the app's limits, and the usage that counts it */
+  private stampNewSlot(
+    stamper: UtilizationAwareStamper,
+    address: Uint8Array,
+    usage: AppStampUsage,
+    now: number,
+  ): { marshaled: string; slot: number; usage: AppStampUsage } {
+    const bucket = toBucket(address)
     const refusal = appStampRefusal(usage, {
       bucket,
       laneCapacity: stamper.laneCapacity(),
       now,
     })
     if (refusal) throw refusal
-
-    const stamp = marshalStamp(stamper.stampDataChunk(address))
-    localStorage.setItem(
-      key,
-      JSON.stringify(recordAppStamp(usage, bucket, now)),
-    )
-    return stamp
+    const envelope = stamper.stampDataChunk(address, now)
+    return {
+      marshaled: marshalStamp(envelope),
+      slot: slotOfStampIndex(envelope.index),
+      usage: recordAppStamp(usage, bucket, now),
+    }
   }
 
   /**
