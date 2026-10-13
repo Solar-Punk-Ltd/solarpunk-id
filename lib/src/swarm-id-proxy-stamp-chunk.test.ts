@@ -76,7 +76,7 @@ type ProxyInternals = {
   stamper?: UtilizationAwareStamper
   coordinator?: {
     withWrite: (op: (target: unknown) => unknown) => unknown
-    teardown: () => void
+    teardown?: () => void
   }
   findConnectionForParent: () => unknown
   startRestoredSessionCheck: (input: unknown) => void
