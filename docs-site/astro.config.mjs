@@ -24,7 +24,7 @@ export default defineConfig({
         {
           icon: 'github',
           label: 'GitHub',
-          href: 'https://github.com/snaha/swarm-id',
+          href: 'https://github.com/Solar-Punk-Ltd/solarpunk-id',
         },
       ],
       sidebar: [

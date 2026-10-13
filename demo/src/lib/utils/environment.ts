@@ -3,6 +3,9 @@
 
 import { PUBLIC_ID_DOMAIN } from '$env/static/public'
 
+/** The Solar Punk identity site, which a deployed demo uses unless told otherwise. */
+const DEFAULT_ID_ORIGIN = 'https://solarpunkid.bzz.link'
+
 export function resolveProxyOrigin(): string {
   const urlParams = new URLSearchParams(window.location.search)
   const override = urlParams.get('idDomain')
@@ -15,5 +18,5 @@ export function resolveProxyOrigin(): string {
     return 'http://localhost:5500'
   }
 
-  return 'https://swarm-id.snaha.net'
+  return DEFAULT_ID_ORIGIN
 }

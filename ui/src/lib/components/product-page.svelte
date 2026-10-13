@@ -21,12 +21,10 @@
   import ProductHeroBg from '$lib/components/product-hero-bg.svelte'
   import SwarmWordmark from '$lib/components/swarm-wordmark.svelte'
   import { Button } from '$lib/components/ui/button'
+  import { DOCUMENTATION_URL, MAKER, REPOSITORY_URL } from '$lib/project-links'
   import routes from '$lib/routes'
   import { themeStore } from '$lib/stores/theme.svelte'
 
-  const DOCS_URL = 'https://swarm.snaha.net/docs/'
-  const GITHUB_URL = 'https://github.com/snaha/swarm-id'
-  const SNAHA_URL = 'https://snaha.net'
   const SWARM_FOUNDATION_URL = 'https://www.ethswarm.org'
 
   function toggleTheme() {
@@ -49,7 +47,7 @@
   <header class="relative flex w-full max-w-[1366px] items-center gap-2 p-8">
     <SwarmWordmark height={30} />
     <div class="flex flex-1 items-center justify-end gap-2">
-      <Button variant="outline" href={DOCS_URL} target="_blank" rel="noopener noreferrer">
+      <Button variant="outline" href={DOCUMENTATION_URL} target="_blank" rel="noopener noreferrer">
         <BookText />
         Documentation
       </Button>
@@ -82,7 +80,7 @@
         <Button
           variant="outline"
           size="lg"
-          href={DOCS_URL}
+          href={DOCUMENTATION_URL}
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -184,18 +182,32 @@
     </section>
 
     <footer class="mt-auto flex w-full max-w-7xl flex-wrap items-center gap-2.5 p-8">
-      <Button variant="ghost" size="xs" href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
+      <Button
+        variant="ghost"
+        size="xs"
+        href={REPOSITORY_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
         <Github />
         Github repository
       </Button>
-      <Button variant="ghost" size="xs" href={DOCS_URL} target="_blank" rel="noopener noreferrer">
+      <Button
+        variant="ghost"
+        size="xs"
+        href={DOCUMENTATION_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
         <BookText />
         Documentation
       </Button>
       <!-- eslint-disable svelte/no-navigation-without-resolve -- external links -->
       <p class="text-muted-foreground flex-1 text-right text-sm">
         Made by
-        <a href={SNAHA_URL} target="_blank" rel="noopener noreferrer" class="underline">Snaha</a>
+        <a href={MAKER.url} target="_blank" rel="noopener noreferrer" class="underline"
+          >{MAKER.name}</a
+        >
         for the
         <a href={SWARM_FOUNDATION_URL} target="_blank" rel="noopener noreferrer" class="underline">
           Ethereum Swarm Foundation

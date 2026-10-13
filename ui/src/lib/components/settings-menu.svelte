@@ -25,6 +25,7 @@
     DropdownMenuLabel,
     DropdownMenuSeparator,
   } from '$lib/components/ui/dropdown-menu'
+  import { DOCUMENTATION_URL } from '$lib/project-links'
   import routes from '$lib/routes'
   import { themeStore } from '$lib/stores/theme.svelte'
 
@@ -33,9 +34,6 @@
     { value: 'light', label: 'Light', icon: Sun },
     { value: 'dark', label: 'Dark', icon: Moon },
   ] as const
-
-  const PRODUCT_PAGE_URL = 'https://swarm-id.snaha.net'
-  const DOCUMENTATION_URL = 'https://swarm.snaha.net/docs'
 
   let dialogOpen = $state(false)
 
@@ -66,10 +64,9 @@
 
   <DropdownMenuSeparator />
 
-  <DropdownMenuItem href={PRODUCT_PAGE_URL} target="_blank" rel="noopener noreferrer">
+  <DropdownMenuItem href={resolve(routes.PRODUCT)}>
     <Globe class="size-4 shrink-0" />
     <span class="flex-1 whitespace-nowrap">Product page</span>
-    <ExternalLink class="text-muted-foreground size-3.5 shrink-0" />
   </DropdownMenuItem>
   <DropdownMenuItem href={DOCUMENTATION_URL} target="_blank" rel="noopener noreferrer">
     <BookOpen class="size-4 shrink-0" />
