@@ -241,12 +241,7 @@ function uploadPath(input: CheckInput): CheckResult {
 }
 
 export function runChecks(input: CheckInput): CheckResult[] {
-  return [
-    partitioning(input),
-    popupHandover(input),
-    writerPath(input),
-    uploadPath(input),
-  ]
+  return [partitioning(input), popupHandover(input), writerPath(input), uploadPath(input)]
 }
 
 /** A paste-able summary — the device has no console to copy from. */

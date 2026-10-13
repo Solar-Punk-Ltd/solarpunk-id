@@ -132,20 +132,12 @@ describe('runChecks', () => {
   })
 
   it('reports the upload round trip only once attempted', () => {
-    expect(verdictOf(runChecks({ connection: connected() }), 'upload')).toBe(
-      'unknown',
+    expect(verdictOf(runChecks({ connection: connected() }), 'upload')).toBe('unknown')
+    expect(verdictOf(runChecks({ connection: connected(), uploadRoundTrip: 'ok' }), 'upload')).toBe(
+      'pass',
     )
     expect(
-      verdictOf(
-        runChecks({ connection: connected(), loadCount: 0, uploadRoundTrip: 'ok' }),
-        'upload',
-      ),
-    ).toBe('pass')
-    expect(
-      verdictOf(
-        runChecks({ connection: connected(), loadCount: 0, uploadRoundTrip: 'failed' }),
-        'upload',
-      ),
+      verdictOf(runChecks({ connection: connected(), uploadRoundTrip: 'failed' }), 'upload'),
     ).toBe('fail')
   })
 })

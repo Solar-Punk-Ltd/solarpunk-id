@@ -216,8 +216,8 @@
         be the regression.
       </li>
       <li>
-        Repeat in a <strong>Private</strong> tab — the session is expected to be ephemeral there, so
-        having to connect again after a reload is the correct answer, not a failure.
+        Repeat in a <strong>Private</strong> tab — the session is expected to be ephemeral there, so having
+        to connect again after a reload is the correct answer, not a failure.
       </li>
       <li>Come back after a few days: that is what the ~30-day eviction window needs.</li>
       <li>Tap <strong>Copy report</strong> and paste it back.</li>
