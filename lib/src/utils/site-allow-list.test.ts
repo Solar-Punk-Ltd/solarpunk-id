@@ -264,6 +264,17 @@ describe("createSiteAllowList", () => {
       await expect(list.check(SITE)).resolves.toMatchObject(unavailable)
     })
 
+    it("when the record's answer is longer than any text record needs", async () => {
+      // Large enough that testing it as hex overflows the regex engine's stack.
+      chain.rawText = `0x${"ab".repeat(5_000_000)}`
+      const list = createSiteAllowList(settings())
+
+      await expect(list.check(SITE)).resolves.toMatchObject(unavailable)
+      const warned = vi.mocked(console.warn).mock.calls.at(-1)?.[1]
+      expect(warned).not.toBeInstanceOf(RangeError)
+      expect(String(warned)).toContain("longer than")
+    })
+
     it("when the ENS name is not a plain lower-case name", async () => {
       const list = createSiteAllowList(settings({ ensName: "SolarPunkID.eth" }))
 
