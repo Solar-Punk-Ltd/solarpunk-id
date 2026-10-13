@@ -1,0 +1,301 @@
+// Copyright 2026 The Swarm Authors. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+import { PrivateKey } from "@ethersphere/bee-js"
+import { secp256k1 } from "@noble/curves/secp256k1"
+import { describe, expect, it } from "vitest"
+import {
+  CHAT_BINDING_TITLE,
+  acceptedChatBinding,
+  buildChatBindingMessage,
+  createChatBinding,
+  isCleanSiteOrigin,
+  parseChatBindingMessage,
+  verifyChatBinding,
+} from "./chat-binding"
+import { deriveSecretSync } from "./key-derivation"
+
+const ACCOUNT_KEY = "ab".repeat(32)
+const SITE = "https://viewer.example.com"
+const DATE = new Date("2026-10-14T12:00:00.000Z")
+const DATE_TEXT = "2026-10-14T12:00:00.000Z"
+
+const addressOf = (key: string) =>
+  `0x${new PrivateKey(key).publicKey().address().toHex()}`
+const ACCOUNT_ADDRESS = addressOf(ACCOUNT_KEY)
+const CHAT_ADDRESS = addressOf(deriveSecretSync(ACCOUNT_KEY, SITE))
+
+const WELL_FORMED = [
+  CHAT_BINDING_TITLE,
+  `Site: ${SITE}`,
+  `Chat address: ${CHAT_ADDRESS}`,
+  `Date: ${DATE_TEXT}`,
+].join("\n")
+
+describe("isCleanSiteOrigin", () => {
+  it("accepts a bare https origin in its normalized form", () => {
+    expect(isCleanSiteOrigin("https://viewer.example.com")).toBe(true)
+    expect(isCleanSiteOrigin("https://viewer.example.com:8443")).toBe(true)
+    expect(isCleanSiteOrigin("https://xn--bcher-kva.example")).toBe(true)
+  })
+
+  it.each([
+    ["http scheme", "http://viewer.example.com"],
+    ["another scheme", "ftp://viewer.example.com"],
+    ["a path", "https://viewer.example.com/chat"],
+    ["a trailing slash", "https://viewer.example.com/"],
+    ["a query", "https://viewer.example.com?x=1"],
+    ["an empty query", "https://viewer.example.com?"],
+    ["a fragment", "https://viewer.example.com#x"],
+    ["an empty fragment", "https://viewer.example.com#"],
+    ["user info", "https://user@viewer.example.com"],
+    ["user and password", "https://user:pw@viewer.example.com"],
+    ["upper case", "https://Viewer.example.com"],
+    ["the default port spelled out", "https://viewer.example.com:443"],
+    ["a unicode host", "https://bücher.example"],
+    ["surrounding space", " https://viewer.example.com"],
+    ["trailing junk", "https://viewer.example.com\n"],
+    ["no host", "https://"],
+    ["not a URL", "viewer.example.com"],
+    ["empty", ""],
+  ])("refuses %s", (_label, value) => {
+    expect(isCleanSiteOrigin(value)).toBe(false)
+  })
+
+  it("refuses local http unless the caller allows it", () => {
+    expect(isCleanSiteOrigin("http://localhost:3500")).toBe(false)
+    expect(
+      isCleanSiteOrigin("http://localhost:3500", { allowLocalHttp: true }),
+    ).toBe(true)
+    expect(
+      isCleanSiteOrigin("http://127.0.0.1:3500", { allowLocalHttp: true }),
+    ).toBe(true)
+  })
+
+  it("allows only local hosts over http, even when local http is allowed", () => {
+    expect(
+      isCleanSiteOrigin("http://viewer.example.com", { allowLocalHttp: true }),
+    ).toBe(false)
+    expect(
+      isCleanSiteOrigin("http://localhost:3500/", { allowLocalHttp: true }),
+    ).toBe(false)
+  })
+})
+
+describe("buildChatBindingMessage", () => {
+  it("writes exactly the four lines of the v1 format", () => {
+    expect(
+      buildChatBindingMessage({
+        site: SITE,
+        chatAddress: CHAT_ADDRESS,
+        date: DATE,
+      }),
+    ).toBe(WELL_FORMED)
+  })
+
+  it("writes the chat address in lower case", () => {
+    const upper = `0x${CHAT_ADDRESS.slice(2).toUpperCase()}`
+    expect(
+      buildChatBindingMessage({ site: SITE, chatAddress: upper, date: DATE }),
+    ).toBe(WELL_FORMED)
+  })
+
+  it("refuses a site that is not a clean https origin", () => {
+    expect(() =>
+      buildChatBindingMessage({
+        site: "https://viewer.example.com/",
+        chatAddress: CHAT_ADDRESS,
+        date: DATE,
+      }),
+    ).toThrow(/site/i)
+  })
+
+  it("refuses a chat address that is not 20 bytes of hex", () => {
+    expect(() =>
+      buildChatBindingMessage({
+        site: SITE,
+        chatAddress: "0x1234",
+        date: DATE,
+      }),
+    ).toThrow(/chat address/i)
+  })
+
+  it("refuses an invalid date", () => {
+    expect(() =>
+      buildChatBindingMessage({
+        site: SITE,
+        chatAddress: CHAT_ADDRESS,
+        date: new Date(Number.NaN),
+      }),
+    ).toThrow(/date/i)
+  })
+})
+
+describe("parseChatBindingMessage", () => {
+  it("reads the fields back out of a well-formed message", () => {
+    expect(parseChatBindingMessage(WELL_FORMED)).toEqual({
+      site: SITE,
+      chatAddress: CHAT_ADDRESS,
+      date: DATE_TEXT,
+    })
+  })
+
+  const [title, site, chat, date] = WELL_FORMED.split("\n")
+  const upperChat = `Chat address: 0x${CHAT_ADDRESS.slice(2).toUpperCase()}`
+  it.each([
+    ["another first line", ["Swarm ID chat binding v2", site, chat, date]],
+    ["a missing line", [title, site, chat]],
+    ["an extra line", [title, site, chat, date, "Note: hello"]],
+    ["a trailing newline", [title, site, chat, date, ""]],
+    ["a leading blank line", ["", title, site, chat, date]],
+    ["lines out of order", [title, chat, site, date]],
+    ["a carriage return", [`${title}\r`, site, chat, date]],
+    ["a site with a path", [title, `Site: ${SITE}/x`, chat, date]],
+    ["an http site", [title, "Site: http://viewer.example.com", chat, date]],
+    ["an upper case chat address", [title, site, upperChat, date]],
+    [
+      "a chat address without 0x",
+      [title, site, `Chat address: ${CHAT_ADDRESS.slice(2)}`, date],
+    ],
+    ["a short chat address", [title, site, "Chat address: 0x1234", date]],
+    [
+      "a date without milliseconds",
+      [title, site, chat, "Date: 2026-10-14T12:00:00Z"],
+    ],
+    [
+      "a date with an offset",
+      [title, site, chat, "Date: 2026-10-14T12:00:00.000+02:00"],
+    ],
+    [
+      "an impossible date",
+      [title, site, chat, "Date: 2026-02-30T12:00:00.000Z"],
+    ],
+    ["a doubled space", [title, `Site:  ${SITE}`, chat, date]],
+  ])("refuses %s", (_label, shape) => {
+    expect(() => parseChatBindingMessage(shape.join("\n"))).toThrow()
+  })
+})
+
+describe("createChatBinding and verifyChatBinding", () => {
+  it("binds the site's own app key and recovers the account as signer", () => {
+    const binding = createChatBinding(ACCOUNT_KEY, SITE, DATE)
+
+    expect(binding.message).toBe(WELL_FORMED)
+    expect(binding.signature).toMatch(/^0x[0-9a-f]{130}$/)
+    expect(verifyChatBinding(binding)).toEqual({
+      signer: ACCOUNT_ADDRESS,
+      site: SITE,
+      chatAddress: CHAT_ADDRESS,
+      date: DATE_TEXT,
+    })
+  })
+
+  it("gives each site its own chat address", () => {
+    const other = createChatBinding(
+      ACCOUNT_KEY,
+      "https://other.example.com",
+      DATE,
+    )
+    expect(verifyChatBinding(other).chatAddress).not.toBe(CHAT_ADDRESS)
+  })
+
+  it("refuses a site that is not a clean https origin", () => {
+    expect(() =>
+      createChatBinding(ACCOUNT_KEY, "https://viewer.example.com/", DATE),
+    ).toThrow(/site/i)
+  })
+
+  it("recovers another signer when the message was changed", () => {
+    const binding = createChatBinding(ACCOUNT_KEY, SITE, DATE)
+    const changed = binding.message.replace("12:00:00", "12:00:01")
+    expect(
+      verifyChatBinding({ message: changed, signature: binding.signature })
+        .signer,
+    ).not.toBe(ACCOUNT_ADDRESS)
+  })
+
+  it("refuses a malformed message even with a valid signature", () => {
+    const binding = createChatBinding(ACCOUNT_KEY, SITE, DATE)
+    expect(() =>
+      verifyChatBinding({
+        message: `${binding.message}\n`,
+        signature: binding.signature,
+      }),
+    ).toThrow()
+  })
+
+  it.each([
+    ["too short", (s: string) => s.slice(0, -2)],
+    ["not hex", (s: string) => `${s.slice(0, -2)}zz`],
+    ["a recovery byte of 0", (s: string) => `${s.slice(0, -2)}00`],
+    ["a recovery byte of 29", (s: string) => `${s.slice(0, -2)}1d`],
+    ["without 0x", (s: string) => s.slice(2)],
+  ])("refuses a signature %s", (_label, mangle) => {
+    const binding = createChatBinding(ACCOUNT_KEY, SITE, DATE)
+    expect(() =>
+      verifyChatBinding({
+        message: binding.message,
+        signature: mangle(binding.signature),
+      }),
+    ).toThrow(/signature/i)
+  })
+
+  it("refuses the high-s twin of a valid signature", () => {
+    const binding = createChatBinding(ACCOUNT_KEY, SITE, DATE)
+    const r = binding.signature.slice(2, 66)
+    const s = BigInt(`0x${binding.signature.slice(66, 130)}`)
+    const v = parseInt(binding.signature.slice(130), 16)
+    const highS = (secp256k1.CURVE.n - s).toString(16).padStart(64, "0")
+    const flipped = (v === 27 ? 28 : 27).toString(16)
+    expect(() =>
+      verifyChatBinding({
+        message: binding.message,
+        signature: `0x${r}${highS}${flipped}`,
+      }),
+    ).toThrow(/signature/i)
+  })
+})
+
+describe("acceptedChatBinding", () => {
+  const binding = createChatBinding(ACCOUNT_KEY, SITE, DATE)
+  const expected = {
+    site: SITE,
+    chatAddress: CHAT_ADDRESS,
+    signer: ACCOUNT_ADDRESS,
+  }
+
+  it("keeps a binding that names this site, this chat key and this account", () => {
+    expect(acceptedChatBinding(binding, expected)).toEqual(binding)
+  })
+
+  it("compares addresses whatever their case or prefix", () => {
+    expect(
+      acceptedChatBinding(binding, {
+        site: SITE,
+        chatAddress: CHAT_ADDRESS.slice(2).toUpperCase(),
+        signer: ACCOUNT_ADDRESS.slice(2),
+      }),
+    ).toEqual(binding)
+  })
+
+  it.each([
+    ["another site", { ...expected, site: "https://other.example.com" }],
+    ["another chat address", { ...expected, chatAddress: ACCOUNT_ADDRESS }],
+    ["another signer", { ...expected, signer: CHAT_ADDRESS }],
+  ])("drops a binding for %s", (_label, other) => {
+    expect(acceptedChatBinding(binding, other)).toBeUndefined()
+  })
+
+  it("drops a binding that does not verify", () => {
+    expect(
+      acceptedChatBinding(
+        { message: CHAT_BINDING_TITLE, signature: binding.signature },
+        expected,
+      ),
+    ).toBeUndefined()
+  })
+
+  it("has nothing to keep when it was given nothing", () => {
+    expect(acceptedChatBinding(undefined, expected)).toBeUndefined()
+  })
+})
