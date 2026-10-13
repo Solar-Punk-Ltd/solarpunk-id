@@ -56,6 +56,8 @@ describe("isCleanSiteOrigin", () => {
     ["surrounding space", " https://viewer.example.com"],
     ["trailing junk", "https://viewer.example.com\n"],
     ["no host", "https://"],
+    ["a wildcard host", "https://*.example.com"],
+    ["a host with an underscore", "https://view_er.example.com"],
     ["not a URL", "viewer.example.com"],
     ["empty", ""],
   ])("refuses %s", (_label, value) => {
