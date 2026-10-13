@@ -10,6 +10,7 @@
   import type { SyncedAccount } from '@snaha/swarm-id/internal'
 
   import { resolve } from '$app/paths'
+  import { page } from '$app/state'
 
   import SafariBackupPrompt from '$lib/components/safari-backup-prompt.svelte'
   import Toast from '$lib/components/toast.svelte'
@@ -17,7 +18,7 @@
   // data — #389 can relocate it out of `$lib/dev`; not worth the churn here.
   import { foldCurrentAccount, startFoldInterval } from '$lib/dev/account-refresh'
   import { triggerSync } from '$lib/dev/sync-hooks'
-  import { isFramed, refusesToRunFramed } from '$lib/frame-guard'
+  import { LAYOUT_VIEW, isFramed, layoutView } from '$lib/frame-guard'
   import routes from '$lib/routes'
   import { accountBusStore } from '$lib/stores/account-bus'
   import { accountsLoaded, accountsStore, setAccountsSyncHook } from '$lib/stores/accounts.svelte'
@@ -29,13 +30,10 @@
 
   let { children } = $props()
 
-  // Decided once, at start: a refused page renders no children, so it has no
-  // links to navigate by and its answer cannot change.
-  const refused = refusesToRunFramed({
-    pathname: window.location.pathname,
-    base: resolve(routes.ROOT).replace(/\/$/, ''),
-    framed: isFramed(),
-  })
+  const framed = isFramed()
+  const base = resolve(routes.ROOT).replace(/\/$/, '')
+  const view = $derived(layoutView({ pathname: page.url.pathname, base, framed }))
+  const refused = $derived(view === LAYOUT_VIEW.REFUSAL)
 
   /** The stored record for an account, once it is signed in — a signed-out one
    *  carries no `derivationKey`, and the bus topic is derived from it. */
@@ -103,7 +101,9 @@
 {:else}
   {#await accountsLoaded then}
     {@render children()}
-    <SafariBackupPrompt />
+    {#if view === LAYOUT_VIEW.PAGE_WITH_PROMPTS}
+      <SafariBackupPrompt />
+    {/if}
   {/await}
 
   <Toast message={toastStore.message} />
