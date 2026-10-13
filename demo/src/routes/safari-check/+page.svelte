@@ -22,8 +22,7 @@
   import type { CheckInput } from '$lib/utils/safari-check'
   import { resolveProxyOrigin } from '$lib/utils/environment'
 
-  /** This page's own (first-party) record of what earlier loads saw. */
-  const SEEN_KEY = 'safari-check-device'
+  /** This page's own (first-party) count of loads since the last reset. */
   const LOADS_KEY = 'safari-check-loads'
   const TEST_PAYLOAD = 'swarm-id safari check'
   const COPY_RESET_MS = 2000
@@ -31,11 +30,10 @@
   /**
    * Module scope, so it is read once per real page load rather than once per
    * mount: navigating away in the SPA and back would otherwise re-read the id
-   * this same JS session just recorded and report a reload it never survived.
+   * this same JS session just counted and report a reload it never had.
    */
-  let pageLoad: { previousDeviceId?: string; loadCount: number } | undefined
+  let pageLoad: { loadCount: number } | undefined
 
-  let previousDeviceId = $state<string | undefined>(undefined)
   let loadCount = $state(0)
   let uploadRoundTrip = $state<'ok' | 'failed' | undefined>(undefined)
   let uploadError = $state<string | undefined>(undefined)
@@ -49,11 +47,8 @@
           storagePartitioned: clientStore.storagePartitioned,
           uploadMode: clientStore.uploadMode,
           uploadUnavailableReason: clientStore.uploadUnavailableReason,
-          deviceId: clientStore.deviceId,
         }
       : undefined,
-    previousDeviceId,
-    loadCount,
     uploadRoundTrip,
     uploadError,
   })
@@ -67,7 +62,6 @@
     userAgent: typeof navigator === 'undefined' ? 'unknown' : navigator.userAgent,
     dAppOrigin: typeof location === 'undefined' ? 'unknown' : location.origin,
     identityOrigin: resolveProxyOrigin(),
-    deviceId: clientStore.deviceId ?? '(none yet)',
     loads: String(loadCount),
     uploadMode: clientStore.authenticated ? clientStore.uploadMode : '(not connected)',
     uploadUnavailableReason: clientStore.authenticated
@@ -80,26 +74,16 @@
   })
 
   onMount(() => {
-    // Read BEFORE this load's id arrives, so the comparison is against what an
-    // earlier load recorded rather than against itself — and only once per page
-    // load, so a remount cannot count as one.
+    // Once per page load, so a remount cannot count as one.
     pageLoad ??= readPageLoad()
-    previousDeviceId = pageLoad.previousDeviceId
     loadCount = pageLoad.loadCount
   })
 
   function readPageLoad() {
     const count = Number(localStorage.getItem(LOADS_KEY) ?? '0') + 1
     localStorage.setItem(LOADS_KEY, String(count))
-    return { previousDeviceId: localStorage.getItem(SEEN_KEY) ?? undefined, loadCount: count }
+    return { loadCount: count }
   }
-
-  // Record this load's id only once it is known, so a reload has something to
-  // compare against next time.
-  $effect(() => {
-    const id = clientStore.deviceId
-    if (id) localStorage.setItem(SEEN_KEY, id)
-  })
 
   async function connect() {
     await clientStore.client?.connect()
@@ -134,10 +118,8 @@
   }
 
   function resetHistory() {
-    localStorage.removeItem(SEEN_KEY)
     localStorage.removeItem(LOADS_KEY)
     pageLoad = { loadCount: 0 }
-    previousDeviceId = undefined
     loadCount = 0
   }
 </script>
@@ -231,11 +213,11 @@
           href="https://github.com/snaha/swarm-id/issues/635"
           class="underline">#635</a
         > the session comes back from the partition's own store, and a connect popup here would itself
-        be the regression. The device-id check turns green or red then.
+        be the regression.
       </li>
       <li>
-        Repeat in a <strong>Private</strong> tab — the session is expected to be ephemeral there, so a
-        fresh device id is the correct answer, not a failure.
+        Repeat in a <strong>Private</strong> tab — the session is expected to be ephemeral there, so
+        having to connect again after a reload is the correct answer, not a failure.
       </li>
       <li>Come back after a few days: that is what the ~30-day eviction window needs.</li>
       <li>Tap <strong>Copy report</strong> and paste it back.</li>

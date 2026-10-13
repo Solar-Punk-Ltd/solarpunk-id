@@ -3543,9 +3543,6 @@ export class SwarmIdProxy {
         uploadMode === "unavailable"
           ? this.uploadUnavailableReason()
           : undefined,
-      // Read, not created: reporting it must not be what mints one, or the
-      // "did this survive the reload" comparison would always say yes.
-      deviceId: this.deviceId,
       identity,
       appKey,
       partition: this.coordinator?.currentPartition,
@@ -3592,7 +3589,6 @@ export class SwarmIdProxy {
       storagePartitioned: info.storagePartitioned,
       uploadMode: info.uploadMode,
       uploadUnavailableReason: info.uploadUnavailableReason,
-      deviceId: info.deviceId,
       identity: info.identity,
       appKey: info.appKey,
       partition: info.partition,
