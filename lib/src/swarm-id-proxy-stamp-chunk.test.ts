@@ -170,10 +170,13 @@ describe("SwarmIdProxy stampChunk", () => {
   async function userStampMode({
     batchId = BATCH_ID,
     localCounter = new Uint32Array(NUM_BUCKETS),
+    saveFails = false,
   } = {}): Promise<UtilizationAwareStamper> {
     const cache = {
       getAllChunks: async () => [],
-      putChunk: async () => undefined,
+      putChunk: async () => {
+        if (saveFails) throw new Error("IndexedDB write failed")
+      },
     } as unknown as UtilizationStoreDB
     const swarmEncryptionKey = deriveSecretSync(
       DERIVATION_KEY,
@@ -282,6 +285,24 @@ describe("SwarmIdProxy stampChunk", () => {
       "counter published and flushed",
       "stampChunkResponse",
     ])
+  })
+
+  it("refuses, with no stamp in the reply, when the counter it spent could not be saved", async () => {
+    await identify()
+    await userStampMode({ saveFails: true })
+    vi.spyOn(console, "error").mockImplementation(() => undefined)
+
+    await stampChunk({ kind: "content", data: spanAndPayload("unsaved") })
+
+    const reply = lastReply()
+    expect(reply).toMatchObject({
+      type: "error",
+      requestId: "r1",
+      code: "internal",
+      error: expect.stringContaining("could not be saved"),
+    })
+    expect(reply.stamp).toBeUndefined()
+    expect(replies().some((r) => r.type === "stampChunkResponse")).toBe(false)
   })
 
   it("never returns the same bucket slot twice, nor a reserved one", async () => {
