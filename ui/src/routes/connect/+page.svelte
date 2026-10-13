@@ -65,8 +65,8 @@
   })
   const otherAccounts = $derived(accounts.filter((account) => !previouslyUsed.includes(account)))
 
-  onMount(() => {
-    missingRequest = !connectStore.initFromHash(window.location.hash)
+  onMount(async () => {
+    missingRequest = !(await connectStore.initFromHash(window.location.hash))
   })
 
   async function select(account: Account) {
@@ -134,14 +134,16 @@
   <AppHeader />
 
   <main class="flex w-full flex-1 flex-col items-center justify-center px-8 pb-24">
-    {#if connectStore.refusedSite}
+    {#if connectStore.checkingSite}
+      <p class="text-muted-foreground text-sm">Checking the site</p>
+    {:else if connectStore.refusal}
       <div class="flex w-full max-w-96 flex-col items-center gap-8">
         <div class="flex flex-col items-center gap-2">
           <CircleAlert class="text-destructive size-5" />
           <div class="flex flex-col items-center text-center">
             <p class="text-sm font-bold">This site cannot connect</p>
-            <p class="text-sm break-all">{connectStore.refusedSite}</p>
-            <p class="text-sm">Swarm ID connects only to a site at a plain https address.</p>
+            <p class="text-sm break-all">{connectStore.refusal.site}</p>
+            <p class="text-sm">{connectStore.refusal.message}</p>
           </div>
         </div>
       </div>

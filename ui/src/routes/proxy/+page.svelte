@@ -13,6 +13,7 @@
 
   import { initProxy } from '@snaha/swarm-id/internal'
 
+  import { siteAllowList } from '$lib/accepted-site'
   import { busSignalingUrl } from '$lib/bus-signaling-url'
 
   // Account-bus signaling server (docs/Account-Bus.md). Shared with the SwarmID
@@ -22,7 +23,7 @@
   let container = $state<HTMLDivElement>()
 
   onMount(() => {
-    const proxy = initProxy({ signalingUrl })
+    const proxy = initProxy({ signalingUrl, siteAllowList: siteAllowList() })
     if (container) {
       proxy.setAuthButtonContainer(container)
     }
