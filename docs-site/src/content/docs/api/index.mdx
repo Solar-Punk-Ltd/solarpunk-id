@@ -903,6 +903,21 @@ The stamp goes through the same write path as an upload: the cross-tab write loc
 
 In [subsidised mode](../subsidised-gateway/) the gateway stamps every upload, so there is no stamp of the account's to return: the call is refused with `upload-unavailable` and reason `subsidised`.
 
+#### Limits per app
+
+The stamp is the person's, so an app may only use part of it. Each app origin has its own limits, counted by the iframe in its own storage, so reloading the app does not reset them. The count is kept per stamp: when the account moves to a new stamp, every app starts a new count.
+
+| Limit              | Default                                                                    | Resets                                       | Reason when refused |
+| ------------------ | -------------------------------------------------------------------------- | -------------------------------------------- | ------------------- |
+| Count              | 10,000 stamps per app on one stamp                                         | Never on that stamp. A new stamp starts at 0 | `app-stamp-count`   |
+| Rate               | 60 stamps per app per 60 seconds                                           | When the 60 seconds are over                 | `app-stamp-rate`    |
+| Bucket share       | A third of a bucket's data lane per app, rounded down (2 of 7 at depth 20) | Never on that stamp                          | `app-bucket-share`  |
+| Account's own half | Apps together use only the lower half of a bucket's data lane              | Never on that stamp                          | `app-slice-full`    |
+
+The last row keeps the account's own uploads safe from apps. Every bucket of the stamp gives each device a lane of data slots. Apps and the account take slots from the same counter, so no slot is ever handed out twice. An app stamp is refused once the lane is half used, whoever used it, and the upper half is only ever spent by the account's own uploads. So however much apps stamp, the account keeps at least half of every bucket.
+
+Each refusal is `upload-unavailable` with the reason in the table, and its message names the limit and its value. A refused call spends no slot and is not counted. `app-stamp-rate` passes with time, the others stay until the account moves to a new stamp. The defaults are constants: `APP_STAMP_COUNT_LIMIT`, `APP_STAMP_RATE_LIMIT`, `APP_STAMP_RATE_WINDOW_MS` and `APP_BUCKET_SHARE` in `lib/src/proxy/app-stamp-limits.ts`, and `ACCOUNT_RESERVED_LANE_SHARE` in `lib/src/utils/batch-utilization.ts`.
+
 **Parameters:**
 
 | Parameter          | Type                                            | Required | Description                                                     |
@@ -925,6 +940,7 @@ In [subsidised mode](../subsidised-gateway/) the gateway stamps every upload, so
 
 - `SwarmIdError` `not-authenticated` if no session is connected
 - `SwarmIdError` `upload-unavailable` if the account cannot stamp, with reason `subsidised` in subsidised mode
+- `SwarmIdError` `upload-unavailable` with reason `app-stamp-count`, `app-stamp-rate`, `app-bucket-share` or `app-slice-full` when the app has reached one of its [limits](#limits-per-app)
 - `SwarmIdError` `invalid-request` for a chunk of the wrong shape or an owner that is one of the account's keys
 - `SwarmIdError` `partition-contended` or `lease-lost` as for an upload
 

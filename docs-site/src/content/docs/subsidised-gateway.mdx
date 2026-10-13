@@ -79,7 +79,7 @@ When `uploadMode` is `unavailable`, `ConnectionInfo.uploadUnavailableReason` nam
 
 The reason is `undefined` while the session is unauthenticated, and while `canUpload` is `true`.
 
-One more reason exists that `ConnectionInfo` never carries: `subsidised`, on a refused [`stampChunk`](../api/#stampchunkchunk). In subsidised mode the gateway stamps every upload, so there is no stamp of the account's for the iframe to hand back.
+Five more reasons exist that `ConnectionInfo` never carries, all on a refused [`stampChunk`](../api/#stampchunkchunk). `subsidised`: in subsidised mode the gateway stamps every upload, so there is no stamp of the account's for the iframe to hand back. `app-stamp-count`, `app-stamp-rate`, `app-bucket-share` and `app-slice-full`: the app reached one of its [limits per app](../api/#limits-per-app).
 
 ## Checking Upload Mode
 
