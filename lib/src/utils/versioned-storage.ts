@@ -389,7 +389,9 @@ export class VersionedStorageManager<T> {
 
   /**
    * Save data to storage. Resolves once written, which with sealing is after
-   * every earlier write to this key in this window.
+   * every earlier write to this key in this window. With sealing a write that
+   * fails rejects, so the caller can tell the person. Without it the failure
+   * is only logged.
    */
   save(data: T[], options?: { noRepublish?: boolean }): Promise<void> {
     let serialized: Record<string, unknown>[]
@@ -402,7 +404,14 @@ export class VersionedStorageManager<T> {
       return Promise.resolve()
     }
     if (!this.options.sealing) {
-      this.write(serialized, options)
+      try {
+        this.write(serialized, options)
+      } catch (e) {
+        console.error(
+          `[${this.options.loggerName ?? "Storage"}] Save failed:`,
+          e,
+        )
+      }
       return Promise.resolve()
     }
     return this.enqueue(async () => {
@@ -413,7 +422,8 @@ export class VersionedStorageManager<T> {
   /**
    * Read, change and write back as one step: the change sees what is stored
    * when its turn comes, after every earlier write to this key in this window.
-   * A change that returns `undefined` writes nothing.
+   * A change that returns `undefined` writes nothing. Rejects when the write
+   * fails.
    */
   update(
     mutate: (stored: T[]) => T[] | undefined,
@@ -460,18 +470,15 @@ export class VersionedStorageManager<T> {
     records: Record<string, unknown>[],
     options?: { noRepublish?: boolean },
   ): void {
-    try {
-      const wrapped: VersionedStorage = {
-        version: this.options.currentVersion,
-        data: records,
-      }
-      this.options.storage.setItem(this.options.key, JSON.stringify(wrapped))
-      this.notifySameWindow(options?.noRepublish)
-    } catch (e) {
-      console.error(`[${this.options.loggerName ?? "Storage"}] Save failed:`, e)
+    const wrapped: VersionedStorage = {
+      version: this.options.currentVersion,
+      data: records,
     }
+    this.options.storage.setItem(this.options.key, JSON.stringify(wrapped))
+    this.notifySameWindow(options?.noRepublish)
   }
 
+  /** The returned turn rejects on failure. The queue moves on regardless. */
   private enqueue(task: () => Promise<void>): Promise<void> {
     const key = this.options.key
     const run = (writeQueues.get(key) ?? Promise.resolve()).then(task)
@@ -479,7 +486,7 @@ export class VersionedStorageManager<T> {
       console.error(`[${this.options.loggerName ?? "Storage"}] Save failed:`, e)
     })
     writeQueues.set(key, settled)
-    return settled
+    return run
   }
 }
 

@@ -103,9 +103,10 @@ function indexedDbWrappingKeyStore(): WrappingKeyStore {
 }
 
 /**
- * Without IndexedDB there is nowhere to keep a key beside the data, so the key
- * lasts as long as the page. What it sealed cannot be opened by the next load,
- * which then reads as signed out: never plain text instead.
+ * Without IndexedDB, or with one that cannot be opened, there is nowhere to
+ * keep a key beside the data, so the key lasts as long as the page. What it
+ * sealed cannot be opened by the next load, which then reads as signed out:
+ * never plain text instead.
  */
 function memoryWrappingKeyStore(): WrappingKeyStore {
   let key: CryptoKey | undefined
@@ -120,21 +121,43 @@ function memoryWrappingKeyStore(): WrappingKeyStore {
   }
 }
 
-let keyStore: WrappingKeyStore | undefined
+interface ChosenKeyStore {
+  store: WrappingKeyStore
+  /**
+   * The page keeps its key in memory because IndexedDB is there but could not
+   * be opened. The stored values may still open on a later load, so one that
+   * does not open with this key is unavailable, not lost.
+   */
+  standsIn: boolean
+}
+
+let keyStore: Promise<ChosenKeyStore> | undefined
 let wrappingKey: Promise<CryptoKey> | undefined
 
-function currentKeyStore(): WrappingKeyStore {
-  keyStore ??=
-    typeof indexedDB === "undefined"
-      ? memoryWrappingKeyStore()
-      : indexedDbWrappingKeyStore()
+async function chooseKeyStore(): Promise<ChosenKeyStore> {
+  // Some browsers set indexedDB to null where it is turned off.
+  if (typeof indexedDB === "undefined" || !indexedDB) {
+    return { store: memoryWrappingKeyStore(), standsIn: false }
+  }
+  try {
+    const db = await openKeyDatabase()
+    db.close()
+    return { store: indexedDbWrappingKeyStore(), standsIn: false }
+  } catch {
+    return { store: memoryWrappingKeyStore(), standsIn: true }
+  }
+}
+
+/** Chosen once per page. */
+function currentKeyStore(): Promise<ChosenKeyStore> {
+  keyStore ??= chooseKeyStore()
   return keyStore
 }
 
 /** The wrapping key, created on first use. */
 function getWrappingKey(): Promise<CryptoKey> {
   wrappingKey ??= (async () => {
-    const store = currentKeyStore()
+    const { store } = await currentKeyStore()
     const existing = await store.get()
     if (existing) return existing
     const candidate = await crypto.subtle.generateKey(
@@ -208,6 +231,7 @@ async function openOne(sealed: string): Promise<void> {
     sealedByPlain.set(plaintext, sealed)
   } catch {
     // Left unopened: the wrapping key is gone, or the value was altered.
+    if ((await currentKeyStore()).standsIn) unavailableThisPage.add(sealed)
   }
 }
 

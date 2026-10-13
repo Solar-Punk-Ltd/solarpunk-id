@@ -20,6 +20,7 @@ import { browser } from '$app/environment'
 import { isCleanSite, requireCleanSite } from '$lib/clean-site'
 import { drivesNeedingAttention, soonestDriveExpiry } from '$lib/drives'
 import { daysToMs } from '$lib/duration'
+import { toastStore } from '$lib/stores/toast.svelte'
 
 type AccountSettings = { appSessionDuration?: number }
 
@@ -621,6 +622,14 @@ function revoked(app: ConnectedApp, tombstone: boolean): ConnectedApp {
 
 const storageManager = createAccountsStorageManager()
 
+/** Shown when an account change could not be written to this device. */
+export const ACCOUNT_SAVE_FAILED_TEXT =
+  'Your account changes could not be saved on this device. Try again, or reload the page.'
+
+function tellSaveFailed(): void {
+  toastStore.show(ACCOUNT_SAVE_FAILED_TEXT)
+}
+
 let accounts = $state<Account[]>([])
 
 /**
@@ -650,7 +659,9 @@ function persistAccount(account: Account, noRepublish = false): Promise<void> {
 
 /** Remove one account from storage by read-merge-write (see `persistAccount`). */
 function persistRemoval(id: EthAddress): void {
-  void storageManager.update((stored) => stored.filter((record) => !record.id.equals(id)))
+  void storageManager
+    .update((stored) => stored.filter((record) => !record.id.equals(id)))
+    .catch(tellSaveFailed)
 }
 
 /**
@@ -663,7 +674,7 @@ function commitAccount(account: Account, options?: { skipSync?: boolean }): void
   // Published once written, so a peer told of the change finds it in storage.
   void persistAccount(account, options?.skipSync).then(() => {
     if (!options?.skipSync) syncHook?.(account.id.toHex())
-  })
+  }, tellSaveFailed)
 }
 
 function hydrate(record: AccountRecord): Account {
@@ -737,12 +748,12 @@ export const accountsStore = {
     if (existing) {
       // Reuse the instance so references held elsewhere keep working.
       existing.applyRecord(record)
-      void persistAccount(existing)
+      void persistAccount(existing).catch(tellSaveFailed)
       return existing
     }
     const account = hydrate(record)
     accounts = [...accounts, account]
-    void persistAccount(account)
+    void persistAccount(account).catch(tellSaveFailed)
     return account
   },
 
@@ -763,7 +774,7 @@ export const accountsStore = {
   /** Wipe every account from this device (developer reset). */
   clear(): void {
     accounts = []
-    void storageManager.clear()
+    void storageManager.clear().catch(tellSaveFailed)
   },
 }
 

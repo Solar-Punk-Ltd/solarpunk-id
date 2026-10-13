@@ -3046,11 +3046,17 @@ export class SwarmIdProxy {
         } else {
           // Applied to what is stored when the write's turn comes, not to the
           // copy read before the roster round trip.
-          void manager!.update((stored) =>
-            stored.map((a) =>
-              a.id.toHex() === accountId ? { ...a, devices: mergedDevices } : a,
-            ),
-          )
+          // A failed write is logged by the queue, and a hidden frame has no
+          // one to show it to.
+          void manager!
+            .update((stored) =>
+              stored.map((a) =>
+                a.id.toHex() === accountId
+                  ? { ...a, devices: mergedDevices }
+                  : a,
+              ),
+            )
+            .catch(() => undefined)
         }
       }
     } catch (error) {
@@ -3498,26 +3504,30 @@ export class SwarmIdProxy {
     // came back on the next fold and a dApp-initiated Disconnect never reached
     // a peer the way the identity UI's does.
     const parentOrigin = this.parentOrigin
-    void createAccountsStorageManager().update((accounts) => {
-      let changed = false
-      const updated = accounts.map((account) => {
-        if (isSignedOutAccount(account)) return account
-        const connectedApps = account.connectedApps.map((app) => {
-          if (app.appUrl === parentOrigin) {
-            changed = true
-            return {
-              ...app,
-              connectedUntil: undefined,
-              appSecret: undefined,
-              disconnectedAt: Date.now(),
+    const disconnectWrite = createAccountsStorageManager().update(
+      (accounts) => {
+        let changed = false
+        const updated = accounts.map((account) => {
+          if (isSignedOutAccount(account)) return account
+          const connectedApps = account.connectedApps.map((app) => {
+            if (app.appUrl === parentOrigin) {
+              changed = true
+              return {
+                ...app,
+                connectedUntil: undefined,
+                appSecret: undefined,
+                disconnectedAt: Date.now(),
+              }
             }
-          }
-          return app
+            return app
+          })
+          return { ...account, connectedApps }
         })
-        return { ...account, connectedApps }
-      })
-      return changed ? updated : undefined
-    })
+        return changed ? updated : undefined
+      },
+    )
+    // Logged by the queue. A hidden frame has no one to show it to.
+    disconnectWrite.catch(() => undefined)
 
     // Reset auth state
     this.authenticated = false

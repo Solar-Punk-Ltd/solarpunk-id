@@ -74,8 +74,17 @@ signed out for that page only: its stored record is left exactly as it is,
 no write in that page replaces it with the signed-out copy, and a later load
 that can read IndexedDB opens the keys again (`isSealedValueUnavailable`).
 
-Without IndexedDB there is nowhere to keep the key beside the data, so it lasts
-as long as the page and the next load reads as signed out.
+Without IndexedDB, where `indexedDB` is missing or null, there is nowhere to
+keep the key beside the data, so it lasts as long as the page and the next
+load reads as signed out. Where IndexedDB is there but cannot be opened, the
+page does the same for what it writes, and what was stored before is
+unavailable rather than lost, as above, so a later load that can open
+IndexedDB still reads it.
+
+A write to the accounts document that still fails, because sealing or
+`localStorage` refused it, rejects instead of only being logged, and the
+identity UI shows a toast saying the change could not be saved on this device
+(`ACCOUNT_SAVE_FAILED_TEXT` in `ui/src/lib/stores/accounts.svelte.ts`).
 
 Writes to the accounts document now wait for sealing, so they are queued per
 key in the window, in call order, and a read-modify-write runs in its own turn
