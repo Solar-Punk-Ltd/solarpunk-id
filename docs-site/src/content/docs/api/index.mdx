@@ -103,7 +103,7 @@ This method must be called before using any other client methods. It creates a h
 
 - `invalid-state` if the client is already initialized, or `destroy()` runs before it resolves
 - `invalid-request` if `containerId` names no element
-- `init-failed` if the iframe fails to load, origin validation fails on the proxy side, or the proxy does not respond within the initialization timeout period (configurable via `initializationTimeout`, defaults to 30 seconds)
+- `init-failed` if the iframe fails to load, the proxy refuses the page's origin (it serves only the sites on its allow list, and the error message says which site and why), or the proxy does not respond within the initialization timeout period (configurable via `initializationTimeout`, defaults to 30 seconds)
 
 **Example:**
 

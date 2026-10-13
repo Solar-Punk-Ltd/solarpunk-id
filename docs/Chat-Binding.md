@@ -31,12 +31,13 @@ links their account to their chat on that site, and names the site.
 ## The site
 
 The site is the `origin` in the window's link (`#origin=`). The window accepts
-it only when it is a clean https origin in the exact form a browser reports
-one: a host and an optional port, no path, query, fragment or user info, lower
-case, punycode, no default port (`isCleanSiteOrigin`). A development build also
-accepts `http://localhost`, `http://127.0.0.1` and `http://[::1]`. Any other
+it only when it is on the site allow list ([Site-Allow-List.md](Site-Allow-List.md)),
+which holds only clean https origins in the exact form a browser reports one:
+a host and an optional port, no path, query, fragment or user info, lower case,
+punycode, no default port (`isCleanSiteOrigin`). A development build also
+accepts the dev origins its settings name, which may be local http. Any other
 link shows a refusal and no account is offered. `ui/src/lib/accepted-site.ts`
-is the one function that decides this.
+is the one place that decides this.
 
 ## The format
 
