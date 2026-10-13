@@ -154,6 +154,14 @@ function currentKeyStore(): Promise<ChosenKeyStore> {
   return keyStore
 }
 
+/**
+ * Whether this page seals with a key of its own because IndexedDB is there but
+ * could not be opened. What it seals now no later load can open.
+ */
+export async function sealsWithPageKey(): Promise<boolean> {
+  return (await currentKeyStore()).standsIn
+}
+
 /** The wrapping key, created on first use. */
 function getWrappingKey(): Promise<CryptoKey> {
   wrappingKey ??= (async () => {

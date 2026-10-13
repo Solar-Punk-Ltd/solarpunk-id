@@ -81,7 +81,9 @@ keep the key beside the data, so it lasts as long as the page and the next
 load reads as signed out. Where IndexedDB is there but cannot be opened, the
 page does the same for what it writes, and what was stored before is
 unavailable rather than lost, as above, so a later load that can open
-IndexedDB still reads it.
+IndexedDB still reads it. Signing in to such an account on that page would
+write keys sealed with the page's own key over the stored ones, so that write
+fails and the person sees the toast below.
 
 A write to the accounts document that still fails, because sealing or
 `localStorage` refused it, rejects instead of only being logged, and the

@@ -22,6 +22,7 @@ import {
   openedValue,
   primeSealedValues,
   sealValue,
+  sealsWithPageKey,
 } from "./sealed-values"
 import type {
   Account,
@@ -350,15 +351,24 @@ function holdsUnavailableKeys(record: JsonRecord): boolean {
  * The record to store for one being written. A signed-out record standing for
  * a stored one whose keys this page could not reach is the in-memory remnant
  * of `openStoredKeys`, and writing it would delete keys a later load can still
- * open, so the stored record is kept as it is.
+ * open, so the stored record is kept as it is. Keys this page seals with its
+ * own key would replace them with keys no later load can open, so that write
+ * fails instead and the stored record stays.
  */
-function recordToStore(
+async function recordToStore(
   record: JsonRecord,
   storedById: Map<unknown, JsonRecord>,
-): Promise<JsonRecord> | JsonRecord {
-  if (holdsKeys(record)) return mapStoredKeys(record, sealValue)
+): Promise<JsonRecord> {
   const stored = storedById.get(record.id)
-  return stored && holdsUnavailableKeys(stored) ? stored : record
+  const keepsUnavailableKeys =
+    stored !== undefined && holdsUnavailableKeys(stored)
+  if (!holdsKeys(record)) return keepsUnavailableKeys ? stored : record
+  if (keepsUnavailableKeys && (await sealsWithPageKey())) {
+    throw new Error(
+      "This page cannot keep keys for a later visit, and the stored keys may still open on one",
+    )
+  }
+  return mapStoredKeys(record, sealValue)
 }
 
 const accountKeySealing: RecordSealing = {
