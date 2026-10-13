@@ -154,9 +154,10 @@ function memoryWrappingKeyStore(): WrappingKeyStore {
 interface ChosenKeyStore {
   store: WrappingKeyStore
   /**
-   * The page keeps its key in memory because IndexedDB is there but could not
-   * be opened. The stored values may still open on a later load, so one that
-   * does not open with this key is unavailable, not lost.
+   * The page keeps its key in memory in place of the browser's IndexedDB,
+   * because it is turned off (null) or could not be opened. The stored values
+   * may still open on a later load, so one that does not open with this key
+   * is unavailable, not lost.
    */
   standsIn: boolean
 }
@@ -165,10 +166,11 @@ let keyStore: Promise<ChosenKeyStore> | undefined
 let wrappingKey: Promise<CryptoKey> | undefined
 
 async function chooseKeyStore(): Promise<ChosenKeyStore> {
-  // Some browsers set indexedDB to null where it is turned off.
-  if (typeof indexedDB === "undefined" || !indexedDB) {
+  if (typeof indexedDB === "undefined") {
     return { store: memoryWrappingKeyStore(), standsIn: false }
   }
+  // Some browsers set indexedDB to null where it is turned off.
+  if (!indexedDB) return { store: memoryWrappingKeyStore(), standsIn: true }
   try {
     const db = await openKeyDatabase()
     db.close()
@@ -185,8 +187,8 @@ function currentKeyStore(): Promise<ChosenKeyStore> {
 }
 
 /**
- * Whether this page seals with a key of its own because IndexedDB is there but
- * could not be opened. What it seals now no later load can open.
+ * Whether this page seals with a key of its own in place of the browser's
+ * IndexedDB. What it seals now no later load can open.
  */
 export async function sealsWithPageKey(): Promise<boolean> {
   return (await currentKeyStore()).standsIn

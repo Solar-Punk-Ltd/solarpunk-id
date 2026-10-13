@@ -78,15 +78,15 @@ that can read IndexedDB opens the keys again (`isSealedValueUnavailable`). A
 partitioned session in that state is no session for that page only, and its
 stored record is kept for a later load to open.
 
-Without IndexedDB, where `indexedDB` is missing or null, there is nowhere to
-keep the key beside the data, so it lasts as long as the page and the next
-load reads as signed out. Where IndexedDB is there but cannot be opened,
+Without IndexedDB there is nowhere to keep the key beside the data, so it
+lasts as long as the page and the next load reads as signed out. Where the
+browser has IndexedDB turned off (`indexedDB` is null) or it cannot be opened,
 including an open that is blocked or takes longer than ten seconds
-(`KEY_DB_OPEN_TIMEOUT_MS`), the page does the same for what it writes, and what was stored before is
-unavailable rather than lost, as above, so a later load that can open
-IndexedDB still reads it. Signing in to such an account on that page would
-write keys sealed with the page's own key over the stored ones, so that write
-fails and the person sees the toast below.
+(`KEY_DB_OPEN_TIMEOUT_MS`), the page does the same for what it writes, and
+what was stored before is unavailable rather than lost, as above, so a later
+load that can open IndexedDB still reads it. Signing in to such an account on
+that page would write keys sealed with the page's own key over the stored
+ones, so that write fails and the person sees the toast below.
 
 A write to the accounts document that still fails, because sealing or
 `localStorage` refused it, rejects instead of only being logged, and the
@@ -100,8 +100,8 @@ key in the window, in call order, and a read-modify-write runs in its own turn
 origin cannot interleave a read and a write and lose one window's change, such
 as a disconnect. Where the Web Locks API is missing or refuses the lock
 request, only the window's own queue orders the writes. The identity UI
-renders no page until the
-stored accounts are read with their keys open (`accountsLoaded`).
+renders no page until the stored accounts are read with their keys open
+(`accountsLoaded`).
 
 - Code: `lib/src/utils/sealed-values.ts`, the account fields in
   `lib/src/utils/storage-managers.ts` (`accountKeySealing`), the queue and
