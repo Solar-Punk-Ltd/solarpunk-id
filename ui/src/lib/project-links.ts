@@ -10,5 +10,5 @@ export const REPOSITORY_URL = 'https://github.com/Solar-Punk-Ltd/solarpunk-id'
  */
 export const DOCUMENTATION_URL = `${REPOSITORY_URL}/tree/main/docs-site/src/content/docs`
 
-/** Who makes the fork, named in the product page's footer. */
-export const MAKER = { name: 'Solar Punk', url: 'https://solarpunk.buzz' } as const
+/** Who made Swarm ID, credited in the product page's footer. */
+export const MAKER = { name: 'Snaha', url: 'https://snaha.net' } as const
