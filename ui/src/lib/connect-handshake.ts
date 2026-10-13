@@ -31,7 +31,7 @@ import {
   stampsReachableByApp,
 } from '@snaha/swarm-id/internal'
 
-import { requireCleanSite } from '$lib/clean-site'
+import { requireCleanSite } from '$lib/accepted-site'
 import { strip0x } from '$lib/crypto/hex'
 import { privateKeyFromEntropy } from '$lib/crypto/mnemonic'
 import type { ConnectRequest } from '$lib/stores/connect.svelte'

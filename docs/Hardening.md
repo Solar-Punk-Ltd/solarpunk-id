@@ -29,7 +29,7 @@ Safari backup prompt, because those navigate to the account pages.
 The site arrives in the connect window's own link, written by whoever opened
 it, and becomes the app secret's derivation label and the key its connection
 is stored under. The connect store already refused a site that is not a clean
-https origin (`isAcceptedSite`). Every other use now asks the same clean-origin
+https origin (`siteAllowList`). Every other use now asks the same clean-origin
 question itself, so a caller that skipped the window's gate still cannot derive
 or store under such a site:
 
@@ -38,7 +38,7 @@ or store under such a site:
 - `Account.connectApp` refuses to record the connection, and
   `Account.setAppStamp` does nothing for such a site
   (`ui/src/lib/stores/accounts.svelte.ts`).
-- Code: `ui/src/lib/clean-site.ts` (`isCleanSite`, `requireCleanSite`).
+- Code: `ui/src/lib/accepted-site.ts` (`isCleanSite`, `requireCleanSite`).
 
 ## Keys are sealed at rest (P2-2)
 

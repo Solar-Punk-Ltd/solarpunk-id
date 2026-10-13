@@ -17,7 +17,7 @@ import {
 
 import { browser } from '$app/environment'
 
-import { isCleanSite, requireCleanSite } from '$lib/clean-site'
+import { isCleanSite, requireCleanSite } from '$lib/accepted-site'
 import { drivesNeedingAttention, soonestDriveExpiry } from '$lib/drives'
 import { daysToMs } from '$lib/duration'
 import { toastStore } from '$lib/stores/toast.svelte'

@@ -1,11 +1,21 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 /**
- * The one gate on which sites this identity manager serves
+ * The checks on a site, in one place.
+ *
+ * `siteAllowList` is the one gate on which sites this identity manager serves
  * (docs/Site-Allow-List.md). The connect window asks it about the site its own
  * link names, and the proxy frame about the page that embeds it, so both
  * answer from one list read with one set of settings.
+ *
+ * `isCleanSite` is the narrower question every use of a site asks on its own,
+ * because a site from the connect window's link becomes the app secret's
+ * derivation label and the key its connection is stored under. A caller that
+ * skipped the window's gate still cannot derive or store under a site that is
+ * not a clean https origin in its normalized form. A development build also
+ * takes local http, as the window does.
  */
+import { isCleanSiteOrigin } from '@snaha/swarm-id'
 import {
   DEFAULT_SITE_ALLOW_LIST_ENS_NAME,
   DEFAULT_SITE_ALLOW_LIST_RECORD_KEY,
@@ -63,4 +73,14 @@ let shared: SiteAllowList | undefined
 export function siteAllowList(): SiteAllowList {
   shared ??= createSiteAllowList(siteAllowListSettings(env, import.meta.env.DEV))
   return shared
+}
+
+export function isCleanSite(site: string): boolean {
+  return isCleanSiteOrigin(site, { allowLocalHttp: import.meta.env.DEV })
+}
+
+export function requireCleanSite(site: string): void {
+  if (!isCleanSite(site)) {
+    throw new Error(`Site ${JSON.stringify(site)} is not accepted: not a clean origin`)
+  }
 }
