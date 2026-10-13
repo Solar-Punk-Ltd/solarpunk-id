@@ -2168,7 +2168,22 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         heldApps().find((app) => app.appUrl === origin)?.chatBinding
 
       const storedSession = () =>
-        localStorageFake.getItem(partitionSessionStorageKey(PARENT_ORIGIN))!
+        localStorageFake.getItem(partitionSessionStorageKey(PARENT_ORIGIN))
+
+      /** The stored record, written once sealing has run, and its opened payload */
+      async function openedStoredSession(): Promise<{
+        record: { data: string }
+        opened: string
+      }> {
+        return vi.waitFor(() => {
+          const raw = storedSession()
+          expect(raw).toBeTruthy()
+          const record = JSON.parse(raw!) as { data: string }
+          const opened = openedValue(record.data)
+          expect(opened).toBeDefined()
+          return { record, opened: opened! }
+        })
+      }
 
       async function connectWithBothBindings(): Promise<void> {
         const challenge = await startPartitionedConnect()
@@ -2193,20 +2208,23 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       it("is not written to the stored session", async () => {
         await connectWithBothBindings()
 
-        expect(storedSession()).not.toContain(siblingBinding.signature)
-        expect(storedSession()).toContain(binding.signature)
+        const { opened } = await openedStoredSession()
+        expect(opened).not.toContain(siblingBinding.signature)
+        expect(opened).toContain(binding.signature)
       })
 
       it("is not held after restoring a stored session that carried it", async () => {
         await connectWithBothBindings()
         // A record written before this rule, or by another build.
-        const record = JSON.parse(storedSession()) as {
-          data: Record<string, unknown>
-        }
-        record.data.account = serializeSyncedAccount(accountWithBothBindings())
+        const { record, opened } = await openedStoredSession()
+        const wire = JSON.parse(opened) as Record<string, unknown>
+        wire.account = serializeSyncedAccount(accountWithBothBindings())
         localStorageFake.setItem(
           partitionSessionStorageKey(PARENT_ORIGIN),
-          JSON.stringify(record),
+          JSON.stringify({
+            ...record,
+            data: await sealValue(JSON.stringify(wire)),
+          }),
         )
 
         await reload()
