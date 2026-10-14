@@ -11,6 +11,7 @@ import type {
   UploadDataMessage,
   DownloadDataMessage,
   DeriveAppSecretMessage,
+  GetChatKeyMessage,
   StampChunkMessage,
   UploadFileMessage,
   DownloadFileMessage,
@@ -179,6 +180,7 @@ import {
   sealValue,
 } from "./utils/sealed-values"
 import {
+  deriveChatKey,
   deriveSecret,
   deriveSecretSync,
   deriveSharingKey,
@@ -189,7 +191,11 @@ import {
 import { hexToUint8Array, uint8ArrayToHex } from "./utils/hex"
 import { generatedAvatar } from "./utils/avatar"
 import { connectionInfoEqual } from "./utils/connection-info"
-import { acceptedChatBinding, onlySiteChatBinding } from "./utils/chat-binding"
+import {
+  acceptedChatBinding,
+  onlySiteChatBinding,
+  siteChatAddress,
+} from "./utils/chat-binding"
 import type { ChatBinding } from "./utils/chat-binding"
 import {
   activeDeviceIds,
@@ -1048,8 +1054,10 @@ export class SwarmIdProxy {
 
   /**
    * The handed-over chat binding, if it names exactly this parent origin, the
-   * address of the secret it came with and the account it came with, so the
-   * dApp is never shown a statement about another site, key or account.
+   * address of the chat key of the secret it came with and the account it came
+   * with, so the dApp is never shown a statement about another site, key or
+   * account. A restored session runs through here again, so a stored binding
+   * naming any other address is dropped on reload as well.
    *
    * Local http is allowed in the parse because the comparison with
    * `parentOrigin`, which the browser reported, is the check here. Which sites
@@ -1062,7 +1070,7 @@ export class SwarmIdProxy {
       data.chatBinding,
       {
         site: this.parentOrigin,
-        chatAddress: new PrivateKey(data.secret).publicKey().address().toHex(),
+        chatAddress: siteChatAddress(data.secret),
         signer: data.account.id.toHex(),
       },
       { allowLocalHttp: true },
@@ -1230,7 +1238,11 @@ export class SwarmIdProxy {
    * `parentOrigin` check below is now the belt to that pair of braces rather
    * than the only thing keeping two dApps apart. An expired, malformed or
    * unopenable record is removed on the way past: it will never become valid
-   * again, and a record whose seal does not open is no session. A record whose
+   * again, and a record whose seal does not open is no session. So is a record
+   * carrying a chat binding that fails `acceptHandedOverChatBinding`, such as
+   * one naming the app secret's address from before sites had a chat key:
+   * restored without it, the session would hand out a chat key no binding
+   * names, so the person unlocks once and the window signs a fresh one. A record whose
    * wrapping key this page could not read is no session for this page only,
    * and stays stored for a later load to open.
    */
@@ -1256,6 +1268,13 @@ export class SwarmIdProxy {
     }
     if (stored.record.parentOrigin !== parentOrigin) return undefined
     if (stored.record.connectedUntil <= Date.now()) {
+      this.clearPartitionSession()
+      return undefined
+    }
+    if (
+      data.data.chatBinding !== undefined &&
+      !this.acceptHandedOverChatBinding(data.data)
+    ) {
       this.clearPartitionSession()
       return undefined
     }
@@ -2558,6 +2577,10 @@ export class SwarmIdProxy {
 
       case "deriveAppSecret":
         await this.handleDeriveAppSecret(message, event)
+        break
+
+      case "getChatKey":
+        await this.handleGetChatKey(message, event)
         break
 
       case "stampChunk":
@@ -4774,6 +4797,36 @@ export class SwarmIdProxy {
       })
     } catch (error) {
       this.sendErrorToParent(event, requestId, error, "deriveAppSecret failed")
+    }
+  }
+
+  /**
+   * Hand the authenticated page its site's chat key, the key whose address the
+   * site's chat binding names (docs/Chat-Binding.md), so the site's chat can
+   * sign with it. Same authentication rule as `handleDeriveAppSecret`, and like
+   * it the app secret itself never leaves the frame.
+   */
+  private async handleGetChatKey(
+    message: GetChatKeyMessage,
+    event: MessageEvent,
+  ): Promise<void> {
+    const { requestId } = message
+
+    try {
+      if (!this.authenticated || !this.appSecret) {
+        throw new SwarmIdError(
+          "not-authenticated",
+          "Not authenticated. Please login first.",
+        )
+      }
+
+      this.postMessage(event, {
+        type: "getChatKeyResponse",
+        requestId,
+        chatKey: deriveChatKey(this.appSecret),
+      })
+    } catch (error) {
+      this.sendErrorToParent(event, requestId, error, "getChatKey failed")
     }
   }
 

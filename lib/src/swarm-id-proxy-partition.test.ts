@@ -216,7 +216,7 @@ import { BatchId, EthAddress, PrivateKey } from "@ethersphere/bee-js"
 
 import { SwarmIdProxy, PUBLISH_DEBOUNCE_MS } from "./swarm-id-proxy"
 import type { ProxyConfig } from "./swarm-id-proxy"
-import { allowingSites } from "./test-fixtures"
+import { allowingSites, appSecretAddressChatBinding } from "./test-fixtures"
 import { SignalingTransport } from "./bus/signaling-transport"
 import { busChannelName } from "./bus/account-bus"
 import { BusMessageSchema } from "./bus/messages"
@@ -2148,6 +2148,62 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       expect(messagesOfType("authSuccess")).toHaveLength(1)
       expect(lastInfo()?.canUpload).toBe(true)
       expect(lastInfo()?.chatBinding).toBeUndefined()
+    })
+
+    // The account's own signature over the address of the app secret, as
+    // bindings were signed before sites had a chat key.
+    it("drops a binding naming the app secret's address from the handover", async () => {
+      await connectWithBinding(
+        appSecretAddressChatBinding(ACCOUNT_KEY, PARENT_ORIGIN, new Date()),
+      )
+
+      expect(messagesOfType("authSuccess")).toHaveLength(1)
+      expect(lastInfo()?.chatBinding).toBeUndefined()
+    })
+
+    // The stored session keeps what the popup sent, so a reload sees that
+    // binding again. Restoring the session without it would hand out a chat
+    // key no binding names, so the session is ended instead: the person
+    // unlocks once, and the window signs a fresh binding.
+    it("ends a stored session whose binding names the app secret's address", async () => {
+      await connectWithBinding(
+        appSecretAddressChatBinding(ACCOUNT_KEY, PARENT_ORIGIN, new Date()),
+      )
+
+      await reload()
+
+      await vi.waitFor(() =>
+        expect(
+          localStorageFake.getItem(partitionSessionStorageKey(PARENT_ORIGIN)),
+        ).toBeNull(),
+      )
+      expect(lastInfo()?.identity).toBeUndefined()
+      expect(lastInfo()?.canUpload).toBe(false)
+      await dispatch(
+        { type: "getChatKey", requestId: "chat-key" },
+        PARENT_ORIGIN,
+        parentWindow,
+      )
+      expect(
+        messagesOfType("error").find(
+          (message) => message.requestId === "chat-key",
+        ),
+      ).toMatchObject({ code: "not-authenticated" })
+      expect(messagesOfType("getChatKeyResponse")).toHaveLength(0)
+    })
+
+    it("restores a stored session whose binding passes, chat key and all", async () => {
+      await connectWithBinding(binding)
+
+      await reload()
+
+      await dispatch(
+        { type: "getChatKey", requestId: "chat-key" },
+        PARENT_ORIGIN,
+        parentWindow,
+      )
+      expect(lastInfo()?.chatBinding).toEqual(binding)
+      expect(messagesOfType("getChatKeyResponse")).toHaveLength(1)
     })
 
     it("drops a binding signed by another account", async () => {

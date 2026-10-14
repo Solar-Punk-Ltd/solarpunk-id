@@ -9,15 +9,17 @@
  * (#578).
  */
 import { BatchId, EthAddress, PrivateKey } from '@ethersphere/bee-js'
-import { verifyChatBinding } from '@snaha/swarm-id'
+import { type ChatBinding, buildChatBindingMessage, verifyChatBinding } from '@snaha/swarm-id'
 import {
   AuthDataSchema,
   type ConnectedApp,
   type SyncedAccount,
   createChatBinding,
+  deriveChatKey,
   deriveSecret,
 } from '@snaha/swarm-id/internal'
 import { type Hex, recoverMessageAddress } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { completeConnect, partitionHandoverAccount, reuseConnection } from '$lib/connect-handshake'
@@ -215,7 +217,7 @@ describe('the chat binding at connect', () => {
     vi.unstubAllGlobals()
   })
 
-  it("signs the site's own app key with the account's key, as a personal message", async () => {
+  it("signs the site's own chat key with the account's key, as a personal message", async () => {
     const account = fakeAccount()
 
     await completeConnect(account, ENTROPY, request)
@@ -223,7 +225,7 @@ describe('the chat binding at connect', () => {
     const binding = savedBinding(account)
     expect(binding).toBeDefined()
     const appSecret = await deriveSecret(strip0x(wallet.privateKey), APP_ORIGIN)
-    const chatAddress = new PrivateKey(appSecret).publicKey().address().toHex()
+    const chatAddress = new PrivateKey(deriveChatKey(appSecret)).publicKey().address().toHex()
     expect(verifyChatBinding(binding!)).toEqual({
       signer: `0x${ACCOUNT_ID.toHex()}`,
       site: APP_ORIGIN,
@@ -330,5 +332,76 @@ describe('the chat binding at connect', () => {
 
     expect(handedOver().data.chatBinding).toEqual(kept)
     expect(savedBinding(account)).toEqual(kept)
+  })
+
+  /**
+   * A binding as the window signed it before sites had a chat key: the
+   * account's own signature over the address of the site's app secret.
+   */
+  async function appSecretAddressBinding(appSecret: string): Promise<ChatBinding> {
+    const message = buildChatBindingMessage({
+      site: APP_ORIGIN,
+      chatAddress: new PrivateKey(appSecret).publicKey().address().toHex(),
+      date: new Date('2026-10-01T12:00:00.000Z'),
+    })
+    const signature = await privateKeyToAccount(wallet.privateKey as Hex).signMessage({ message })
+    return { message, signature }
+  }
+
+  it("replaces a kept binding naming the app secret's address with one naming the chat key", async () => {
+    const appSecret = await deriveSecret(strip0x(wallet.privateKey), APP_ORIGIN)
+    const old = await appSecretAddressBinding(appSecret)
+    expect(verifyChatBinding(old).signer).toBe(`0x${ACCOUNT_ID.toHex()}`)
+    const account = fakeAccount([
+      { appUrl: APP_ORIGIN, appName: 'dApp', lastConnectedAt: 1, chatBinding: old },
+    ])
+
+    await completeConnect(account, ENTROPY, request)
+
+    const chatAddress = new PrivateKey(deriveChatKey(appSecret)).publicKey().address().toHex()
+    expect(verifyChatBinding(savedBinding(account)!).chatAddress).toBe(`0x${chatAddress}`)
+    expect(handedOver().data.chatBinding).toEqual(savedBinding(account))
+  })
+
+  // Reusing a session skips the unlock, so the window cannot sign there. It
+  // sends the person through the unlock instead of handing over no binding.
+  it("does not reuse a session whose kept binding names the app secret's address", async () => {
+    const appSecret = await deriveSecret(strip0x(wallet.privateKey), APP_ORIGIN)
+    const old = await appSecretAddressBinding(appSecret)
+    const account = fakeAccount([
+      {
+        appUrl: APP_ORIGIN,
+        appName: 'dApp',
+        lastConnectedAt: 1,
+        appSecret,
+        connectedUntil: Date.now() + 60_000,
+        chatBinding: old,
+      },
+    ])
+
+    expect(reuseConnection(account, request)).toBe(false)
+
+    expect(opener.postMessage).not.toHaveBeenCalled()
+    expect(savedBinding(account)).toEqual(old)
+  })
+
+  // A connection made before bindings existed keeps none at all. It goes
+  // through the unlock too, so it comes out with a binding.
+  it('does not reuse a session that keeps no binding at all', async () => {
+    const appSecret = await deriveSecret(strip0x(wallet.privateKey), APP_ORIGIN)
+    const account = fakeAccount([
+      {
+        appUrl: APP_ORIGIN,
+        appName: 'dApp',
+        lastConnectedAt: 1,
+        appSecret,
+        connectedUntil: Date.now() + 60_000,
+      },
+    ])
+
+    expect(reuseConnection(account, request)).toBe(false)
+
+    expect(opener.postMessage).not.toHaveBeenCalled()
+    expect(savedBinding(account)).toBeUndefined()
   })
 })

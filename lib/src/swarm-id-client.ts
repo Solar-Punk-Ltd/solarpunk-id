@@ -1382,6 +1382,42 @@ export class SwarmIdClient {
   }
 
   /**
+   * The site's chat key: the private key this site's chat signs messages
+   * with, whose address `connectionInfo.chatBinding` names as the account's
+   * chat address on this site (docs/Chat-Binding.md).
+   *
+   * It is derived inside the iframe from the app secret, which never leaves
+   * it, and is the same for this account and this site on every device. The
+   * library keeps it in memory only and never writes it to storage. Hold it no
+   * longer than the chat needs it, and never publish it.
+   *
+   * @returns A promise resolving to the 32-byte secp256k1 private key
+   * @throws {SwarmIdError} If the client is not initialized, or with code
+   *   `not-authenticated` when no account is connected
+   *
+   * @example
+   * ```typescript
+   * const chatKey = await client.getChatKey()
+   * const signer = new PrivateKey(chatKey) // its address is the binding's chat address
+   * ```
+   */
+  async getChatKey(): Promise<Uint8Array> {
+    this.ensureReady()
+    const requestId = this.generateRequestId()
+
+    const response = await this.sendRequest<{
+      type: "getChatKeyResponse"
+      requestId: string
+      chatKey: Uint8Array
+    }>({
+      type: "getChatKey",
+      requestId,
+    })
+
+    return response.chatKey
+  }
+
+  /**
    * Stamp a chunk with the account's own postage stamp and get the stamp back,
    * to send the chunk through whatever Swarm access the app chose: a gateway,
    * its own Bee node or a browser node.

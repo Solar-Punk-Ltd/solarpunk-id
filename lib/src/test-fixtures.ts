@@ -14,6 +14,12 @@ import type {
   PostageStamp,
 } from "./schemas"
 import type { SiteAllowList } from "./utils/site-allow-list"
+import { secp256k1 } from "@noble/curves/secp256k1"
+import { keccak_256 } from "@noble/hashes/sha3"
+import { buildChatBindingMessage } from "./utils/chat-binding"
+import type { ChatBinding } from "./utils/chat-binding"
+import { hexToUint8Array } from "./utils/hex"
+import { deriveSecretSync } from "./utils/key-derivation"
 
 export const TEST_ETH_ADDRESS_HEX = "a".repeat(40)
 export const TEST_ETH_ADDRESS_2_HEX = "b".repeat(40)
@@ -119,6 +125,39 @@ export function createPostageStamp(
     createdAt: 1700000000000,
     ...overrides,
   }
+}
+
+const PERSONAL_MESSAGE_PREFIX = "\x19Ethereum Signed Message:\n"
+const RECOVERY_OFFSET = 27
+const HEX_RADIX = 16
+
+/**
+ * A binding in the shape the identity UI signed before sites had a chat key
+ * of their own: correctly signed by the account, but naming the address of
+ * the site's app secret. Nothing may accept it now, and the tests that say so
+ * build it here, since `createChatBinding` can no longer produce one.
+ */
+export function appSecretAddressChatBinding(
+  accountKey: string,
+  site: string,
+  date: Date,
+): ChatBinding {
+  const appSecret = deriveSecretSync(accountKey, site)
+  const message = buildChatBindingMessage({
+    site,
+    chatAddress: new PrivateKey(appSecret).publicKey().address().toHex(),
+    date,
+  })
+  const body = new TextEncoder().encode(message)
+  const prefix = new TextEncoder().encode(
+    `${PERSONAL_MESSAGE_PREFIX}${body.length}`,
+  )
+  const signed = secp256k1.sign(
+    keccak_256(new Uint8Array([...prefix, ...body])),
+    hexToUint8Array(accountKey),
+  )
+  const recovery = (signed.recovery + RECOVERY_OFFSET).toString(HEX_RADIX)
+  return { message, signature: `0x${signed.toCompactHex()}${recovery}` }
 }
 
 /**

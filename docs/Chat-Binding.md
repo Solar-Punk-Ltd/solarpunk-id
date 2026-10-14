@@ -1,9 +1,16 @@
 # Chat binding
 
 A site that embeds Swarm ID gets its own key for each account, the app secret
-(`deriveSecret(masterKey, origin)`). Its address is what the site's chat signs
-messages with. Nothing in that key says which Swarm ID account it belongs to, and
-that is on purpose: two sites cannot link one person by comparing keys.
+(`deriveSecret(masterKey, origin)`), and from it a chat key of its own,
+`deriveChatKey(appSecret)`, which is `deriveSecret(appSecret, "swarm-id chat key v1")`
+held to a valid secp256k1 key (the docs site's Key Derivation page gives the rule).
+The chat key is what the site's chat signs messages with, and its address is the
+site's chat address. It depends on the account and the site alone, so every
+device of the account has the same chat key for a site. The site's page gets it
+from `client.getChatKey()`, which the frame answers only for an authenticated
+session, and the library keeps it in memory only. Nothing in that key says
+which Swarm ID account it belongs to, and that is on purpose: two sites cannot
+link one person by comparing keys.
 
 When a person wants their chat on a site to be recognisably theirs, the account
 says so in a signed statement, the chat binding: "this chat address on this site
@@ -54,7 +61,7 @@ Date: 2026-10-14T12:00:00.000Z
 - The first line names the format and its version. Any other first line is a
   different statement and is refused.
 - `Site` is the site origin as above.
-- `Chat address` is the address of that site's app secret, `0x` and lower case.
+- `Chat address` is the address of that site's chat key, `0x` and lower case.
 - `Date` is when it was signed, ISO 8601 in UTC with milliseconds, exactly as
   `Date.prototype.toISOString` writes it.
 
@@ -102,7 +109,18 @@ A kept binding is reused for as long as it still verifies and still names this
 site, this chat address and this account, so it keeps the date it was first
 signed with. A reconnect months later hands over the same statement with the
 same old date. Only a binding that no longer passes those checks is replaced by
-a fresh one.
+a fresh one. That includes a binding naming the app secret's own address, as
+bindings did before sites had a chat key: no reader, frame or window accepts it,
+and the window signs a fresh one naming the chat key in its place.
+
+Only the unlock signs. A reconnect that reuses a still-valid connection skips
+the unlock, so it is taken only when the kept binding passes those checks.
+Otherwise the window asks for the unlock and signs a fresh binding there.
+
+The chat key's label is versioned, `v1`, and a new label is how a leaked chat
+key is replaced: every account gets a new chat key on every site, every kept
+binding then names the old address, and the next connect to each site signs a
+fresh one.
 
 A reader that sees several bindings for the same site and the same account
 trusts the one with the newest `Date`, and ignores the rest. That date is the
@@ -159,9 +177,14 @@ Only through the handover the connect window already makes: the `setSecret`
 message to the proxy frame that opened it, which the frame checks against its
 own challenge and its parent origin. The binding rides in that message's data
 beside the secret. The frame passes it on only when it names exactly the parent
-origin, the address of the secret it came with and the account it came with. It
-keeps it with the session it saves, so a reload brings it back, and drops it on
-disconnect.
+origin, the address of the chat key of the secret it came with and the account
+it came with. It keeps it with the session it saves, so a reload brings it back,
+and drops it on disconnect.
+
+A reload checks the saved binding again. When it no longer passes, as a binding
+naming the app secret's address does, the frame ends the saved session rather
+than restore it without one, because that session would hand out a chat key no
+binding names. The person unlocks once, and the window signs a fresh binding.
 
 The dApp reads it as `client.connectionInfo.chatBinding`, and
 `onConnectionChange` fires when it arrives or changes.

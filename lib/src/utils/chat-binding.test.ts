@@ -3,6 +3,7 @@
 
 import { PrivateKey } from "@ethersphere/bee-js"
 import { secp256k1 } from "@noble/curves/secp256k1"
+import { keccak_256 } from "@noble/hashes/sha3"
 import { describe, expect, it } from "vitest"
 import {
   CHAT_BINDING_TITLE,
@@ -13,19 +14,25 @@ import {
   newerChatBinding,
   onlySiteChatBinding,
   parseChatBindingMessage,
+  siteChatAddress,
   verifyChatBinding,
 } from "./chat-binding"
-import { deriveSecretSync } from "./key-derivation"
+import { uint8ArrayToHex } from "./hex"
+import { deriveChatKey, deriveSecretSync } from "./key-derivation"
+import { appSecretAddressChatBinding } from "../test-fixtures"
 
 const ACCOUNT_KEY = "ab".repeat(32)
 const SITE = "https://viewer.example.com"
 const DATE = new Date("2026-10-14T12:00:00.000Z")
 const DATE_TEXT = "2026-10-14T12:00:00.000Z"
+const ADDRESS_BYTES = 20
 
-const addressOf = (key: string) =>
+const addressOf = (key: string | Uint8Array) =>
   `0x${new PrivateKey(key).publicKey().address().toHex()}`
 const ACCOUNT_ADDRESS = addressOf(ACCOUNT_KEY)
-const CHAT_ADDRESS = addressOf(deriveSecretSync(ACCOUNT_KEY, SITE))
+const APP_SECRET = deriveSecretSync(ACCOUNT_KEY, SITE)
+const CHAT_KEY = deriveChatKey(APP_SECRET)
+const CHAT_ADDRESS = addressOf(CHAT_KEY)
 
 const WELL_FORMED = [
   CHAT_BINDING_TITLE,
@@ -183,8 +190,48 @@ describe("parseChatBindingMessage", () => {
   })
 })
 
+describe("siteChatAddress", () => {
+  it("is the address of the site's chat key, not of its app secret", () => {
+    expect(`0x${siteChatAddress(APP_SECRET)}`).toBe(CHAT_ADDRESS)
+    expect(`0x${siteChatAddress(APP_SECRET)}`).not.toBe(addressOf(APP_SECRET))
+  })
+})
+
 describe("createChatBinding and verifyChatBinding", () => {
-  it("binds the site's own app key and recovers the account as signer", () => {
+  it("names the site's chat key, never the app secret's own address", () => {
+    const binding = createChatBinding(ACCOUNT_KEY, SITE, DATE)
+
+    expect(verifyChatBinding(binding).chatAddress).toBe(CHAT_ADDRESS)
+    expect(verifyChatBinding(binding).chatAddress).not.toBe(
+      addressOf(APP_SECRET),
+    )
+  })
+
+  // What a reader of the site's chat does: recover the author of a message
+  // the site signed with its chat key, then accept the binding that names
+  // that author for this account.
+  it("verifies end to end for a message the chat key signed", () => {
+    const binding = createChatBinding(ACCOUNT_KEY, SITE, DATE)
+    const digest = keccak_256(new TextEncoder().encode("hello, chat"))
+    const publicKey = secp256k1
+      .sign(digest, CHAT_KEY)
+      .recoverPublicKey(digest)
+      .toRawBytes(false)
+    const author = `0x${uint8ArrayToHex(
+      keccak_256(publicKey.slice(1)).slice(-ADDRESS_BYTES),
+    )}`
+
+    expect(author).toBe(CHAT_ADDRESS)
+    expect(
+      acceptedChatBinding(binding, {
+        site: SITE,
+        chatAddress: author,
+        signer: ACCOUNT_ADDRESS,
+      }),
+    ).toEqual(binding)
+  })
+
+  it("binds the site's own chat key and recovers the account as signer", () => {
     const binding = createChatBinding(ACCOUNT_KEY, SITE, DATE)
 
     expect(binding.message).toBe(WELL_FORMED)
@@ -304,6 +351,15 @@ describe("acceptedChatBinding", () => {
 
   it("has nothing to keep when it was given nothing", () => {
     expect(acceptedChatBinding(undefined, expected)).toBeUndefined()
+  })
+
+  // A binding the account really signed, from before sites had a chat key,
+  // naming the app secret's address. No fallback accepts it.
+  it("drops a binding the account signed for the app secret's address", () => {
+    const old = appSecretAddressChatBinding(ACCOUNT_KEY, SITE, DATE)
+
+    expect(verifyChatBinding(old).signer).toBe(ACCOUNT_ADDRESS)
+    expect(acceptedChatBinding(old, expected)).toBeUndefined()
   })
 })
 
