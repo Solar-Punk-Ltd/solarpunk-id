@@ -3795,7 +3795,9 @@ export class SwarmIdProxy {
       requestId: message.requestId,
       authenticated: this.authenticated,
       origin: this.authenticated ? this.parentOrigin : undefined,
-      beeApiUrl: this.beeApiUrl,
+      // The site's own address only. The person's node is theirs, and a site
+      // has no need to learn it.
+      beeApiUrl: this.siteBeeApiUrl,
     })
   }
 
@@ -3901,7 +3903,7 @@ export class SwarmIdProxy {
       appKey,
       partition: this.coordinator?.currentPartition,
       chatBinding: this.authenticated ? this.chatBinding : undefined,
-      beeApiUrl: this.beeApiUrl,
+      beeApiUrl: this.siteBeeApiUrl,
     }
   }
 
@@ -4922,7 +4924,7 @@ export class SwarmIdProxy {
     this.postMessage(event, {
       type: "setBeeApiUrlResponse",
       requestId: message.requestId,
-      beeApiUrl: this.beeApiUrl,
+      beeApiUrl: message.beeApiUrl,
     })
     this.emitConnectionInfoIfChanged()
   }

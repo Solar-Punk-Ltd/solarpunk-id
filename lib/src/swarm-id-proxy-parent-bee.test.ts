@@ -180,19 +180,23 @@ describe("SwarmIdProxy with the site's own Bee address", () => {
       expect(unsendable).toEqual([])
     })
 
-    it("reports the person's own node when the site gives none", async () => {
+    // The person's own node is theirs to keep private: a site is told only
+    // the address it gave itself.
+    it("never tells a site the person's own node", async () => {
       store.set(STORAGE_KEY_NETWORK_SETTINGS, NETWORK_SETTINGS(OWN_BEE_URL))
       const frame = mount()
       await frame.identify()
 
       await frame.send({ type: "checkAuth", requestId: "r2" })
 
-      expect(frame.sent("authStatusResponse")[0]).toMatchObject({
-        beeApiUrl: OWN_BEE_URL,
-      })
-      expect(frame.lastConnectionInfo()).toMatchObject({
-        beeApiUrl: OWN_BEE_URL,
-      })
+      expect(frame.sent("authStatusResponse")[0].beeApiUrl).toBeUndefined()
+      expect(frame.lastConnectionInfo().beeApiUrl).toBeUndefined()
+      expect(JSON.stringify(frame.sent("authStatusResponse"))).not.toContain(
+        "own-node.example.com",
+      )
+      expect(JSON.stringify(frame.sent("connectionInfoChanged"))).not.toContain(
+        "own-node.example.com",
+      )
       expect(internals(frame.proxy).bee.url).toBe(clientUrl(OWN_BEE_URL))
     })
 
@@ -283,9 +287,7 @@ describe("SwarmIdProxy with the site's own Bee address", () => {
       await other.identify()
 
       expect(internals(other.proxy).bee.url).toBe(clientUrl(OWN_BEE_URL))
-      expect(other.lastConnectionInfo()).toMatchObject({
-        beeApiUrl: OWN_BEE_URL,
-      })
+      expect(other.lastConnectionInfo().beeApiUrl).toBeUndefined()
     })
 
     it("keeps the person's own setting, and a change to it does not move the site", async () => {

@@ -880,10 +880,10 @@ export const ConnectionInfoSchema = z.object({
    */
   chatBinding: ChatBindingSchema.optional(),
   /**
-   * The Bee node this site's reads and writes go through: the address the
-   * site gave (`beeApiUrl`, `setBeeApiUrl`) when it gave one, otherwise the
-   * node the person set in Swarm ID. In subsidised mode the gateway is used
-   * instead (`uploadMode`).
+   * The Bee node the site gave (`beeApiUrl`, `setBeeApiUrl`), which its
+   * content reads and stamped uploads go through. Absent when the site gave
+   * none: the node the person set in Swarm ID is never reported to a site.
+   * In subsidised mode the gateway is used instead (`uploadMode`).
    */
   beeApiUrl: z.string().optional(),
 })

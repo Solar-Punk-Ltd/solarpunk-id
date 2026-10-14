@@ -851,6 +851,7 @@ export class SwarmIdClient {
    * @returns A promise resolving to the authentication status object
    * @returns return.authenticated - Whether the user is currently authenticated
    * @returns return.origin - The origin that authenticated (if authenticated)
+   * @returns return.beeApiUrl - The Bee node this site gave, if it gave one. The person's own node is never reported
    * @throws {Error} If the client is not initialized
    * @throws {Error} If the request times out
    *

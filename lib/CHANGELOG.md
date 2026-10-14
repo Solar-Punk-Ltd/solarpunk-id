@@ -4,13 +4,21 @@
 
 ### Features
 
-- **lib:** a site names the Bee node its session reads and writes through. `SwarmIdClient` takes a
+- **lib:** a site names the Bee node its own content goes through. `SwarmIdClient` takes a
   `beeApiUrl` option, and `client.setBeeApiUrl(url)` changes it without a reload. In that site's
-  frame it takes the place of the person's own Bee setting for every read and write, the write
-  lock and lease chunks included, while every other site and Swarm ID itself keep the person's
+  frame it takes the place of the person's own Bee setting for the content reads and stamped
+  uploads the site asks for. Everything that decides what the session may do or coordinates the
+  person's devices stays on the person's own node: the revocation check, the device roster, and
+  the write lock, lease and state chunks. Every other site and Swarm ID itself keep the person's
   setting. The address is held in memory by that site's frame and never stored.
-- **lib:** `connectionInfo.beeApiUrl` reports the Bee node in effect for the site, and
-  `checkAuthStatus().beeApiUrl` now reports that node too rather than always the person's own.
+- **lib:** `connectionInfo.beeApiUrl` reports the Bee node the site gave, and nothing when it gave
+  none.
+
+### Changed
+
+- **lib:** `checkAuthStatus().beeApiUrl` no longer reports the person's own Bee node. It used to
+  return the node set in Swarm ID's network settings to any site that asked. It now returns only
+  the address the site gave itself, and `undefined` otherwise.
 - **lib:** a subsidised gateway the site gives beside its own node is kept. The person's custom
   node switches the gateway off only while that node is the one in effect.
 
