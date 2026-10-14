@@ -7,14 +7,13 @@ The `SwarmIdClient` is the main class for integrating Swarm ID authentication an
 
 ## Installation
 
-This fork is not published to npm, and `@snaha/swarm-id` on npm is snaha's upstream package
-without this fork's changes. Build the library from this repository at a pinned commit and install
-the tarball, as [Quick Start](../getting-started/#install) shows.
+The library is `@solarpunkltd/swarm-id` on npm, installed as [Quick Start](../getting-started/#install)
+shows. `@snaha/swarm-id` on npm is snaha's upstream package, without this fork's changes.
 
 ## Quick Start
 
 ```typescript
-import { SwarmIdClient } from '@snaha/swarm-id'
+import { SwarmIdClient } from '@solarpunkltd/swarm-id'
 
 const client = new SwarmIdClient({
   iframeOrigin: 'https://swarm-id.example.com',
@@ -1741,7 +1740,7 @@ grantees.forEach((pubKey) => console.log('  -', pubKey))
 Every rejection a client call produces is a `SwarmIdError`. Its `message` is the text the call always carried; `code` is the stable part to branch on, and where Bee or the gateway answered, the response is there too:
 
 ```typescript
-import { SwarmIdError } from '@snaha/swarm-id'
+import { SwarmIdError } from '@solarpunkltd/swarm-id'
 
 try {
   await client.uploadData(data)
@@ -1826,7 +1825,7 @@ import type {
   // Errors
   SwarmIdErrorCode,
   SwarmIdErrorDetails,
-} from '@snaha/swarm-id'
+} from '@solarpunkltd/swarm-id'
 ```
 
 ---
@@ -1883,7 +1882,7 @@ The generated avatar as a standalone SVG string, for callers that want to inline
 **Returns:** `string` — a complete `<svg>` element
 
 ```typescript
-import { generatedAvatarSvg } from '@snaha/swarm-id'
+import { generatedAvatarSvg } from '@solarpunkltd/swarm-id'
 
 const identity = client.connectionInfo.identity
 if (identity) {
@@ -1897,4 +1896,4 @@ The same seed always produces the same image, so it is safe to render on every `
 
 ## The identity site's entry point
 
-Everything above is `@snaha/swarm-id`, the package root, and it is the whole surface an app needs: a `SwarmIdClient`, its types, and a few helpers for reading uploads back. The identity site (the trusted domain) imports its own half of the protocol from `@snaha/swarm-id/internal`: account state sync and the fold, key derivation, the account bus, the proxy iframe. Every function there takes the account record, the master key or `derivationKey`, none of which ever leaves the trusted domain, so an app cannot call them and nothing on the wire hands them out. That entry is not documented here; the design pages in the repository (`docs/Account-State.md`, `docs/Account-Bus.md`) and the [Key Derivation](../key-derivation/) page describe what it does. It is in the package's `exports` so the identity site can import it, with one more reader: a host that embeds the identity site and writes its `localStorage` directly, for which [Storage Layout](../storage-layout/) names the few schemas and functions to use. Beyond those, it carries no stability promise, its names move whenever the UI's needs do, and a change there is not a breaking change of the package. Do not build an app on it.
+Everything above is `@solarpunkltd/swarm-id`, the package root, and it is the whole surface an app needs: a `SwarmIdClient`, its types, and a few helpers for reading uploads back. The identity site (the trusted domain) imports its own half of the protocol from `@solarpunkltd/swarm-id/internal`: account state sync and the fold, key derivation, the account bus, the proxy iframe. Every function there takes the account record, the master key or `derivationKey`, none of which ever leaves the trusted domain, so an app cannot call them and nothing on the wire hands them out. That entry is not documented here; the design pages in the repository (`docs/Account-State.md`, `docs/Account-Bus.md`) and the [Key Derivation](../key-derivation/) page describe what it does. It is in the package's `exports` so the identity site can import it, with one more reader: a host that embeds the identity site and writes its `localStorage` directly, for which [Storage Layout](../storage-layout/) names the few schemas and functions to use. Beyond those, it carries no stability promise, its names move whenever the UI's needs do, and a change there is not a breaking change of the package. Do not build an app on it.

@@ -6,7 +6,7 @@ Cross-browser compatible authentication and identity management for Swarm dApps.
 
 ## Packages
 
-- **[lib/](./lib/README.md)** — `@snaha/swarm-id` TypeScript library for authentication and Bee API operations
+- **[lib/](./lib/README.md)** — `@solarpunkltd/swarm-id` TypeScript library for authentication and Bee API operations
 - **[ui/](./ui/README.md)** — `@swarm-id/ui` SvelteKit identity UI (trusted domain)
 - **[demo/](./demo/)** — Demo dApp with library integration examples
 - **[docs-site/](./docs-site/)** — Starlight (Astro) documentation website
@@ -24,24 +24,16 @@ The project uses an OAuth-style popup authentication flow over shared localStora
 
 ## Quick Start
 
-This fork is not published to npm. `@snaha/swarm-id` on npm is snaha's upstream package without this fork's changes. Build the library from this repository at a pinned commit and install the tarball in your app:
+The library is published to npm as `@solarpunkltd/swarm-id`. `@snaha/swarm-id` on npm is snaha's upstream package, without this fork's changes, so install this one by its own name.
 
 ```bash
-git clone https://github.com/Solar-Punk-Ltd/solarpunk-id.git
-cd solarpunk-id
-git checkout <commit>
-pnpm install --frozen-lockfile
-pnpm build:lib
-cd lib
-pnpm pack --pack-destination <your-app>/vendor
-# then, in your app
-pnpm add ./vendor/snaha-swarm-id-0.7.0.tgz
+pnpm add @solarpunkltd/swarm-id
 ```
 
 [Install](./docs-site/src/content/docs/getting-started.mdx#install) has the npm command, depending on a built checkout while developing, and why installing from git does not work.
 
 ```typescript
-import { SwarmIdClient } from '@snaha/swarm-id'
+import { SwarmIdClient } from '@solarpunkltd/swarm-id'
 
 const client = new SwarmIdClient({
   iframeOrigin: 'https://solarpunkid.bzz.link',
@@ -302,7 +294,7 @@ tools would be spending real money.
 
 ```
 .
-├── lib/                  # @snaha/swarm-id TypeScript library
+├── lib/                  # @solarpunkltd/swarm-id TypeScript library
 ├── ui/                   # Identity UI (SvelteKit + Tailwind v4 + shadcn-svelte style)
 ├── demo/                 # Demo app (SvelteKit)
 ├── signaling/            # Account-bus signaling and relay server (ws)
