@@ -384,4 +384,24 @@ describe('the chat binding at connect', () => {
     expect(opener.postMessage).not.toHaveBeenCalled()
     expect(savedBinding(account)).toEqual(old)
   })
+
+  // A connection made before bindings existed keeps none at all. It goes
+  // through the unlock too, so it comes out with a binding.
+  it('does not reuse a session that keeps no binding at all', async () => {
+    const appSecret = await deriveSecret(strip0x(wallet.privateKey), APP_ORIGIN)
+    const account = fakeAccount([
+      {
+        appUrl: APP_ORIGIN,
+        appName: 'dApp',
+        lastConnectedAt: 1,
+        appSecret,
+        connectedUntil: Date.now() + 60_000,
+      },
+    ])
+
+    expect(reuseConnection(account, request)).toBe(false)
+
+    expect(opener.postMessage).not.toHaveBeenCalled()
+    expect(savedBinding(account)).toBeUndefined()
+  })
 })
