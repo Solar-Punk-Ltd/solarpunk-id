@@ -48,25 +48,26 @@ Creates a new SwarmIdClient instance.
 
 **Parameters:**
 
-| Parameter                       | Type                             | Required | Description                                                                                                                                                                                         |
-| ------------------------------- | -------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `options.iframeOrigin`          | `string`                         | Yes      | The origin URL where the Swarm ID proxy iframe is hosted                                                                                                                                            |
-| `options.iframePath`            | `string`                         | No       | The path to the proxy iframe (defaults to `"/proxy"`)                                                                                                                                               |
-| `options.timeout`               | `number`                         | No       | Request timeout in milliseconds (defaults to `30000`). Bounds each call's whole round trip through the iframe; a call's own `requestOptions.timeout` replaces it for that call                      |
-| `options.initializationTimeout` | `number`                         | No       | Initialization timeout in milliseconds (defaults to `30000`)                                                                                                                                        |
-| `options.onConnectionChange`    | `(info: ConnectionInfo) => void` | No       | Callback invoked when the app-visible connection state changes (identity, app key, postage stamp, account, auth). The current snapshot is also available synchronously via `client.connectionInfo`. |
-| `options.popupMode`             | `"popup" \| "window"`            | No       | How to display the authentication popup (defaults to `"window"`)                                                                                                                                    |
-| `options.metadata`              | `AppMetadata`                    | Yes      | Application metadata shown to users during authentication                                                                                                                                           |
-| `options.metadata.name`         | `string`                         | Yes      | Application name (1-100 characters)                                                                                                                                                                 |
-| `options.metadata.description`  | `string`                         | No       | Application description (max 500 characters)                                                                                                                                                        |
-| `options.metadata.icon`         | `string`                         | No       | Application icon as a data URL (SVG or PNG, max 4KB)                                                                                                                                                |
-| `options.buttonConfig`          | `ButtonConfig`                   | No       | Button configuration for the authentication UI                                                                                                                                                      |
-| `options.containerId`           | `string`                         | No       | ID of container element to place iframe in (optional)                                                                                                                                               |
-| `options.subsidisedGatewayUrl`  | `string`                         | No       | URL of a subsidised gateway for uploads without user's postage stamp. See [Subsidised Gateway](../subsidised-gateway/) for details.                                                                 |
+| Parameter                       | Type                             | Required | Description                                                                                                                                                                                                               |
+| ------------------------------- | -------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `options.iframeOrigin`          | `string`                         | Yes      | The origin URL where the Swarm ID proxy iframe is hosted                                                                                                                                                                  |
+| `options.iframePath`            | `string`                         | No       | The path to the proxy iframe (defaults to `"/proxy"`)                                                                                                                                                                     |
+| `options.timeout`               | `number`                         | No       | Request timeout in milliseconds (defaults to `30000`). Bounds each call's whole round trip through the iframe; a call's own `requestOptions.timeout` replaces it for that call                                            |
+| `options.initializationTimeout` | `number`                         | No       | Initialization timeout in milliseconds (defaults to `30000`)                                                                                                                                                              |
+| `options.onConnectionChange`    | `(info: ConnectionInfo) => void` | No       | Callback invoked when the app-visible connection state changes (identity, app key, postage stamp, account, auth). The current snapshot is also available synchronously via `client.connectionInfo`.                       |
+| `options.popupMode`             | `"popup" \| "window"`            | No       | How to display the authentication popup (defaults to `"window"`)                                                                                                                                                          |
+| `options.metadata`              | `AppMetadata`                    | Yes      | Application metadata shown to users during authentication                                                                                                                                                                 |
+| `options.metadata.name`         | `string`                         | Yes      | Application name (1-100 characters)                                                                                                                                                                                       |
+| `options.metadata.description`  | `string`                         | No       | Application description (max 500 characters)                                                                                                                                                                              |
+| `options.metadata.icon`         | `string`                         | No       | Application icon as a data URL (SVG or PNG, max 4KB)                                                                                                                                                                      |
+| `options.buttonConfig`          | `ButtonConfig`                   | No       | Button configuration for the authentication UI                                                                                                                                                                            |
+| `options.containerId`           | `string`                         | No       | ID of container element to place iframe in (optional)                                                                                                                                                                     |
+| `options.subsidisedGatewayUrl`  | `string`                         | No       | URL of a subsidised gateway for uploads without user's postage stamp. See [Subsidised Gateway](../subsidised-gateway/) for details.                                                                                       |
+| `options.beeApiUrl`             | `string`                         | No       | The Bee node this site's reads and writes go through, in place of the node the person set in Swarm ID. Change it later with [`setBeeApiUrl()`](#setbeeapiurlurl). See [The site's own Bee node](#the-sites-own-bee-node). |
 
 **Throws:**
 
-- `invalid-request` if the provided app metadata is invalid
+- `invalid-request` if the provided app metadata is invalid, or `beeApiUrl` is not an `http:` or `https:` URL without credentials, query or fragment
 - a plain `Error` if constructed where there is no `window` (a server render)
 
 **Example:**
@@ -285,11 +286,11 @@ Checks the current authentication status with the Swarm ID proxy.
 
 **Returns:** `Promise<AuthStatus>` - The authentication status object
 
-| Property        | Type                  | Description                                         |
-| --------------- | --------------------- | --------------------------------------------------- |
-| `authenticated` | `boolean`             | Whether the user is currently authenticated         |
-| `origin`        | `string \| undefined` | The origin that authenticated (if authenticated)    |
-| `beeApiUrl`     | `string \| undefined` | The Bee API URL configured in the identity provider |
+| Property        | Type                  | Description                                                                              |
+| --------------- | --------------------- | ---------------------------------------------------------------------------------------- |
+| `authenticated` | `boolean`             | Whether the user is currently authenticated                                              |
+| `origin`        | `string \| undefined` | The origin that authenticated (if authenticated)                                         |
+| `beeApiUrl`     | `string \| undefined` | The Bee node in effect for this site: the one the site gave, or the person's own setting |
 
 **Throws:**
 
@@ -430,6 +431,7 @@ Synchronous accessor for the current connection state. Populated by the proxy as
 | `appKey`                        | `object \| undefined`                                                                                           | The app-specific key details                                                                                                                                                                                                                                                                                                                                      |
 | `appKey.address`                | `string`                                                                                                        | Ethereum address of the app key                                                                                                                                                                                                                                                                                                                                   |
 | `appKey.publicKey`              | `string`                                                                                                        | Public key of the app key                                                                                                                                                                                                                                                                                                                                         |
+| `beeApiUrl`                     | `string \| undefined`                                                                                           | The Bee node this site's reads and writes go through: the one the site gave with `beeApiUrl` or `setBeeApiUrl()`, otherwise the person's own setting. In subsidised mode the gateway is used instead                                                                                                                                                              |
 | `chatBinding`                   | `{ message: string, signature: string } \| undefined`                                                           | The account's signed statement that the address of this site's chat key is its chat address on this site. Publish it beside your chat so readers can check it with `verifyChatBinding`, and trust the newest one per site. Present only on a session the connect window handed over. See `docs/Chat-Binding.md` in the repository                                 |
 
 `chatBinding` is often absent, and a site must work without it. It is there only when the connect window handed the session over, which happens when the browser keeps this frame's storage apart from the identity site's. A session read out of shared storage, where your site and the identity site are the same site, carries none. Neither does a connection made before bindings existed, or one whose kept binding names an address other than the site's chat key, until the person next unlocks their account in the connect window for your site. A reconnect that would skip the unlock is taken only when the kept binding still names the chat key, so the window asks for the unlock and signs a fresh one otherwise. Treat a missing binding as "this chat address is not linked to an account", never as an error, and listen on `onConnectionChange` for one that arrives later.
@@ -499,6 +501,63 @@ if (batch) {
 ---
 
 ## Bee Connectivity Methods
+
+### The site's own Bee node
+
+By default the iframe reads and writes through the Bee node the person set in Swarm ID's network
+settings, or the public gateway when they set none. A site that has its own source, such as a node
+its viewer picked, names it with the `beeApiUrl` constructor option, and changes it at runtime with
+`setBeeApiUrl()`. In that site's iframe the site's node then takes the place of the person's
+setting for every read and write: feed and chunk reads, uploads, the write lock and lease chunks
+the iframe writes for the person's drive, and the Bee reads behind `getPostageBatch()`.
+
+- **Only that site.** The address is held by the one iframe the site embeds. Every other site, and
+  Swarm ID's own pages, keep the person's setting, and the person's setting itself is never
+  changed.
+- **Never stored.** Nothing writes the address to storage, the account or a device sync feed. The
+  site passes it again on every load.
+- **The node must allow the identity site's origin** in its CORS configuration, as any node used
+  through the iframe must. See [Using Your Own Bee Node](../own-bee-node/).
+- **A subsidised gateway is kept beside it.** A person's own custom node switches a site's
+  subsidised gateway off. A node the site names does not, since the site asked for both, and in
+  subsidised mode uploads and reads go to the gateway as before. See
+  [Subsidised Gateway](../subsidised-gateway/#understanding-the-table).
+- `connectionInfo.beeApiUrl` and `checkAuthStatus().beeApiUrl` say which node is in effect.
+
+The address is an `http:` or `https:` URL, optionally with a path, the way a gateway in front of Bee
+is often mounted. Credentials, a query and a fragment are refused.
+
+---
+
+### `setBeeApiUrl(url)`
+
+Changes the Bee node this site's reads and writes go through, without a reload. It replaces the
+`beeApiUrl` given at construction, and takes over from the person's own setting if none was given.
+Works whether or not anyone is signed in. See [The site's own Bee node](#the-sites-own-bee-node).
+
+**Parameters:**
+
+| Parameter | Type     | Description                                                                                |
+| --------- | -------- | ------------------------------------------------------------------------------------------ |
+| `url`     | `string` | An `http:` or `https:` URL, optionally with a path, without credentials, query or fragment |
+
+**Returns:** `Promise<void>`, resolved once the iframe uses the new node. `connectionInfo.beeApiUrl`
+follows through `onConnectionChange`.
+
+**Throws:**
+
+- `invalid-request` if `url` is not such a URL, and nothing is sent
+- `invalid-state` if the client is not initialized
+- `timeout` if the request times out
+
+**Example:**
+
+```typescript
+await client.setBeeApiUrl('https://bee.example.com/')
+console.log(client.connectionInfo.beeApiUrl) // https://bee.example.com/
+```
+
+---
 
 ### `isBeeConnected()`
 
