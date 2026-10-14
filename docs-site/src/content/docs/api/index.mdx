@@ -408,7 +408,7 @@ const signer = new PrivateKey(chatKey) // signer.publicKey().address() is the bi
 
 ### `connectionInfo` (property)
 
-Synchronous accessor for the current connection state. Populated by the proxy as soon as it is ready and refreshed automatically whenever any of the derived fields change (identity rename, default-stamp change, account migration, postage stamp purchased, auth transitions). Subscribe to `onConnectionChange` to react to updates.
+Synchronous accessor for the current connection state. Populated by the proxy as soon as it is ready and refreshed automatically whenever any of the derived fields change (identity rename, default-stamp change, the person giving your site another stamp, account migration, postage stamp purchased, auth transitions). Subscribe to `onConnectionChange` to react to updates.
 
 **Type:** `ConnectionInfo`
 
@@ -432,6 +432,7 @@ Synchronous accessor for the current connection state. Populated by the proxy as
 | `appKey.address`                | `string`                                                                                                        | Ethereum address of the app key                                                                                                                                                                                                                                                                                                                                   |
 | `appKey.publicKey`              | `string`                                                                                                        | Public key of the app key                                                                                                                                                                                                                                                                                                                                         |
 | `beeApiUrl`                     | `string \| undefined`                                                                                           | The Bee node this site gave with `beeApiUrl` or `setBeeApiUrl()`, which its content goes through. Absent when it gave none: the person's own node is never reported. In subsidised mode the gateway is used instead                                                                                                                                               |
+| `postageBatchId`                | `string \| undefined`                                                                                           | The batch id of the stamp the person gave your site in Swarm ID, the one `getPostageBatch()` reads and `stampChunk()` stamps with. Absent when your site has none. The person can change it on the Apps screen while your site is open, see [The stamp your site uses](#the-stamp-your-site-uses)                                                                 |
 | `chatBinding`                   | `{ message: string, signature: string } \| undefined`                                                           | The account's signed statement that the address of this site's chat key is its chat address on this site. Publish it beside your chat so readers can check it with `verifyChatBinding`, and trust the newest one per site. Present only on a session the connect window handed over. See `docs/Chat-Binding.md` in the repository                                 |
 
 `chatBinding` is often absent, and a site must work without it. It is there only when the connect window handed the session over, which happens when the browser keeps this frame's storage apart from the identity site's. A session read out of shared storage, where your site and the identity site are the same site, carries none. Neither does a connection made before bindings existed, or one whose kept binding names an address other than the site's chat key, until the person next unlocks their account in the connect window for your site. A reconnect that would skip the unlock is taken only when the kept binding still names the chat key, so the window asks for the unlock and signs a fresh one otherwise. Treat a missing binding as "this chat address is not linked to an account", never as an error, and listen on `onConnectionChange` for one that arrives later.
@@ -461,7 +462,7 @@ if (info.canUpload) {
 
 Gets the current postage batch for the authenticated identity.
 
-Returns information about the postage stamp associated with the connected identity, including batch ID, utilization, depth, and TTL.
+Returns information about the postage stamp your site uses, including batch ID, utilization, depth, and TTL. Each call reads the stamp the site uses at that moment, so after `connectionInfo.postageBatchId` changes the next call describes the new one.
 
 **Returns:** `Promise<PostageBatch | undefined>` - The postage batch info, or `undefined` if none is configured
 
@@ -975,6 +976,28 @@ console.log('Chunk size:', chunk.length)
 ```
 
 ---
+
+### The stamp your site uses
+
+Swarm ID gives each connected site one stamp (a "drive" in Swarm ID's own words): the account's default, or the one the person picked at the first connect. The person can change it later on Swarm ID's Apps screen, to another of their stamps or to none. Your site never chooses among the person's stamps, it only reads the one it was given.
+
+- A change reaches your open site. In the same browser it arrives through the shared store, and on the person's other devices, or a frame whose storage is kept apart, through the account bus, the way a revoke does. Either way `connectionInfo.postageBatchId` changes and `onConnectionChange` fires, and the next `getPostageBatch()`, `stampChunk()` and stamped upload use the new stamp.
+- With no stamp, `postageBatchId` is absent and `stampChunk()` is refused. A site that names a [subsidised gateway](../subsidised-gateway/) keeps uploading through it (`uploadMode: "subsidised"`), and one that names none is told `uploadUnavailableReason: "no-stamp"`.
+- The per-app limits and the remembered inbox slots of `stampChunk()` belong to the stamp. A new stamp starts its own count, and going back to an earlier stamp finds its count and slots as they were left. The chat inbox stamped again on a new stamp takes a new slot there, then keeps it.
+- To send the person to the screen for your site, link to `https://solarpunkid.bzz.link/#apps/<site>`, with your origin passed through `encodeURIComponent`. It opens the Apps tab on your site, and says so when your site is not connected to the account the person is signed in with.
+
+```typescript
+const client = new SwarmIdClient({
+  iframeOrigin: 'https://solarpunkid.bzz.link',
+  metadata: { name: 'My App' },
+  onConnectionChange: async (info) => {
+    const batch = info.postageBatchId ? await client.getPostageBatch() : undefined
+    showStamp(batch)
+  },
+})
+
+const manageUrl = `https://solarpunkid.bzz.link/#apps/${encodeURIComponent(location.origin)}`
+```
 
 ### `stampChunk(chunk)`
 
