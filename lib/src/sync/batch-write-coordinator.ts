@@ -117,6 +117,7 @@ export interface WithWriteOptions {
 }
 
 export interface BatchWriteCoordinatorDeps {
+  /** Read on every use, so a getter here follows a change of node. */
   bee: Bee
   /** Postage batch id (hex) — the `withBatchWriteLock` key. */
   batchId: string
@@ -569,8 +570,12 @@ export class BatchWriteCoordinator {
       )
     if (this.leaseEpoch !== epoch || this.disposed) return
     try {
+      const deps = this.deps
       const lease = await PartitionLease.fromSwarmEncryptionKey({
-        bee: this.deps.bee,
+        // The lease outlives a change of node, so it reads `deps.bee` anew.
+        get bee() {
+          return deps.bee
+        },
         deviceId: this.deps.deviceId,
         batchId: new BatchId(this.deps.batchId),
         batchDepth: stamper.depth,

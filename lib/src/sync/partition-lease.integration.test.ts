@@ -17,6 +17,7 @@ import {
   BatchId,
   PrivateKey,
   Reference,
+  type Bee,
   type Stamper,
 } from "@ethersphere/bee-js"
 
@@ -2878,5 +2879,28 @@ describe("PartitionLease.refresh — occupancy displacement vs a PRUNED peer", (
     ).toBe(0)
     // No foreign beacon written; acquire + refresh only publish DEVICE_A's own.
     expect(await lease.refresh()).toBe("held")
+  })
+})
+
+// The coordinator hands its `bee` as a getter that follows the site's Bee
+// address (D7 A), and a lease lives for the whole session.
+describe("PartitionLease.fromSwarmEncryptionKey", () => {
+  it("keeps reading a bee getter rather than the node it named first", async () => {
+    const nextBee = new MockBee(new MockChunkStore())
+    let currentBee = bee
+    const lease = await PartitionLease.fromSwarmEncryptionKey({
+      get bee() {
+        return currentBee as unknown as Bee
+      },
+      deviceId: "device-a",
+      swarmEncryptionKey: TEST_ENC_KEY,
+      batchId: TEST_BATCH_ID,
+    })
+    const leaseBee = () =>
+      (lease as unknown as { opts: { bee: unknown } }).opts.bee
+
+    expect(leaseBee()).toBe(bee)
+    currentBee = nextBee
+    expect(leaseBee()).toBe(nextBee)
   })
 })
