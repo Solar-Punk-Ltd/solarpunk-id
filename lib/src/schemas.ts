@@ -15,7 +15,7 @@ import {
   BatchId as BeeBatchId,
   PrivateKey as BeePrivateKey,
 } from "@ethersphere/bee-js"
-import { isHttpUrl } from "./utils/url"
+import { isBeeApiUrl, isHttpUrl } from "./utils/url"
 
 // ============================================================================
 // Network Settings Constants
@@ -566,6 +566,18 @@ export const NetworkSettingsSchemaV1 = z.object({
 })
 
 export type NetworkSettings = z.infer<typeof NetworkSettingsSchemaV1>
+
+/**
+ * A Bee address a site gives the frame for its own session (`beeApiUrl` on
+ * `parentIdentify` and `setBeeApiUrl`). Never stored: it lives in the frame
+ * that site embeds, and only while it is open.
+ */
+export const BeeApiUrlSchema = z
+  .string()
+  .refine(
+    isBeeApiUrl,
+    "Must be an http(s) URL, optionally with a path, and no credentials, query or fragment",
+  )
 
 // ============================================================================
 // BroadcastChannel Message Schemas

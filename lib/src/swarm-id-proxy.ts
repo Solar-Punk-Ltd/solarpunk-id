@@ -12,6 +12,7 @@ import type {
   DownloadDataMessage,
   DeriveAppSecretMessage,
   GetChatKeyMessage,
+  SetBeeApiUrlMessage,
   StampChunkMessage,
   UploadFileMessage,
   DownloadFileMessage,
@@ -472,7 +473,22 @@ export class SwarmIdProxy {
    */
   private lastRestampMs = new Map<string, number>()
   private utilizationStore: UtilizationStoreDB | undefined
-  private beeApiUrl: string
+  /** The Bee node the person set in Swarm ID's network settings. */
+  private ownBeeApiUrl: string
+  /**
+   * The Bee node the embedding site named for its own session, from
+   * `parentIdentify` or `setBeeApiUrl`. In memory only: a frame
+   * serves the one parent origin it was identified by, so this is that
+   * site's alone, and nothing writes it to storage, the account or a sync
+   * feed. The site sends it again on every load.
+   */
+  private siteBeeApiUrl: string | undefined
+  /**
+   * The subsidised gateway the site asked for, kept apart from
+   * `subsidisedGatewayUrl`, which the person's own custom node can switch
+   * off, so the gateway can come back once the site names its own node.
+   */
+  private siteSubsidisedGatewayUrl: string | undefined
   private gnosisRpcUrl: string
   private postageStampContractAddress: string
   private signalingUrl: string | undefined
@@ -509,6 +525,30 @@ export class SwarmIdProxy {
   /** Why the session refuses to stamp with the resolved drive, if it does. */
   private get stampRefusal(): StampRefusal | undefined {
     return this.stampLifetime && stampRefusal(this.stampLifetime)
+  }
+
+  /**
+   * The node this site's session reads and writes through: the site's own
+   * address when it named one, the person's setting otherwise. Every Bee
+   * client and every direct Bee read of the frame is built from this.
+   */
+  private get beeApiUrl(): string {
+    return this.siteBeeApiUrl ?? this.ownBeeApiUrl
+  }
+
+  /**
+   * Switch off the site's subsidised gateway when the node in effect is the
+   * person's own custom one, so their uploads go to the node they chose. A
+   * node the site named is not the person's choice, and the site asked for
+   * both, so it keeps the gateway.
+   */
+  private dropGatewayForOwnCustomNode(): void {
+    if (
+      this.siteBeeApiUrl === undefined &&
+      this.ownBeeApiUrl !== DEFAULT_BEE_NODE_URL
+    ) {
+      this.subsidisedGatewayUrl = undefined
+    }
   }
 
   /**
@@ -599,7 +639,7 @@ export class SwarmIdProxy {
     this.siteAllowList = config.siteAllowList
     // Load Bee API URL from network settings, falling back to default
     const networkSettings = createNetworkSettingsStorageManager().load()
-    this.beeApiUrl = networkSettings?.beeNodeUrl || DEFAULT_BEE_NODE_URL
+    this.ownBeeApiUrl = networkSettings?.beeNodeUrl || DEFAULT_BEE_NODE_URL
     this.gnosisRpcUrl = networkSettings?.gnosisRpcUrl || DEFAULT_GNOSIS_RPC_URL
     // PostageStamp contract address for on-chain TTL reads. The host app
     // supplies this from a build-time env so local dev can point at the
@@ -684,6 +724,7 @@ export class SwarmIdProxy {
           return
         }
         this.applyNetworkSettings()
+        this.emitConnectionInfoIfChanged()
       }
       window.addEventListener("storage", onNetworkSettingsChange)
       this.unsubscribeStorageListeners.push(() =>
@@ -737,18 +778,16 @@ export class SwarmIdProxy {
     this.gnosisRpcUrl = settings?.gnosisRpcUrl || DEFAULT_GNOSIS_RPC_URL
 
     const beeNodeUrl = settings?.beeNodeUrl || DEFAULT_BEE_NODE_URL
-    if (beeNodeUrl === this.beeApiUrl) {
+    if (beeNodeUrl === this.ownBeeApiUrl) {
       return
     }
-    this.beeApiUrl = beeNodeUrl
+    this.ownBeeApiUrl = beeNodeUrl
 
-    // A custom node disables the dApp-provided subsidised gateway (mirrors the
-    // parentIdentify override). ponytail: reverting to the default URL won't
-    // re-enable a dropped subsidised gateway — that needs a fresh parentIdentify
-    // (dApp reload); rare enough to not build for.
-    if (this.beeApiUrl !== DEFAULT_BEE_NODE_URL) {
-      this.subsidisedGatewayUrl = undefined
-    }
+    // Mirrors the parentIdentify override. ponytail: reverting to the default
+    // URL won't re-enable a dropped subsidised gateway. That needs a fresh
+    // parentIdentify (dApp reload) or the site naming its own node. Rare
+    // enough to not build for.
+    this.dropGatewayForOwnCustomNode()
   }
 
   /**
@@ -2121,8 +2160,14 @@ export class SwarmIdProxy {
     // keyed on it, so a snapshot filed under a batch we have since moved off
     // hints at a lane nobody holds (#684), and a lease message naming that
     // batch answers nobody (#589). `batchId` is the capture from the top.
+    const nodeBee = (): Bee => this.nodeBee
     this.coordinator = new BatchWriteCoordinator({
-      bee: this.nodeBee,
+      // A getter, so a node change (the site's `setBeeApiUrl`, the person's
+      // settings) reaches the coordinator already built: its lock, lease and
+      // stamped writes all go where the session's reads go.
+      get bee() {
+        return nodeBee()
+      },
       batchId,
       stamper,
       deviceId: this.requireDeviceId(),
@@ -2516,16 +2561,13 @@ export class SwarmIdProxy {
       this.buttonConfig = parentButtonConfig
     }
 
-    // Store subsidised gateway URL from parent
-    const parentSubsidisedGatewayUrl = message.subsidisedGatewayUrl
-    if (parentSubsidisedGatewayUrl) {
-      this.subsidisedGatewayUrl = parentSubsidisedGatewayUrl
-    }
+    // Before `loadAuthData`, whose restored-session check is the first read
+    // this session makes.
+    this.siteBeeApiUrl = message.beeApiUrl
 
-    // Override: disable subsidised gateway when using custom Bee API URL
-    if (this.beeApiUrl !== DEFAULT_BEE_NODE_URL && this.subsidisedGatewayUrl) {
-      this.subsidisedGatewayUrl = undefined
-    }
+    this.siteSubsidisedGatewayUrl = message.subsidisedGatewayUrl
+    this.subsidisedGatewayUrl = message.subsidisedGatewayUrl
+    this.dropGatewayForOwnCustomNode()
 
     // Load existing secret if available
     await this.loadAuthData()
@@ -2581,6 +2623,10 @@ export class SwarmIdProxy {
 
       case "getChatKey":
         await this.handleGetChatKey(message, event)
+        break
+
+      case "setBeeApiUrl":
+        this.handleSetBeeApiUrl(message, event)
         break
 
       case "stampChunk":
@@ -2862,7 +2908,8 @@ export class SwarmIdProxy {
     let check = this.restoredSessionCheck
     if (!check) return
     if (check.settled === "unconfirmed") {
-      this.startRestoredSessionCheck(check.input)
+      // At the node in effect now, which the site may have changed since.
+      this.startRestoredSessionCheck({ ...check.input, bee: this.bee })
       check = this.restoredSessionCheck!
     }
     const verdict = await check.verdict
@@ -3828,6 +3875,7 @@ export class SwarmIdProxy {
       appKey,
       partition: this.coordinator?.currentPartition,
       chatBinding: this.authenticated ? this.chatBinding : undefined,
+      beeApiUrl: this.beeApiUrl,
     }
   }
 
@@ -3877,6 +3925,7 @@ export class SwarmIdProxy {
       appKey: info.appKey,
       partition: info.partition,
       chatBinding: info.chatBinding,
+      beeApiUrl: info.beeApiUrl,
     })
   }
 
@@ -4828,6 +4877,28 @@ export class SwarmIdProxy {
     } catch (error) {
       this.sendErrorToParent(event, requestId, error, "getChatKey failed")
     }
+  }
+
+  /**
+   * The site names a new Bee node for its session, as the source its viewer
+   * picked changes. Needs no sign-in: it says where this site's reads go,
+   * which is the site's to decide whether or not anyone is connected.
+   *
+   * The site naming its node also brings back a subsidised gateway the
+   * person's own custom node had switched off (`dropGatewayForOwnCustomNode`).
+   */
+  private handleSetBeeApiUrl(
+    message: SetBeeApiUrlMessage,
+    event: MessageEvent,
+  ): void {
+    this.siteBeeApiUrl = message.beeApiUrl
+    this.subsidisedGatewayUrl = this.siteSubsidisedGatewayUrl
+    this.postMessage(event, {
+      type: "setBeeApiUrlResponse",
+      requestId: message.requestId,
+      beeApiUrl: this.beeApiUrl,
+    })
+    this.emitConnectionInfoIfChanged()
   }
 
   /**

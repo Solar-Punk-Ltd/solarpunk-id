@@ -7,6 +7,7 @@ import type {
   Topic as BeeTopic,
 } from "@ethersphere/bee-js"
 import {
+  BeeApiUrlSchema,
   ChatBindingSchema,
   NetworkSettingsSchemaV1,
   SyncedAccountSchemaV1,
@@ -878,6 +879,13 @@ export const ConnectionInfoSchema = z.object({
    * key and this account. A reader trusts the newest binding per site.
    */
   chatBinding: ChatBindingSchema.optional(),
+  /**
+   * The Bee node this site's reads and writes go through: the address the
+   * site gave (`beeApiUrl`, `setBeeApiUrl`) when it gave one, otherwise the
+   * node the person set in Swarm ID. In subsidised mode the gateway is used
+   * instead (`uploadMode`).
+   */
+  beeApiUrl: z.string().optional(),
 })
 
 export type ConnectionInfo = z.infer<typeof ConnectionInfoSchema>
@@ -956,7 +964,7 @@ export interface ButtonConfig {
 export const ParentIdentifyMessageSchema = z.object({
   type: z.literal("parentIdentify"),
   requestId: z.string(),
-  beeApiUrl: z.string().url().optional(),
+  beeApiUrl: BeeApiUrlSchema.optional(),
   popupMode: z.enum(["popup", "window"]).optional(),
   metadata: AppMetadataSchema,
   buttonConfig: ButtonConfigSchema,
@@ -1000,6 +1008,16 @@ export const DeriveAppSecretMessageSchema = z.object({
   type: z.literal("deriveAppSecret"),
   requestId: z.string(),
   label: z.string(),
+})
+
+/**
+ * The site's own Bee address for this frame from now on, replacing the one
+ * `parentIdentify` gave, for the site's session alone.
+ */
+export const SetBeeApiUrlMessageSchema = z.object({
+  type: z.literal("setBeeApiUrl"),
+  requestId: z.string(),
+  beeApiUrl: BeeApiUrlSchema,
 })
 
 // The site's chat key, the key its chat binding names (docs/Chat-Binding.md).
@@ -1376,6 +1394,7 @@ export const ParentToIframeMessageSchema = z.discriminatedUnion("type", [
   DownloadDataMessageSchema,
   DeriveAppSecretMessageSchema,
   GetChatKeyMessageSchema,
+  SetBeeApiUrlMessageSchema,
   StampChunkMessageSchema,
   UploadFileMessageSchema,
   DownloadFileMessageSchema,
@@ -1421,6 +1440,7 @@ export type DeriveAppSecretMessage = z.infer<
   typeof DeriveAppSecretMessageSchema
 >
 export type GetChatKeyMessage = z.infer<typeof GetChatKeyMessageSchema>
+export type SetBeeApiUrlMessage = z.infer<typeof SetBeeApiUrlMessageSchema>
 export type StampChunkSigner = z.infer<typeof StampChunkSignerSchema>
 export type StampChunkRequest = z.infer<typeof StampChunkRequestSchema>
 export type StampChunkMessage = z.infer<typeof StampChunkMessageSchema>
@@ -1549,6 +1569,12 @@ export const GetChatKeyResponseMessageSchema = z.object({
   type: z.literal("getChatKeyResponse"),
   requestId: z.string(),
   chatKey: z.instanceof(Uint8Array),
+})
+
+export const SetBeeApiUrlResponseMessageSchema = z.object({
+  type: z.literal("setBeeApiUrlResponse"),
+  requestId: z.string(),
+  beeApiUrl: z.string(),
 })
 
 export const StampChunkResponseMessageSchema = z.object({
@@ -1696,6 +1722,7 @@ export const ConnectionInfoChangedMessageSchema = z.object({
     .optional(),
   partition: z.number().int().min(0).optional(),
   chatBinding: ChatBindingSchema.optional(),
+  beeApiUrl: z.string().optional(),
 })
 
 export const ConnectResponseMessageSchema = z.object({
@@ -1930,6 +1957,7 @@ export const IframeToParentMessageSchema = z.discriminatedUnion("type", [
   DownloadDataResponseMessageSchema,
   DeriveAppSecretResponseMessageSchema,
   GetChatKeyResponseMessageSchema,
+  SetBeeApiUrlResponseMessageSchema,
   StampChunkResponseMessageSchema,
   UploadFileResponseMessageSchema,
   DownloadFileResponseMessageSchema,
@@ -1986,6 +2014,9 @@ export type DownloadDataResponseMessage = z.infer<
 >
 export type GetChatKeyResponseMessage = z.infer<
   typeof GetChatKeyResponseMessageSchema
+>
+export type SetBeeApiUrlResponseMessage = z.infer<
+  typeof SetBeeApiUrlResponseMessageSchema
 >
 export type DeriveAppSecretResponseMessage = z.infer<
   typeof DeriveAppSecretResponseMessageSchema
@@ -2217,6 +2248,13 @@ export interface ClientOptions {
   containerId?: string // ID of container element to place iframe in (optional)
   /** URL of a subsidised gateway for users without postage stamps. Gateway handles stamping server-side. */
   subsidisedGatewayUrl?: string
+  /**
+   * The Bee node the frame reads and writes through for this site, in place of
+   * the node the person set in Swarm ID, which keeps applying on every other
+   * site. An http(s) URL, optionally with a path. Change it later with
+   * `setBeeApiUrl`. Held by this site's frame alone and never stored.
+   */
+  beeApiUrl?: string
 }
 
 export interface AuthOptions {

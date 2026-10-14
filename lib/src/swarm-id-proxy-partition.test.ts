@@ -1034,6 +1034,45 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         expect(internals().bee.url).toBe(CONFIGURED_NODE_URL)
       })
 
+      // The site's own Bee address: the coordinator's lock, lease and
+      // roster traffic and every stamped upload go through it, and a later
+      // change reaches the coordinator already built, without a rebuild.
+      it("writes and reads at the site's address, and follows a later change", async () => {
+        const SITE_BEE_URL = "https://site-bee.example.com/"
+        const NEXT_SITE_BEE_URL = "https://gateway.example.org/bee/"
+        await seedConnectedAccount()
+        await dispatch(
+          {
+            type: "parentIdentify",
+            requestId: "r1",
+            metadata: { name: "dApp" },
+            beeApiUrl: SITE_BEE_URL,
+          },
+          PARENT_ORIGIN,
+          parentWindow,
+        )
+        await vi.waitFor(() => expect(coordinatorCount()).toBeGreaterThan(0))
+        const coordinator = latestCoordinator()
+        const coordinatorsBefore = coordinatorCount()
+        expect(coordinator.deps.bee.url).toBe(SITE_BEE_URL.replace(/\/$/, ""))
+
+        await dispatch(
+          {
+            type: "setBeeApiUrl",
+            requestId: "r2",
+            beeApiUrl: NEXT_SITE_BEE_URL,
+          },
+          PARENT_ORIGIN,
+          parentWindow,
+        )
+
+        expect(coordinatorCount()).toBe(coordinatorsBefore)
+        expect(coordinator.deps.bee.url).toBe(
+          NEXT_SITE_BEE_URL.replace(/\/$/, ""),
+        )
+        expect(internals().bee.url).toBe(NEXT_SITE_BEE_URL.replace(/\/$/, ""))
+      })
+
       it("reads from the gateway once the drive's lifetime runs out in an open session", async () => {
         const [stamp] = makeSyncedAccount().postageStamps
         await seedConnectedAccount({

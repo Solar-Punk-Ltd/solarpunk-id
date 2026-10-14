@@ -867,6 +867,33 @@ describe("SwarmIdClient request seam", () => {
     await expect(promise).rejects.toThrow("Not authenticated")
   })
 
+  it("setBeeApiUrl tells the frame the site's new Bee address", async () => {
+    const promise = client.setBeeApiUrl("https://gateway.example.org/bee/")
+
+    const sent = lastPostedMessage()
+    expect(sent).toMatchObject({
+      type: "setBeeApiUrl",
+      beeApiUrl: "https://gateway.example.org/bee/",
+    })
+    deliver({
+      type: "setBeeApiUrlResponse",
+      requestId: sent.requestId,
+      beeApiUrl: "https://gateway.example.org/bee/",
+    })
+    await expect(promise).resolves.toBeUndefined()
+  })
+
+  it.each(["javascript:alert(1)", "ftp://bee.example.com", "localhost:1633"])(
+    "setBeeApiUrl refuses %s without sending anything",
+    async (url) => {
+      const error = await rejectionOf(client.setBeeApiUrl(url))
+
+      expect(error).toBeInstanceOf(SwarmIdError)
+      expect(error).toMatchObject({ code: "invalid-request" })
+      expect(postMessage).not.toHaveBeenCalled()
+    },
+  )
+
   it("stampChunk sends the whole content chunk and returns the address and stamp", async () => {
     const data = new Uint8Array([3, 0, 0, 0, 0, 0, 0, 0, 7, 8, 9])
     const reply = { address: "a".repeat(64), stamp: "b".repeat(226) }
@@ -1705,6 +1732,74 @@ describe("SwarmIdClient initialize() sequencing", () => {
     )
 
     client.destroy()
+  })
+})
+
+describe("SwarmIdClient beeApiUrl option", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("sends the site's Bee address in parentIdentify", async () => {
+    const env = stubBrowserGlobals()
+    const client = new SwarmIdClient({
+      iframeOrigin: IFRAME_ORIGIN,
+      metadata: APP_METADATA,
+      beeApiUrl: "https://bee.example.com/",
+    })
+    const initializing = client.initialize()
+    initializing.catch(() => {})
+
+    await flush()
+    env.iframeElement.onload?.()
+    await flush()
+    env.dispatch({ data: { type: "proxyInitialized" } })
+    await flush()
+
+    expect(env.lastPostedMessage()).toMatchObject({
+      type: "parentIdentify",
+      beeApiUrl: "https://bee.example.com/",
+    })
+    client.destroy()
+  })
+
+  it.each(["javascript:alert(1)", "https://user:pass@bee.example.com"])(
+    "refuses %s at construction",
+    (beeApiUrl) => {
+      stubBrowserGlobals()
+
+      const error = thrownBy(
+        () =>
+          new SwarmIdClient({
+            iframeOrigin: IFRAME_ORIGIN,
+            metadata: APP_METADATA,
+            beeApiUrl,
+          }),
+      )
+
+      expect(error).toBeInstanceOf(SwarmIdError)
+      expect(error).toMatchObject({ code: "invalid-request" })
+    },
+  )
+
+  it("carries the address in effect into connectionInfo", () => {
+    const env = stubBrowserGlobals()
+    const client = new SwarmIdClient({
+      iframeOrigin: IFRAME_ORIGIN,
+      metadata: APP_METADATA,
+    })
+    internals(client).iframe = env.iframeElement
+    internals(client).ready = true
+
+    env.dispatch({
+      data: {
+        type: "connectionInfoChanged",
+        canUpload: false,
+        beeApiUrl: "https://bee.example.com/",
+      },
+    })
+
+    expect(client.connectionInfo.beeApiUrl).toBe("https://bee.example.com/")
   })
 })
 

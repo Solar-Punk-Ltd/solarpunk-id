@@ -39,6 +39,7 @@ export function connectionInfoEqual(
     // A newer binding replaces the old one, and readers trust the newest, so
     // the dApp has to hear of it.
     a.chatBinding?.message === b.chatBinding?.message &&
-    a.chatBinding?.signature === b.chatBinding?.signature
+    a.chatBinding?.signature === b.chatBinding?.signature &&
+    a.beeApiUrl === b.beeApiUrl
   )
 }
