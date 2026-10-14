@@ -37,6 +37,7 @@ import {
   openConnectPopup,
   openProxyConnectPopup,
   partitionedDemoOrigin,
+  resealAccounts,
   seedLocalChain,
   waitForBatchIngestion,
 } from './helpers'
@@ -254,7 +255,9 @@ test('the bus carries an app removal to a partitioned session', async ({ page })
 // one signaling server. Device B is seeded with A's account document rather
 // than importing it through the UI, which keeps the test off the chain and off
 // Swarm entirely — the bus publisher has no default-stamp gate, so an account
-// with no drive still publishes.
+// with no drive still publishes. Its keys are sealed again under B's own
+// wrapping key, since a key sealed on A opens only on A, and B would read the
+// copy as signed out.
 test('a change on one device reaches another device’s stored account', async ({
   page,
   browser,
@@ -279,11 +282,16 @@ test('a change on one device reaches another device’s stored account', async (
   // Device B: the same account, its own storage.
   const deviceB = await browser.newContext()
   try {
-    await deviceB.addInitScript((state: { accounts: string | null; current: string | null }) => {
-      if (state.accounts) localStorage.setItem('swarm-id-accounts', state.accounts)
-      if (state.current) localStorage.setItem('swarm-id-current-account-v2', state.current)
-    }, seeded)
     const pageB = await deviceB.newPage()
+    await pageB.goto(`${ID_ORIGIN}/`)
+    const accounts = await resealAccounts(page, pageB, seeded.accounts!)
+    await pageB.evaluate(
+      (state: { accounts: string; current: string | null }) => {
+        localStorage.setItem('swarm-id-accounts', state.accounts)
+        if (state.current) localStorage.setItem('swarm-id-current-account-v2', state.current)
+      },
+      { accounts, current: seeded.current },
+    )
     const joined = busRoomJoined(pageB)
     joined.catch(() => undefined)
     await pageB.goto(`${ID_ORIGIN}/#apps`)
