@@ -9,9 +9,9 @@ const DEV_SIGNALING_URL = 'ws://localhost:5520'
 
 /**
  * The account-bus signaling server (docs/Account-Bus.md), or `undefined` where
- * there is none. Baked at build time: the DO deployment sets
- * `PUBLIC_BUS_SIGNALING_URL`, dev falls back to the local server, and other
- * static hosts (GitHub Pages) run without a bus at all.
+ * there is none. Baked at build time from `PUBLIC_BUS_SIGNALING_URL`. Dev falls
+ * back to the local server, and a production build without the setting runs
+ * with no signaling server.
  *
  * One function because two contexts need the same answer — the proxy iframe and
  * the SwarmID tab — and a second copy of the fallback rule would let a build

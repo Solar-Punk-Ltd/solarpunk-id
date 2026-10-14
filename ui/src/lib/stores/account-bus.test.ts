@@ -284,7 +284,7 @@ describe('accountBusStore', () => {
     expect(transports[0].options.topic).not.toBe(transports[1].options.topic)
   })
 
-  // A build with no bus server (GitHub Pages, plain `pnpm dev`) has no
+  // A build with no bus server has no
   // cross-partition channel to reach at all — publishing must be a quiet no-op,
   // not a crash on every account mutation.
   // #608: the tab publishes AND consumes. A peer's delta has to reach the fold

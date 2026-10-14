@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Entrypoint for the deployed signaling service (DigitalOcean App Platform).
+ * Entrypoint for the deployed signaling service.
  * PORT is injected by the platform; ALLOWED_ORIGINS is a comma-separated
  * allowlist (unset = allow all, for local development).
  */

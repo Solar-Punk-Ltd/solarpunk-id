@@ -115,8 +115,8 @@ export interface SignalingServerOptions {
   /**
    * Overrides for the bounds above. Present so tests can drive them in
    * milliseconds and single digits; the deployed service uses the defaults —
-   * env wiring would buy nothing, since changing a DO env var redeploys the
-   * service anyway.
+   * env wiring would buy nothing, since changing a deployment env var
+   * redeploys the service anyway.
    */
   heartbeatIntervalMs?: number
   maxConnections?: number

@@ -35,7 +35,7 @@ const RECONNECT_MAX_DELAY_MS = 30000
 const DATA_CHANNEL_LABEL = "bus"
 
 export interface SignalingTransportOptions {
-  /** Signaling server URL, e.g. `wss://swarm-id.snaha.net/bus`. */
+  /** Signaling server URL, e.g. `wss://bus.example.com/bus`. */
   url: string
   /** Account-derived room topic (`deriveBusContext`). */
   topic: string

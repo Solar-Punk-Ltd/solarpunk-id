@@ -1351,8 +1351,8 @@ export class SwarmIdProxy {
    * BOTH transports hang off the account-derived topic, so a context only ever
    * shares a channel with other contexts of the same account. The local one is
    * attached whether or not a signaling URL is configured: without it there is
-   * still same-device tab↔tab traffic to carry, and a build with no bus server
-   * (GitHub Pages, plain `pnpm dev`) must not lose cross-tab utilization.
+   * still same-device tab↔tab traffic to carry, and a build with no signaling
+   * URL must not lose cross-tab utilization.
    *
    * Because the topic is derived, both transports now attach a few ticks after
    * an auth event rather than at construction, so a peer publishing inside
@@ -6388,7 +6388,7 @@ export interface ProxyConfig {
    */
   postageStampContractAddress?: string
   /**
-   * Account-bus signaling server URL (e.g. `wss://swarm-id.snaha.net/bus`,
+   * Account-bus signaling server URL (e.g. `wss://bus.example.com/bus`,
    * `ws://localhost:5520` in dev). Unset disables the cross-partition/
    * cross-device bus transport (docs/Account-Bus.md).
    */

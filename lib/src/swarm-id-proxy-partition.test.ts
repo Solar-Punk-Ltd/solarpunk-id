@@ -1712,7 +1712,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
   // #635: the handed-over session used to live only in memory, so a plain
   // reload logged the user out of the dApp — on Safari, where partitioned is
   // the ordinary mode, that is every reload. It is kept now, under the same
-  // 30-day deadline the unpartitioned path enforces out of shared storage.
+  // session deadline the unpartitioned path enforces out of shared storage.
   describe("a session that survives a reload", () => {
     async function connectPartitioned(): Promise<void> {
       const challenge = await startPartitionedConnect()
@@ -2469,7 +2469,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     // the tab was closed. It could not: the restore restamped `lastConnectedAt`,
     // so `restoreLocalSessionFields` read the disconnect as older than "our"
     // connection, handed the secret back, and the session stayed undead for the
-    // rest of its 30 days. A Remove was caught (a tombstone needs no clock),
+    // rest of its session. A Remove was caught (a tombstone needs no clock),
     // which is why only the Disconnect went missing.
     it("ends a restored session a peer disconnected while the tab was closed", async () => {
       const connectedAt = Date.now() - 60_000
@@ -4413,8 +4413,8 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     })
 
     // The local transport is account-scoped too, so it must attach whether or
-    // not a bus server is configured — a build without one (GitHub Pages,
-    // plain `pnpm dev`) still has same-device tabs to serve, and losing that
+    // not a bus server is configured. A build without one still has
+    // same-device tabs to serve, and losing that
     // would silently stop cross-tab utilization from propagating.
     it("still joins the local bus without a configured signaling url", async () => {
       await seedConnectedAccount()

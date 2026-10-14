@@ -91,7 +91,7 @@ async function createAccountWithDrive(page: Page) {
  * button, and leave the partitioned session live.
  *
  * Since #635 the session survives a reload — it is kept in the partition's own
- * store until it is disconnected or its 30 days are up — so navigating the demo
+ * store until it is disconnected or its 7 days are up — so navigating the demo
  * afterwards no longer ends it.
  */
 async function connectPartitioned(page: Page, path: string) {

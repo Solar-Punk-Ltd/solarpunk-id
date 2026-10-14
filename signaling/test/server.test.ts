@@ -343,7 +343,7 @@ describe('signaling server', () => {
   })
 
   // The topic is the room capability, and a query string is recorded by every
-  // ingress and proxy access log there is — DigitalOcean's included. Anything
+  // ingress and proxy access log there is. Anything
   // reading those logs learns which rooms exist and can join them. So it moves
   // into the first frame, with the socket held in a pre-join state until it
   // arrives (#577).
