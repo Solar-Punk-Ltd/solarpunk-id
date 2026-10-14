@@ -1,9 +1,9 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Safari deletes a site's script-written storage after 7 days without the
- * person using the site, and the account on this device goes
- * with it. So after an account is created or imported here, a Safari visitor
+ * Safari deletes a site's script-written storage after days without the
+ * person using the site, 7 or 30 depending on the source (docs/Hardening.md),
+ * and the account on this device goes with it. So after an account is created or imported here, a Safari visitor
  * is asked once to save a backup.
  */
 import { beforeEach, describe, expect, it } from 'vitest'

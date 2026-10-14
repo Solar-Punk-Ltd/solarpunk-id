@@ -483,7 +483,8 @@ Not yet written:
   timeout fallback with one peer killed. Extends
   `lib/test/live/multi-device-acquire-upload.test.ts` and
   `three-device-acquire-handoff.test.ts`, not the Playwright rig.
-- Whether a dormant account's partitioned storage survives ITP's ~30-day window
+- Whether a dormant account's partitioned storage survives ITP's deletion window, seven or 30
+  days of Safari use depending on the source (see the ITP note under Known gaps)
   ([#659](https://github.com/snaha/swarm-id/issues/659)) — two loads in one sitting say
   nothing about it. Nothing in the bus depends on the answer now that stale devices are
   ignored rather than removed.
@@ -537,14 +538,21 @@ Not yet written:
   the three-minute window was sized to avoid; it is safe because the occupancy beacon on the
   refresh tick backstops a peer that is invisible right now (`partition-lease.ts`).
 - Safari (ITP) deletes script-writable storage for sites without first-party user
-  interaction. The window is **30 operational days** by default since a Feb 2024 WebKit
-  change ([`DataRemovalFrequency`](https://github.com/WebKit/WebKit/commit/45061230013728ec9c4900b01b12af26dc592b4b));
-  the widely-cited 7 days now applies only to sites reached cross-site with unfiltered
-  link decoration from a classified domain (webkit.org's docs predate the change).
+  interaction, and two sources give different windows. WebKit's published rule is **seven
+  days** of Safari use without interaction on the site
+  ([webkit.org, 2020-03-24](https://webkit.org/blog/10218/full-third-party-cookie-blocking-and-more/)).
+  WebKit's source added `DataRemovalFrequency` on 2024-02-09
+  ([`4506123`](https://github.com/WebKit/WebKit/commit/45061230013728ec9c4900b01b12af26dc592b4b)),
+  with a **30 operational day** tier for sites never reached through cross-site link
+  decoration, or reached with link decoration filtered, and seven days kept for a site reached
+  with unfiltered link decoration. That commit's message says it does not change current
+  behaviour, so it does not settle which window shipped Safari applies, and no device run here
+  has measured it ([#659](https://github.com/snaha/swarm-id/issues/659)). The Safari backup
+  prompt plans for seven ([Hardening.md](Hardening.md)).
   Impact here: partitioned iframe storage is re-seeded per popup handshake (harmless),
   and every Safari connect is a first-party click in the popup that resets the trusted
   domain's clock. The residual risk is a **dormant local account's vault**
-  (`encryptedSeed`, the only copy of the seed) after >30 operational days with no
+  (`encryptedSeed`, the only copy of the seed) after that window with no
   connect; synced accounts restore from Swarm.
   **`navigator.storage.persist()` is NOT a mitigation** (checked against WebKit source,
   2026-08): WebKit grants it only to origins _already exempt_ from ITP deletion

@@ -3,9 +3,11 @@
 /**
  * The one-time backup prompt for Safari's storage limit.
  *
- * Safari deletes everything a site's scripts stored after 7 days in which the
- * person did not use the site, and the account on this device is stored that
- * way. So after an account is created or imported here, a Safari visitor is
+ * Safari deletes everything a site's scripts stored after a stretch of days in
+ * which the person did not use the site, and the account on this device is
+ * stored that way. WebKit's published rule is 7 days, its source has a 30-day
+ * tier as well, and docs/Hardening.md cites both. The prompt says 7, the
+ * shorter. So after an account is created or imported here, a Safari visitor is
  * asked once to save the recovery phrase or a backup file. Every browser on
  * iPhone and iPad runs Safari's engine, so they are asked too.
  *

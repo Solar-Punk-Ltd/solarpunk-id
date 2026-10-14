@@ -326,7 +326,7 @@ Safari's Intelligent Tracking Prevention (ITP) partitions storage for third-part
 >
 > A **private window** was measured separately and passes the same five checks, upload included, with a fresh device id each time, as expected, since the private partition is discarded when the window closes.
 >
-> One thing no run has settled, and it is not claimed here: the **eviction horizon** — two loads in one sitting says nothing about whether a dormant account's partitioned storage survives ITP's ~30-day window ([#659](https://github.com/snaha/swarm-id/issues/659)).
+> One thing no run has settled, and it is not claimed here: the **eviction horizon**. Two loads in one sitting say nothing about how long a dormant account's storage survives ITP ([#659](https://github.com/snaha/swarm-id/issues/659)). The sources disagree. WebKit's published rule is seven days of Safari use without interaction on the site ([webkit.org, 2020-03-24](https://webkit.org/blog/10218/full-third-party-cookie-blocking-and-more/)). A WebKit source change of 2024-02-09 added a 30-day tier for sites never reached through cross-site link decoration ([`4506123`](https://github.com/WebKit/WebKit/commit/45061230013728ec9c4900b01b12af26dc592b4b)), while its own message says it does not change current behaviour. The Safari backup prompt plans for the shorter figure ([docs/Hardening.md](docs/Hardening.md)).
 
 What remains regardless:
 

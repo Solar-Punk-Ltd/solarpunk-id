@@ -145,10 +145,19 @@ gave each site a stable identifier for the browser. It now stays inside the
 frame. `ConnectionInfo` has no `deviceId`, and the demo's Safari check no
 longer compares it across reloads.
 
-## A backup prompt for Safari's 7-day storage limit
+## A backup prompt for Safari's storage limit
 
-Safari deletes everything a site's scripts stored after 7 days in which the
-person did not use the site, and the account on this device goes with it.
+Safari deletes everything a site's scripts stored after a stretch of Safari use
+in which the person did not use the site, and the account on this device goes
+with it. WebKit's published rule is seven days
+([webkit.org, 2020-03-24](https://webkit.org/blog/10218/full-third-party-cookie-blocking-and-more/)).
+A WebKit source change of 2024-02-09
+([`4506123`](https://github.com/WebKit/WebKit/commit/45061230013728ec9c4900b01b12af26dc592b4b))
+added a 30-day tier for sites never reached through cross-site link decoration,
+and its own message says it does not change current behaviour. No device run in
+this repository has measured which applies
+([#659](https://github.com/snaha/swarm-id/issues/659)). The prompt's text says
+seven days, the shorter of the two.
 After an account is created or imported on this device, a Safari visitor is
 asked once to save their Secret Recovery Phrase or export a backup file, through
 the Account tab's existing sections. Every browser on iPhone and iPad runs
