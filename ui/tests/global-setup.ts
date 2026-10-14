@@ -3,8 +3,13 @@
 /**
  * Runs once, before any worker starts.
  *
- * Its only job is to put each worker slot in funds, so that the suites can run
- * in parallel without sharing a sender — see `worker-faucet.ts` for why that
+ * It makes sure the browser build this Playwright release pins is installed,
+ * because a machine or image that carries another release's builds would
+ * otherwise fail every test with a missing executable. Where the build is
+ * already there the install does nothing.
+ *
+ * Then it puts each worker slot in funds, so that the suites can run in
+ * parallel without sharing a sender — see `worker-faucet.ts` for why that
  * matters.
  *
  * `config.workers` is the whole range: slots are addressed by `parallelIndex`,
@@ -15,11 +20,19 @@
  * themselves, and the ones that do not still deserve to run.
  */
 import type { FullConfig } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 
 import { CHAIN_RPC_URL, chainReachable } from './helpers'
 import { stockWorkerFaucets } from './worker-faucet'
 
+function installPinnedChromium(): void {
+  const cli = createRequire(import.meta.url).resolve('@playwright/test/cli')
+  execFileSync(process.execPath, [cli, 'install', '--only-shell', 'chromium'], { stdio: 'inherit' })
+}
+
 export default async function globalSetup(config: FullConfig): Promise<void> {
+  installPinnedChromium()
   if (!(await chainReachable())) {
     return
   }
