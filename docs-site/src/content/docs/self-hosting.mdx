@@ -4,17 +4,17 @@ description: Serve Swarm ID same-site with your app, and what that costs
 ---
 
 The identity site is a static SvelteKit build under Apache-2.0, and nothing in it is bound
-to `swarm-id.snaha.net`. An app can serve its own copy. The reason to do it is the browser's
+to `solarpunkid.bzz.link`. An app can serve its own copy. The reason to do it is the browser's
 notion of **site**: an app on `app.example.com` embedding an identity site on
 `id.example.com` is same-site, so the proxy iframe reads the identity origin's first-party
 storage directly. No storage partitioning, no popup handover, no third browser context on
-first run. This is how the canonical deployment already runs: `swarm-demo.snaha.net`
-embeds `swarm-id.snaha.net`, both under `snaha.net`.
+first run. The hosted site at `solarpunkid.bzz.link` is cross-site with an app on any other
+domain, so such an app gets the partitioned path and the popup handover instead.
 
 ## What it takes
 
-1. Build `ui/` with `BASE_PATH` set to the path you serve it from (the hosted deployments
-   use `/id`), and `PUBLIC_BUS_SIGNALING_URL` pointing at a
+1. Build `ui/` with `BASE_PATH` set to the path you serve it from (leave it unset when you
+   serve it from the root of its host, as `solarpunkid.bzz.link` is), and `PUBLIC_BUS_SIGNALING_URL` pointing at a
    [signaling server](../account-bus/) you run, or leave it unset to run without
    cross-device sync.
 2. Serve the build from a subdomain of your app's site, over HTTPS, with the same
@@ -39,7 +39,7 @@ from the app on any deployment. What same-site adds is storage, not credentials.
 
 - **Every user signs up again on your origin.** The account itself carries over: every key
   the account makes derives from the recovery phrase, and the drives travel in the synced
-  record, so the same phrase is the same Swarm ID on your origin and on `swarm-id.snaha.net`.
+  record, so the same phrase is the same Swarm ID on your origin and on `solarpunkid.bzz.link`.
   The unlock does not: passkeys bind to the RP ID and the vault lives in the origin's own
   storage. A user with an existing Swarm ID enters the phrase on your site, chooses an access
   method there, and the account restores from Swarm like on any new device.

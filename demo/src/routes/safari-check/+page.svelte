@@ -5,8 +5,8 @@
 
 <!--
   The real-Safari smoke test (#584), built to be run by hand on a physical
-  iPhone against the DigitalOcean deployment — the only cross-site rig there is
-  (GitHub Pages serves both apps from one origin, so nothing partitions there).
+  iPhone, with the demo served on a different site from the identity site it
+  embeds. The local rig is same-site, so nothing partitions there.
 
   Everything is on screen because nothing else can be: Safari on iOS has no web
   inspector without a Mac and a cable, so a page that logged its findings to the
@@ -128,8 +128,8 @@
   <div class="text-foreground">
     <h1 class="mb-1 text-2xl font-bold">Safari check</h1>
     <p class="text-sm text-muted-foreground">
-      Run this on a real iPhone, on the deployed site (not a preview — GitHub Pages serves both apps
-      from one origin, so nothing partitions there). Connect with an account that
+      Run this on a real iPhone, with this demo served on a different site from the identity site
+      it embeds (the local rig is same-site, so nothing partitions there). Connect with an account that
       <strong>already has a drive</strong>, upload, then reload a few times and come back in a few
       days.
     </p>

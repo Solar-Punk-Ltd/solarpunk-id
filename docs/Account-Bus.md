@@ -470,7 +470,7 @@ Done:
   `lease-released` — two stamped release writes, over the relay, since Node has no
   `RTCPeerConnection`; the remaining ~7.5 s is the ordinary cold claim. A one-off script, not
   suite coverage: it runs on demand, never on commit.
-- Real Safari (iOS 18.7 / Safari 26.6, against the DO deployment, #584): ITP partitions the
+- Real Safari (iOS 18.7 / Safari 26.6, against snaha's deployment of the upstream project, #584): ITP partitions the
   iframe, the connect popup's `window.opener` `postMessage` reaches it, the hydrated view
   builds a working stamper, a chunk uploads and reads back byte-identical, and the device id
   holds across a reload. A private window passes the same five checks, with its own device id,
