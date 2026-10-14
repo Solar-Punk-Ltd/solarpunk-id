@@ -49,10 +49,6 @@
     "type": "git",
     "url": "https://github.com/Solar-Punk-Ltd/solarpunk-id"
   },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  },
   "dependencies": {
     "@ethersphere/bee-js": "^13.0.0",
     "@ethersphere/core-sdk": "^0.1.1",

@@ -1,5 +1,7 @@
 # Changelog
 
+The fork does not publish releases. The entries below are the upstream project's history.
+
 ## [0.7.0](https://github.com/snaha/swarm-id/compare/v0.6.0...v0.7.0) (2026-10-09)
 
 

@@ -14,7 +14,7 @@ Where the two are genuinely cross-site, or the browser partitions regardless (Sa
 users to keep and no data to migrate, so backwards compatibility and migration are not required — a
 schema, wire format, storage key, or protocol may change in place, and the old path is deleted
 rather than kept beside the new one. `0.x` says the same thing to anyone consuming
-`@snaha/swarm-id` from npm. That changes at `1.0`, and this note with it.
+`@snaha/swarm-id`. That changes at `1.0`, and this note with it.
 
 ## Architecture
 
