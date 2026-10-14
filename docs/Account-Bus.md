@@ -510,7 +510,8 @@ Not yet written:
   its roster is empty and allows it ([Hardening](Hardening.md)).
 - That check asks only whether the connection ENDED — a missing entry, a `revokedAt` (Remove), or
   a `disconnectedAt` newer than the connection the session came from (Disconnect). A **rotated
-  signer key or moved default stamp** made while the tab was closed is not adopted on restore;
+  signer key, moved default stamp or site stamp changed on the Apps screen** made while the tab
+  was closed is not adopted on restore;
   the session comes up on the handed-over view and corrects at the next live overlap. Changes
   that arrive while it IS live are folded and re-persisted, so they survive a reload.
 - **Network settings do not reach a partitioned session at all.** The Bee node and RPC URLs are
