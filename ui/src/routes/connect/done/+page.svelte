@@ -11,6 +11,8 @@
     stores to (persisted as the app's postageStampBatchID; choosing the
     default leaves the pointer unset so the app tracks the account default);
   - no drives yet: the drive pitch, demoted to a secondary card;
+  - a reconnect of a site given its own drive or none: a line naming it, with
+    a link to that site on the Apps tab;
   - anything else: plain confirmation.
 -->
 <script lang="ts">
@@ -22,6 +24,7 @@
   import { goto } from '$app/navigation'
   import { resolve } from '$app/paths'
 
+  import { appChosenDriveLine, appsTabHash } from '$lib/app-stamp'
   import AccountAvatar from '$lib/components/account-avatar.svelte'
   import AppHeader from '$lib/components/app-header.svelte'
   import DriveAddDialog from '$lib/components/drive-add-dialog.svelte'
@@ -48,6 +51,10 @@
   )
   const showPicker = $derived(connectStore.firstConnect && drives.length > 1)
   const showPitch = $derived(drives.length === 0)
+  const chosenDriveLine = $derived.by(() => {
+    const app = account?.activeApps.find((entry) => entry.appUrl === request?.appOrigin)
+    return account && app && !showPicker ? appChosenDriveLine(app, account) : undefined
+  })
 
   const driveOptions = $derived<SelectOption[]>(
     drives.map((drive) => ({
@@ -69,6 +76,13 @@
     }
     toastStore.show(`Connected to ${request.appName}!`)
   })
+
+  /** In a new window, so this popup keeps its connect request */
+  function openAppsTab() {
+    if (request) {
+      window.open(resolve(routes.ROOT) + appsTabHash(request.appOrigin), '_blank')
+    }
+  }
 
   function goToApp() {
     // Persist the drive choice only when it deviates from the account default
@@ -114,6 +128,19 @@
               />
               <p class="text-muted-foreground text-sm">Where this app will store data</p>
             </div>
+          {/if}
+
+          {#if chosenDriveLine}
+            <p class="text-muted-foreground text-center text-sm">
+              {chosenDriveLine}
+              <button
+                type="button"
+                class="cursor-pointer underline underline-offset-2"
+                onclick={openAppsTab}
+              >
+                Change it
+              </button>
+            </p>
           {/if}
 
           <Button class="w-full" onclick={goToApp}>

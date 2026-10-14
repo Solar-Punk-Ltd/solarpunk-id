@@ -74,6 +74,27 @@ export function appStampSummary(
 }
 
 /**
+ * The connect window's line about a site given its own drive or none, which
+ * a reconnect would otherwise not mention. `undefined` for a site that follows
+ * the account default.
+ */
+export function appChosenDriveLine(
+  app: AppStampPointer,
+  account: AccountDrives,
+): string | undefined {
+  if (app.postageStampBatchID === undefined) return undefined
+  const drive = resolvedDrive(app, account)
+  return drive
+    ? `This app uses the drive ${describeDrive(drive).name}.`
+    : 'No drive, this site cannot stamp.'
+}
+
+/** The home page hash that opens the Apps tab on one site */
+export function appsTabHash(site: string): string {
+  return `#apps/${encodeURIComponent(site)}`
+}
+
+/**
  * The site a `#apps/<encoded origin>` link names. The origin is encoded as
  * one segment because the hash splits on `/`.
  */
