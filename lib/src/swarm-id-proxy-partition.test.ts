@@ -1118,6 +1118,48 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       // A refused drive keeps its coordinator while the session reads as
       // subsidised. What that coordinator writes, the roster and this device's
       // state, it writes at the configured node, so it reads them back there.
+      it("reads the roster and publishes device state at the person's node while a site address is set", async () => {
+        await seedConnectedAccount()
+        await dispatch(
+          {
+            type: "parentIdentify",
+            requestId: "r1",
+            metadata: { name: "dApp" },
+            beeApiUrl: "https://site-bee.example.com/",
+          },
+          PARENT_ORIGIN,
+          parentWindow,
+        )
+        await vi.waitFor(() => expect(coordinatorCount()).toBeGreaterThan(0))
+        const coordinator = latestCoordinator() as CoordinatorStub & {
+          accountId?: string
+          currentPartition?: number
+          deps: { accountId: string }
+        }
+        coordinator.currentPartition = 0
+        coordinator.accountId = coordinator.deps.accountId
+        coordinator.withWrite.mockImplementationOnce(
+          (write: (target: unknown) => Promise<void>) => write({}),
+        )
+        rosterDevices.length = 0
+        vi.mocked(readRoster).mockClear()
+        vi.mocked(publishDeviceState).mockClear()
+
+        await (
+          proxy as unknown as {
+            runAccountStatePublish(reason: "acquired"): Promise<void>
+          }
+        ).runAccountStatePublish("acquired")
+
+        expect(
+          vi.mocked(readRoster).mock.calls.map(([options]) => options.bee.url),
+        ).toEqual([CONFIGURED_NODE_URL])
+        expect(vi.mocked(publishDeviceState)).toHaveBeenCalledOnce()
+        expect(vi.mocked(publishDeviceState).mock.calls[0][0].bee.url).toBe(
+          CONFIGURED_NODE_URL,
+        )
+      })
+
       it("keeps the coordinator's roster reads at the configured node once the drive runs out", async () => {
         const [stamp] = makeSyncedAccount().postageStamps
         await seedConnectedAccount({
@@ -2142,6 +2184,33 @@ describe("SwarmIdProxy partitioned write enablement", () => {
           Promise.resolve(
             input.bee.url === OWN_NODE_URL ? "ended" : "allowed",
           ) as Promise<"allowed" | "ended" | "unconfirmed">
+
+        it("asks the person's own node for a restored handover", async () => {
+          await connectPartitioned()
+          vi.mocked(checkRestoredSession).mockClear()
+          vi.mocked(checkRestoredSession).mockImplementationOnce(
+            verdictByNode as never,
+          )
+
+          proxy.destroy()
+          mountProxy()
+          await dispatch(
+            {
+              type: "parentIdentify",
+              requestId: "r1",
+              metadata: { name: "dApp" },
+              beeApiUrl: HOSTILE_BEE_URL,
+            },
+            PARENT_ORIGIN,
+            parentWindow,
+          )
+
+          expect(vi.mocked(checkRestoredSession)).toHaveBeenCalledOnce()
+          expect(vi.mocked(checkRestoredSession).mock.calls[0][0].bee.url).toBe(
+            OWN_NODE_URL,
+          )
+          await expect(gate().ensureCanWrite()).rejects.toThrow(/ended/)
+        })
 
         it("asks the person's own node, so the site cannot keep a revoked session allowed", async () => {
           await seedConnectedAccount()
