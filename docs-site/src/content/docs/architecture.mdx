@@ -106,8 +106,8 @@ iframe reads the Swarm ID site's own storage whenever the page embedding it is s
 Ports do not count, so `app.example.com` embedding `id.example.com` is same-site, and so is
 anything on `localhost`. An app on another domain embedding the hosted site at
 `solarpunkid.bzz.link`, such as an event site on `<name>.eth.limo`, is cross-site, so the path in
-the next paragraph is the normal one there. Every same-site app then shares one store, and the iframe keeps one
-session per app origin in it.
+the next paragraph is the normal one there. Every same-site app then shares one store, and the
+iframe keeps one session per app origin in it.
 
 Where the two are cross-site, or the browser partitions storage regardless (Safari's Intelligent
 Tracking Prevention, strict privacy settings elsewhere), the iframe gets its own store. The connect
