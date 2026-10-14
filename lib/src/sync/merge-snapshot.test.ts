@@ -11,6 +11,7 @@ import {
 import type { AccountStateSnapshot } from "../utils/account-state-snapshot"
 import { createChatBinding } from "../utils/chat-binding"
 import type { Device, ConnectedApp, PostageStamp } from "../schemas"
+import { NO_POSTAGE_STAMP } from "../schemas"
 
 const SELF_DEVICE_ID = "device-self-111"
 const OTHER_DEVICE_ID = "device-other-222"
@@ -443,6 +444,36 @@ describe("mergeSnapshotWithRemote — apps / stamps", () => {
     )
     expect(
       (result.connectedApps[0].postageStampBatchID as BatchId).toHex(),
+    ).toBe("cc".repeat(32))
+  })
+
+  it("a newer choice of no stamp propagates, and an older one loses", () => {
+    const none: ConnectedApp = {
+      ...makeConnectedApp("https://app.example"),
+      postageStampBatchID: NO_POSTAGE_STAMP,
+      postageStampBatchIDAt: 9_000_000,
+    }
+    const picked = {
+      ...makeConnectedApp("https://app.example"),
+      postageStampBatchID: new BatchId("cc".repeat(32)),
+      postageStampBatchIDAt: 8_000_000,
+    }
+    const newerNone = mergeSnapshotWithRemote(
+      makeSnapshot({ connectedApps: [picked] }),
+      makeSnapshot({ connectedApps: [none] }),
+    )
+    expect(newerNone.connectedApps[0].postageStampBatchID).toBe(
+      NO_POSTAGE_STAMP,
+    )
+
+    const olderNone = mergeSnapshotWithRemote(
+      makeSnapshot({
+        connectedApps: [{ ...none, postageStampBatchIDAt: 7_000_000 }],
+      }),
+      makeSnapshot({ connectedApps: [picked] }),
+    )
+    expect(
+      (olderNone.connectedApps[0].postageStampBatchID as BatchId).toHex(),
     ).toBe("cc".repeat(32))
   })
 
