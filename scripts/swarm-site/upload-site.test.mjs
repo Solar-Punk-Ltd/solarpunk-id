@@ -5,7 +5,8 @@ import { createServer } from "node:http"
 import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, readFile as readText, rm, writeFile as writeText } from "node:fs/promises"
 import { createRequire } from "node:module"
-import { join } from "node:path"
+import { tmpdir } from "node:os"
+import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { buildSite, emptySlotRecord, planSlots, SlotOverflowError } from "./upload-site.mjs"
 
@@ -212,8 +213,8 @@ function run(args, env) {
 }
 
 async function tinySite() {
-  await mkdir(join(HERE, "tmp-test"), { recursive: true })
-  const dir = await mkdtemp(join(HERE, "tmp-test", "site-"))
+  const dir = join(await mkdtemp(join(tmpdir(), "upload-site-")), "site")
+  await mkdir(dir)
   await mkdir(join(dir, "assets"))
   await writeText(join(dir, "index.html"), "<!doctype html><title>t</title>")
   await writeText(join(dir, "assets", "big.bin"), Buffer.alloc(20000, 7))
@@ -249,7 +250,7 @@ test("a real run stamps every chunk validly, writes the record, and reuses slots
     assert.deepEqual(bee.accepted, slotsBefore)
   } finally {
     bee.close()
-    await rm(join(HERE, "tmp-test"), { recursive: true, force: true })
+    await rm(dirname(dir), { recursive: true, force: true })
   }
 })
 
@@ -270,7 +271,7 @@ test("a refused chunk stops the run and writes no record", async () => {
     assert.ok(!existsSync(recordFile))
   } finally {
     bee.close()
-    await rm(join(HERE, "tmp-test"), { recursive: true, force: true })
+    await rm(dirname(dir), { recursive: true, force: true })
   }
 })
 
@@ -286,6 +287,6 @@ test("a real run without STAMP_KEY sends nothing", async () => {
     assert.equal(bee.accepted.size, 0)
   } finally {
     bee.close()
-    await rm(join(HERE, "tmp-test"), { recursive: true, force: true })
+    await rm(dirname(dir), { recursive: true, force: true })
   }
 })
