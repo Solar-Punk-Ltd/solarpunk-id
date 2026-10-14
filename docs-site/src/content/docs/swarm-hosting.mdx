@@ -69,7 +69,29 @@ Without it the built site refuses every site.
 ## Uploading
 
 The upload is a folder upload of `ui/build` with `index.html` as both the index and the error
-document. With [swarm-cli](https://github.com/ethersphere/swarm-cli):
+document.
+
+### With a stamp the Bee node does not own
+
+`scripts/swarm-site/upload-site.mjs` stamps every chunk on your machine and sends it pre-stamped to
+a Bee node's `POST /chunks`, so the Bee node does not have to own the stamp. Run it from that folder:
+
+```sh
+STAMP_KEY=<stamp-owner-private-key> node upload-site.mjs --build ../../ui/build \
+  --bee <bee-api-url> --batch <stamp-id> --depth <stamp-depth> --slots <slot-record-file>
+```
+
+`STAMP_KEY` is the private key of the wallet that owns the stamp. `--slots` names the stamp's slot
+record, a file that says which slot of the stamp each chunk holds, so the next version reuses those
+slots instead of filling the stamp. Keep one per stamp and pass the same file on every upload with
+it. A file that does not exist yet starts a new one. `--dry-run` needs no key, sends nothing and
+prints the reference the upload would get. `node --test upload-site.test.mjs` checks the slot
+logic, compares the root against bee-js's own folder upload, and runs a real send against a
+stand-in Bee.
+
+### With a stamp the Bee node owns
+
+With [swarm-cli](https://github.com/ethersphere/swarm-cli):
 
 ```sh
 swarm-cli upload ui/build --stamp <batch-id> --index-document index.html --error-document index.html
