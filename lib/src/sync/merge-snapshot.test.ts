@@ -441,9 +441,9 @@ describe("mergeSnapshotWithRemote — apps / stamps", () => {
       makeSnapshot({ connectedApps: [stale] }),
       makeSnapshot({ connectedApps: [chosen] }),
     )
-    expect(result.connectedApps[0].postageStampBatchID?.toHex()).toBe(
-      "cc".repeat(32),
-    )
+    expect(
+      (result.connectedApps[0].postageStampBatchID as BatchId).toHex(),
+    ).toBe("cc".repeat(32))
   })
 
   // A removal is not permanent: connecting again clears both markers and sets a

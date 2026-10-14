@@ -147,6 +147,9 @@ export const ChatBindingSchema = z.object({
 // Connected App Schema
 // ============================================================================
 
+/** The stamp choice of an app the person set to use no stamp at all */
+export const NO_POSTAGE_STAMP = "none"
+
 /**
  * Connected App Schema V1.
  *
@@ -161,9 +164,12 @@ export const ConnectedAppSchemaV1 = z.object({
   appDescription: z.string().optional(),
   connectedUntil: z.number().optional(),
   appSecret: z.string().optional(),
-  // Optional per-app postage-batch override. Absent → the account default
-  // (`account.defaultPostageStampBatchID`) pays for this app's uploads.
-  postageStampBatchID: StoredBatchId.optional(),
+  // The stamp the person chose for this app in Swarm ID. Absent → the account
+  // default (`account.defaultPostageStampBatchID`) pays for this app's uploads.
+  // `NO_POSTAGE_STAMP` → none does, and only a gateway the app names can pay.
+  postageStampBatchID: z
+    .union([z.literal(NO_POSTAGE_STAMP), StoredBatchId])
+    .optional(),
   // The pointer above rides its own last-writer-wins clock, because it is the
   // one edit to an entry that says nothing about whether the app is still
   // connected. Ranking the whole entry on a clock this bumped let a drive

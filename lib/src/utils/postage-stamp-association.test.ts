@@ -7,6 +7,7 @@ import {
   resolveStampForApp,
   stampsReachableByApp,
 } from "./postage-stamp-association"
+import { NO_POSTAGE_STAMP } from "../schemas"
 import {
   TEST_BATCH_ID_HEX,
   TEST_BATCH_ID_2_HEX,
@@ -72,6 +73,17 @@ describe("resolveStampForApp", () => {
     expect(result).toBeUndefined()
   })
 
+  // The person chose no stamp for this site in Swarm ID: the account default
+  // is not a fallthrough for it, or the choice would mean nothing.
+  it("resolves nothing for a site set to no stamp, though the account has a default", () => {
+    const result = resolveStampForApp(
+      { postageStampBatchID: NO_POSTAGE_STAMP },
+      { defaultPostageStampBatchID: accountBatch },
+      [accountStamp, appStamp],
+    )
+    expect(result).toBeUndefined()
+  })
+
   it("returns undefined when neither app nor account has a pointer", () => {
     const result = resolveStampForApp(
       { postageStampBatchID: undefined },
@@ -113,6 +125,15 @@ describe("stampsReachableByApp", () => {
       [accountStamp, appStamp],
     )
     expect(result).toHaveLength(2)
+  })
+
+  it("keeps nothing for a site set to no stamp", () => {
+    const result = stampsReachableByApp(
+      { postageStampBatchID: NO_POSTAGE_STAMP },
+      { defaultPostageStampBatchID: accountBatch },
+      [accountStamp, appStamp],
+    )
+    expect(result).toEqual([])
   })
 
   it("keeps nothing when neither pointer resolves", () => {

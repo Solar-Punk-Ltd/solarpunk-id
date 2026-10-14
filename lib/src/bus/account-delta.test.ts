@@ -80,7 +80,7 @@ describe("restoreLocalSessionFields — a peer's Disconnect", () => {
 
     const [app] = fold([local], [repointed])
 
-    expect(app.postageStampBatchID?.toHex()).toBe("cc".repeat(32))
+    expect((app.postageStampBatchID as BatchId).toHex()).toBe("cc".repeat(32))
     expect(app.appSecret).toBe("aabb")
     expect(app.connectedUntil).toBe(SESSION_END)
   })

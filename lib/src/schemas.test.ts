@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, it, expect, expectTypeOf } from "vitest"
+import { BatchId } from "@ethersphere/bee-js"
 import {
+  ConnectedAppSchemaV1,
   LocalAccountSchemaV1,
+  NO_POSTAGE_STAMP,
   isSignedOutAccount,
   type AccessMethod,
   type Account,
@@ -13,6 +16,7 @@ import {
   createAccount,
   createSignedOutAccount,
 } from "./test-fixtures"
+import { serializeConnectedApp } from "./utils/storage-managers"
 
 describe("LocalAccountSchemaV1 encryptedSeed", () => {
   // A serialized (plain-string) account — the wire shape LocalAccountSchemaV1
@@ -290,5 +294,39 @@ describe("LocalAccountSchemaV1 rejects malformed transform input", () => {
   ])("%s fails validation without throwing", (_label, record) => {
     const result = LocalAccountSchemaV1.safeParse(record)
     expect(result.success).toBe(false)
+  })
+})
+
+describe("ConnectedAppSchemaV1 stamp choice", () => {
+  const app = {
+    appUrl: "https://app.example",
+    appName: "Test App",
+    lastConnectedAt: 1_000_000,
+    postageStampBatchIDAt: 2_000_000,
+  }
+
+  it("keeps a site set to no stamp through storage", () => {
+    const stored = serializeConnectedApp({
+      ...app,
+      postageStampBatchID: NO_POSTAGE_STAMP,
+    })
+    const parsed = ConnectedAppSchemaV1.parse(
+      JSON.parse(JSON.stringify(stored)),
+    )
+    expect(parsed.postageStampBatchID).toBe("none")
+  })
+
+  it("keeps a site's own stamp through storage", () => {
+    const stored = serializeConnectedApp({
+      ...app,
+      postageStampBatchID: new BatchId("cc".repeat(32)),
+    })
+    const parsed = ConnectedAppSchemaV1.parse(
+      JSON.parse(JSON.stringify(stored)),
+    )
+    expect(parsed.postageStampBatchID).toBeInstanceOf(BatchId)
+    expect((parsed.postageStampBatchID as BatchId).toHex()).toBe(
+      "cc".repeat(32),
+    )
   })
 })

@@ -37,6 +37,7 @@ export {
   BatchIdSchema,
   DEFAULT_GNOSIS_RPC_URL,
   LocalAccountSchemaV1,
+  NO_POSTAGE_STAMP,
   NetworkSettingsSchemaV1,
   PostageStampSchemaV1,
   PrivateKeySchema,

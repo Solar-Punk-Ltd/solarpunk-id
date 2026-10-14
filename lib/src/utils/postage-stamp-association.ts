@@ -1,14 +1,20 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ConnectedApp, PostageStamp, SignedInAccount } from "../schemas"
+import {
+  NO_POSTAGE_STAMP,
+  type ConnectedApp,
+  type PostageStamp,
+  type SignedInAccount,
+} from "../schemas"
 
 /**
  * Resolve which postage stamp an app should upload with.
  *
  * An app may carry its own batch override (`postageStampBatchID`); otherwise it
  * falls back to the account's default stamp. The account owns the stamp set, so
- * these pointers are the single source of truth.
+ * these pointers are the single source of truth. An app set to
+ * `NO_POSTAGE_STAMP` resolves to no stamp, the default included.
  *
  * The lookup is existence-checked: a pointer whose stamp is missing (e.g. a
  * removed or replaced batch) is skipped so resolution falls through to the next
@@ -27,6 +33,7 @@ export function resolveStampForApp(
   account: Pick<SignedInAccount, "defaultPostageStampBatchID">,
   stamps: PostageStamp[],
 ): PostageStamp | undefined {
+  if (app.postageStampBatchID === NO_POSTAGE_STAMP) return undefined
   const candidates = [
     app.postageStampBatchID,
     account.defaultPostageStampBatchID,
@@ -65,6 +72,7 @@ export function stampsReachableByApp(
   account: Pick<SignedInAccount, "defaultPostageStampBatchID">,
   stamps: PostageStamp[],
 ): PostageStamp[] {
+  if (app.postageStampBatchID === NO_POSTAGE_STAMP) return []
   const reachable = [
     app.postageStampBatchID,
     account.defaultPostageStampBatchID,
