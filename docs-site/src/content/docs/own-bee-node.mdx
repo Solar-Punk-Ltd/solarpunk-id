@@ -32,8 +32,7 @@ In `bee.yaml`:
 
 ```yaml
 cors-allowed-origins:
-  - https://swarm-id.snaha.net
-  - https://swarm.snaha.net
+  - https://solarpunkid.bzz.link
   - http://localhost:5500
 ```
 
@@ -43,15 +42,13 @@ rejects browser requests until this is set. Restart the node after changing it.
 
 List only the identity sites you actually use:
 
-| Identity site                  | Origin to allow              |
-| ------------------------------ | ---------------------------- |
-| Production                     | `https://swarm-id.snaha.net` |
-| GitHub Pages build (`/id/`)    | `https://swarm.snaha.net`    |
-| Local development (`pnpm dev`) | `http://localhost:5500`      |
+| Identity site                   | Origin to allow                |
+| ------------------------------- | ------------------------------ |
+| Hosted (`solarpunkid.bzz.link`) | `https://solarpunkid.bzz.link` |
+| Local development (`pnpm dev`)  | `http://localhost:5500`        |
 
-Entries are **origins** — scheme, host and port, with no path and no trailing slash. That is why the
-GitHub Pages entry is the bare host: the identity site is served under `/id/`, but a path is not part
-of an origin, so one entry also covers the per-PR previews under `/pr-N/id/`.
+Entries are **origins**: scheme, host and port, with no path and no trailing slash. An identity
+site served under a path is allowed by its bare host.
 
 `http://localhost:5500` is the identity site's dev server, not the demo's — the demo runs on port 3500
 and, as above, never talks to Bee itself. If you serve the identity site from a domain of your own

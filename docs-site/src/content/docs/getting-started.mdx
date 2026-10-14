@@ -52,7 +52,7 @@ const APP_ICON =
 
 // 1. Create the client
 const client = new SwarmIdClient({
-  iframeOrigin: 'https://swarm-id.snaha.net',
+  iframeOrigin: 'https://solarpunkid.bzz.link',
   // A new account has no drive yet. This lets it upload anyway; see the note
   // below.
   subsidisedGatewayUrl: 'https://api.gateway.ethswarm.org/',
@@ -102,7 +102,7 @@ Two ways to handle it, and most apps do both:
   `https://api.gateway.ethswarm.org/` is fine for development and demos; see
   [Using the public gateway](../subsidised-gateway/#using-the-public-gateway) for its limits.
 - **Send the user to add a drive.** When `uploadUnavailableReason === 'no-stamp'`, link to the
-  identity site's Storage tab (`https://swarm-id.snaha.net/#storage`). Once the user has a drive,
+  identity site's Storage tab (`https://solarpunkid.bzz.link/#storage`). Once the user has a drive,
   the session uses it in preference to any gateway.
   :::
 
@@ -121,7 +121,7 @@ chunk so the user's own drive is spent through the public gateway. See
 
 | Option                 | Type       | Required | Description                                                                           |
 | ---------------------- | ---------- | -------- | ------------------------------------------------------------------------------------- |
-| `iframeOrigin`         | `string`   | Yes      | Origin of the Swarm ID iframe, for example `https://swarm-id.snaha.net`               |
+| `iframeOrigin`         | `string`   | Yes      | Origin of the Swarm ID iframe, for example `https://solarpunkid.bzz.link`             |
 | `metadata`             | `object`   | No       | What the connect popup shows about your app                                           |
 | `metadata.name`        | `string`   | No       | Your app's name                                                                       |
 | `metadata.description` | `string`   | No       | A line about your app                                                                 |
@@ -190,7 +190,8 @@ it.
 ## Run it locally
 
 ```bash
-git clone https://github.com/snaha/swarm-id
+git clone https://github.com/Solar-Punk-Ltd/solarpunk-id
+cd solarpunk-id
 pnpm install
 pnpm dev
 ```

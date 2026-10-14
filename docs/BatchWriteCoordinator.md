@@ -3,7 +3,7 @@
 Status: **implemented** (GitHub issue [#336](https://github.com/snaha/swarm-id/issues/336)).
 The partitioning scheme itself — and the chunks, lock SOCs, and feeds written to Swarm, which are
 part of the public API — is specified in
-[Multi-Device Postage Batches](https://swarm.snaha.net/docs/multi-device-postage-batches/) on the
+[Multi-Device Postage Batches](../docs-site/src/content/docs/multi-device-postage-batches.mdx) on the
 docs site (source: `docs-site/src/content/docs/multi-device-postage-batches.mdx`). This document
 describes the internal component that coordinates writes against that scheme.
 

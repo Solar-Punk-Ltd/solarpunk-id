@@ -113,4 +113,4 @@ This project is licensed under the [Apache License 2.0](LICENSE). By contributin
 
 ## Questions?
 
-Open an issue or check the [documentation](https://swarm.snaha.net/docs).
+Open an issue or check the [documentation](docs-site/src/content/docs).

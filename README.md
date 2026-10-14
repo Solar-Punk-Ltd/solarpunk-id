@@ -2,7 +2,7 @@
 
 Cross-browser compatible authentication and identity management for Swarm dApps.
 
-**[Documentation](https://swarm.snaha.net/docs)** | **[Identity UI](https://swarm-id.snaha.net)** | **[Demo](https://swarm-demo.snaha.net)**
+**[Documentation](./docs-site/src/content/docs)** | **[Identity UI](https://solarpunkid.bzz.link)**
 
 ## Packages
 
@@ -20,7 +20,7 @@ The project uses an OAuth-style popup authentication flow over shared localStora
 
 **Key Innovation**: The popup-based authentication allows dApps to securely derive app-specific secrets from a master identity. Cross-app isolation comes from the derivation itself — every secret is an HMAC-SHA256 of the master key over the app's own origin, so one app cannot reach another's — not from storage partitioning, which the flow is designed to work with or without.
 
-[Architecture deep-dive →](https://swarm.snaha.net/docs/architecture)
+[Architecture deep-dive →](./docs-site/src/content/docs/architecture.mdx)
 
 ## Quick Start
 
@@ -32,7 +32,7 @@ pnpm add @snaha/swarm-id
 import { SwarmIdClient } from '@snaha/swarm-id'
 
 const client = new SwarmIdClient({
-  iframeOrigin: 'https://swarm-id.snaha.net',
+  iframeOrigin: 'https://solarpunkid.bzz.link',
   metadata: {
     name: 'My dApp',
     description: 'A demo Swarm application',
@@ -55,7 +55,7 @@ if (info.identity && info.canUpload) {
 client.destroy()
 ```
 
-[Full integration guide →](https://swarm.snaha.net/docs/getting-started)
+[Full integration guide →](./docs-site/src/content/docs/getting-started.mdx)
 
 ## Deployment
 
@@ -143,7 +143,7 @@ curl -X POST "http://localhost:1633/stamps/500000000/20"
 curl "http://localhost:1633/stamps/<batchID>"
 ```
 
-See the [Local Development guide](https://swarm.snaha.net/docs/local-development) for client-side stamp signing, known dev keys, SSH tunnel setup, and more.
+See the [Local Development guide](./docs-site/src/content/docs/local-development.mdx) for client-side stamp signing, known dev keys, SSH tunnel setup, and more.
 
 ### Paying for storage locally
 

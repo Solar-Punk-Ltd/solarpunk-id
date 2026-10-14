@@ -30,7 +30,7 @@ import { SwarmIdClient } from "@snaha/swarm-id"
 
 // 1. Create the client
 const client = new SwarmIdClient({
-  iframeOrigin: "https://swarm-id.snaha.net",
+  iframeOrigin: "https://solarpunkid.bzz.link",
   metadata: {
     name: "My dApp",
     description: "A demo Swarm application",
@@ -74,11 +74,11 @@ client.destroy()
 
 ## Documentation
 
-Full documentation is available at **[swarm.snaha.net/docs](https://swarm.snaha.net/docs)**:
+Full documentation is in the repository, under **[docs-site/src/content/docs](https://github.com/Solar-Punk-Ltd/solarpunk-id/tree/main/docs-site/src/content/docs)**:
 
-- [Quick Start](https://swarm.snaha.net/docs/getting-started) — Installation and integration guide
-- [Architecture](https://swarm.snaha.net/docs/architecture) — How the system works, key hierarchy, backup & recovery
-- [API Reference](https://swarm.snaha.net/docs/api) — Complete SwarmIdClient API documentation
+- [Quick Start](https://github.com/Solar-Punk-Ltd/solarpunk-id/blob/main/docs-site/src/content/docs/getting-started.mdx) — Installation and integration guide
+- [Architecture](https://github.com/Solar-Punk-Ltd/solarpunk-id/blob/main/docs-site/src/content/docs/architecture.mdx) — How the system works, key hierarchy, backup & recovery
+- [API Reference](https://github.com/Solar-Punk-Ltd/solarpunk-id/blob/main/docs-site/src/content/docs/api/index.mdx) — Complete SwarmIdClient API documentation
 
 ## License
 
