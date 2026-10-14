@@ -1,11 +1,11 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
-import { STORAGE_CHALLENGE_KEY } from '@snaha/swarm-id/internal'
+import { STORAGE_CHALLENGE_KEY } from '@solarpunkltd/swarm-id/internal'
 
 import { siteAllowList } from '$lib/accepted-site'
 
 /**
- * A dApp connection request, parsed from the URL hash the @snaha/swarm-id
+ * A dApp connection request, parsed from the URL hash the @solarpunkltd/swarm-id
  * client puts on the connect popup (e.g. #origin=…&appName=…&challenge=…).
  * Held in memory so it survives in-popup navigation through the account
  * creation flow; lost on reload by design (the user can retry from the dApp).

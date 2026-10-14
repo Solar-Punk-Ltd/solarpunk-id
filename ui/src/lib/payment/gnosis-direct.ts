@@ -12,7 +12,7 @@
  * chain answers as Gnosis, so a wallet pointed at it makes a real payment with
  * nothing standing in — no solver, no second chain, no invented prices.
  */
-import { withTimeout } from '@snaha/swarm-id'
+import { withTimeout } from '@solarpunkltd/swarm-id'
 import { type SwapInput, gnosisMainnetSettings } from '@swarm-id/multichain'
 import { type Chain, defineChain, encodeFunctionData, erc20Abi, formatUnits } from 'viem'
 

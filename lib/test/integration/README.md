@@ -23,7 +23,7 @@ From the repo root, start the cluster, then run the suite:
 
 ```bash
 pnpm dev:cluster:start   # start queen + 3 full workers (Docker)
-pnpm --filter @snaha/swarm-id test:integration
+pnpm --filter @solarpunkltd/swarm-id test:integration
 ```
 
 The suite **fails** when no cluster is reachable at `http://localhost:1633`,
@@ -33,7 +33,7 @@ must not be able to report the same colour as a run that did. Nothing here is
 skipped, so a local unit-test run is unaffected either way.
 
 It is not optional in CI: `integration-tests.yml` starts a cluster and runs
-`pnpm --filter @snaha/swarm-id test:integration` on every push to `main` and
+`pnpm --filter @solarpunkltd/swarm-id test:integration` on every push to `main` and
 every pull request touching `lib/**`, so these tests gate merges like any other.
 
 ## How it works

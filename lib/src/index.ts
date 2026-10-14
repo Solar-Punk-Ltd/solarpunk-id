@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * `@snaha/swarm-id` — what a dApp imports.
+ * `@solarpunkltd/swarm-id` — what a dApp imports.
  *
  * The identity UI's half (sync, key derivation, the account bus, the proxy)
- * is `@snaha/swarm-id/internal`; see `internal.ts`. Nothing is exported here
+ * is `@solarpunkltd/swarm-id/internal`; see `internal.ts`. Nothing is exported here
  * for the lib's own sake: the proxy and the client import their modules
  * directly, and tests do the same.
  */

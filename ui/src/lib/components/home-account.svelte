@@ -20,13 +20,13 @@
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import RefreshCw from '@lucide/svelte/icons/refresh-cw'
   import Wallet from '@lucide/svelte/icons/wallet'
-  import { uint8ArrayToHex } from '@snaha/swarm-id'
+  import { uint8ArrayToHex } from '@solarpunkltd/swarm-id'
   import {
     type AccessMethod,
     derivePostageSignerKeySync,
     deriveSharingKey,
     encryptSeed,
-  } from '@snaha/swarm-id/internal'
+  } from '@solarpunkltd/swarm-id/internal'
 
   import { createAttemptTracker } from '$lib/attempt'
   import AccountAvatar from '$lib/components/account-avatar.svelte'

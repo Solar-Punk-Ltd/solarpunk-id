@@ -96,7 +96,7 @@ Run tests with:
 
 ```bash
 pnpm check:all                      # Everything CI runs, including each package's tests
-pnpm --filter @snaha/swarm-id test  # One package's unit tests
+pnpm --filter @solarpunkltd/swarm-id test  # One package's unit tests
 ```
 
 There is no `pnpm test` at the repo root — tests run per package, or through `check:all`.

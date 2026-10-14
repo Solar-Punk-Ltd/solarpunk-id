@@ -12,7 +12,7 @@
   16px whatever size was asked for.
 -->
 <script lang="ts">
-  import { generatedAvatar } from '@snaha/swarm-id'
+  import { generatedAvatar } from '@solarpunkltd/swarm-id'
 
   interface Props {
     value: string

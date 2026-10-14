@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { type Page, expect, test } from '@playwright/test'
 
-// STORAGE_KEY_ACCOUNTS from @snaha/swarm-id, inlined — the lib's browser
+// STORAGE_KEY_ACCOUNTS from @solarpunkltd/swarm-id, inlined — the lib's browser
 // bundle cannot be imported into Node-side Playwright specs.
 const STORAGE_KEY_ACCOUNTS = 'swarm-id-accounts'
 

@@ -7,8 +7,8 @@ funded postage batch.
 
 These are **opt-in** and **never run in CI**. They have their own Vitest config
 (`lib/vitest.live.config.ts`) and npm script (`test:live`), separate from both the
-default mocked unit suite (`pnpm --filter @snaha/swarm-id test`) and the local-cluster
-`pnpm --filter @snaha/swarm-id test:integration`.
+default mocked unit suite (`pnpm --filter @solarpunkltd/swarm-id test`) and the local-cluster
+`pnpm --filter @solarpunkltd/swarm-id test:integration`.
 
 ## What it covers
 
@@ -47,7 +47,7 @@ The deterministic, always-on guards for the same logic are the mocked tests in
 2. Run:
 
    ```bash
-   pnpm --filter @snaha/swarm-id test:live
+   pnpm --filter @solarpunkltd/swarm-id test:live
    # or, from the repo root:
    pnpm test:live
    ```

@@ -85,7 +85,7 @@ const hoisted = vi.hoisted(() => {
   return { GATEWAY_URL, FakeClient, instances, control, storage }
 })
 
-vi.mock('@snaha/swarm-id', () => ({
+vi.mock('@solarpunkltd/swarm-id', () => ({
   SwarmIdClient: hoisted.FakeClient,
   DEFAULT_BEE_NODE_URL: hoisted.GATEWAY_URL,
   formatTTL: () => 'never',

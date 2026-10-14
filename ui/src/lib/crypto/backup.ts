@@ -7,7 +7,7 @@
  * without the phrase and restoring needs exactly: file + phrase.
  */
 import { EthAddress } from '@ethersphere/bee-js'
-import { hexToUint8Array, uint8ArrayToHex } from '@snaha/swarm-id'
+import { hexToUint8Array, uint8ArrayToHex } from '@solarpunkltd/swarm-id'
 import {
   type SyncedAccount,
   SyncedAccountSchemaV1,
@@ -15,7 +15,7 @@ import {
   deriveKeyFromSecret,
   encryptSeed,
   serializeSyncedAccount,
-} from '@snaha/swarm-id/internal'
+} from '@solarpunkltd/swarm-id/internal'
 
 import { walletFromPhrase } from '$lib/crypto/mnemonic'
 

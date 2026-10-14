@@ -13,7 +13,7 @@
  * nothing else — see `settingsFor`.
  */
 import { EthAddress } from '@ethersphere/bee-js'
-import { jsonRpcCall } from '@snaha/swarm-id'
+import { jsonRpcCall } from '@solarpunkltd/swarm-id'
 import {
   GNOSIS_CHAIN_ID,
   MultichainClient,
@@ -99,7 +99,7 @@ function kindOf(chainId: number, genesisHash: string): ChainKind {
 const CHAIN_RPC_LABEL = 'The configured Gnosis RPC'
 
 /**
- * One JSON-RPC call, checked — the shared contract from `@snaha/swarm-id`,
+ * One JSON-RPC call, checked — the shared contract from `@solarpunkltd/swarm-id`,
  * under this module's deadline and wording. Checked and not a bare `fetch`
  * because every caller here decides from the answer whether money is real.
  */

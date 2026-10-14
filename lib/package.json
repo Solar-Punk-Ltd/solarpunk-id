@@ -1,5 +1,5 @@
 {
-  "name": "@snaha/swarm-id",
+  "name": "@solarpunkltd/swarm-id",
   "version": "0.7.0",
   "type": "module",
   "description": "Swarm ID library for authentication and Bee API operations",

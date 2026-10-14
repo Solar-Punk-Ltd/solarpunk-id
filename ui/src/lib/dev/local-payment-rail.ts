@@ -37,8 +37,8 @@
  *
  * Production code must never import this module.
  */
-import { withTimeout } from '@snaha/swarm-id'
-import { sleep } from '@snaha/swarm-id/internal'
+import { withTimeout } from '@solarpunkltd/swarm-id'
+import { sleep } from '@solarpunkltd/swarm-id/internal'
 import {
   LOCAL_SOLVER_ADDRESS,
   LOCAL_SOURCE_USDC_ADDRESS,

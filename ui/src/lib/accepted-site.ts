@@ -15,14 +15,14 @@
  * not a clean https origin in its normalized form. A development build also
  * takes local http, as the window does.
  */
-import { isCleanSiteOrigin } from '@snaha/swarm-id'
+import { isCleanSiteOrigin } from '@solarpunkltd/swarm-id'
 import {
   DEFAULT_SITE_ALLOW_LIST_ENS_NAME,
   DEFAULT_SITE_ALLOW_LIST_RECORD_KEY,
   type SiteAllowList,
   type SiteAllowListSettings,
   createSiteAllowList,
-} from '@snaha/swarm-id/internal'
+} from '@solarpunkltd/swarm-id/internal'
 
 import { env } from '$env/dynamic/public'
 

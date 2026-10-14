@@ -4,7 +4,7 @@
 -->
 
 <script lang="ts">
-  import { jsonRpcCall } from '@snaha/swarm-id'
+  import { jsonRpcCall } from '@solarpunkltd/swarm-id'
 
   import { cn } from '$lib/utils'
 

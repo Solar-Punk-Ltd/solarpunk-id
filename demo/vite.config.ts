@@ -17,11 +17,11 @@ export default defineConfig(({ command }) => ({
     alias:
       command === 'serve'
         ? {
-            '@snaha/swarm-id': fileURLToPath(new URL('../lib/src/index.ts', import.meta.url)),
+            '@solarpunkltd/swarm-id': fileURLToPath(new URL('../lib/src/index.ts', import.meta.url)),
           }
         : undefined,
   },
   optimizeDeps: {
-    exclude: ['@snaha/swarm-id'],
+    exclude: ['@solarpunkltd/swarm-id'],
   },
 }))

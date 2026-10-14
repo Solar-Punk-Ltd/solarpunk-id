@@ -9,7 +9,11 @@
  * (#578).
  */
 import { BatchId, EthAddress, PrivateKey } from '@ethersphere/bee-js'
-import { type ChatBinding, buildChatBindingMessage, verifyChatBinding } from '@snaha/swarm-id'
+import {
+  type ChatBinding,
+  buildChatBindingMessage,
+  verifyChatBinding,
+} from '@solarpunkltd/swarm-id'
 import {
   AuthDataSchema,
   type ConnectedApp,
@@ -17,7 +21,7 @@ import {
   createChatBinding,
   deriveChatKey,
   deriveSecret,
-} from '@snaha/swarm-id/internal'
+} from '@solarpunkltd/swarm-id/internal'
 import { type Hex, recoverMessageAddress } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

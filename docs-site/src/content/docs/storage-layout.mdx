@@ -9,15 +9,15 @@ the browser, such as an Electron application that embeds the identity site, is o
 and can write the store directly. This page is the contract for doing so: it is what
 [#815](https://github.com/snaha/swarm-id/issues/815) and
 [#816](https://github.com/snaha/swarm-id/issues/816) asked for, and nothing on the public
-`@snaha/swarm-id` SDK offers it, by design (the end of the [API reference](../api/) explains the
+`@solarpunkltd/swarm-id` SDK offers it, by design (the end of the [API reference](../api/) explains the
 divide).
 
 :::caution[Pre-production]
 While the version is `0.x` this layout may change in place, without a migration. Pin the version
-of `@snaha/swarm-id` you validate against and read this page again when you bump it.
+of `@solarpunkltd/swarm-id` you validate against and read this page again when you bump it.
 :::
 
-`@snaha/swarm-id/internal` exports the pieces of this page that are code: the Zod schemas
+`@solarpunkltd/swarm-id/internal` exports the pieces of this page that are code: the Zod schemas
 (`LocalAccountSchemaV1`, `NetworkSettingsSchemaV1`) to validate a record before writing it, the
 storage keys (`STORAGE_KEY_ACCOUNTS`, `STORAGE_KEY_NETWORK_SETTINGS`), the key derivation from
 [Key Derivation](../key-derivation/), and the seed encryption (`encryptSeed`,

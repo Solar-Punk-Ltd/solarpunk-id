@@ -11,7 +11,7 @@
   import { clientStore } from '$lib/stores/client.svelte'
   import { logStore } from '$lib/stores/log.svelte'
   import { formatBytes } from '$lib/utils/format'
-  import type { CollectionEntry } from '@snaha/swarm-id'
+  import type { CollectionEntry } from '@solarpunkltd/swarm-id'
 
   interface Props {
     reference?: string

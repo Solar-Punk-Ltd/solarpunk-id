@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Byte⇄hex conversion comes from the lib, which rejects malformed input.
-import { hexToUint8Array } from '@snaha/swarm-id'
+import { hexToUint8Array } from '@solarpunkltd/swarm-id'
 
 const V1_TIMESTAMP_BYTES = 8
 const V1_REFERENCE_OFFSET = 8

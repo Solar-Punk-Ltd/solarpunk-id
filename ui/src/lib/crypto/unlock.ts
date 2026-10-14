@@ -5,8 +5,8 @@
  * and decrypt the BIP-39 entropy. Used by reveals (private key, recovery
  * phrase) and backup export.
  */
-import { hexToUint8Array } from '@snaha/swarm-id'
-import { decryptSeed, deriveKeyFromPassword } from '@snaha/swarm-id/internal'
+import { hexToUint8Array } from '@solarpunkltd/swarm-id'
+import { decryptSeed, deriveKeyFromPassword } from '@solarpunkltd/swarm-id/internal'
 
 import { deriveWalletKey, unlockWalletKeySource } from '$lib/crypto/eth-wallet'
 import { authenticateWithPasskey } from '$lib/crypto/passkey'

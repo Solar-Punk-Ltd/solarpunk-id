@@ -16,7 +16,7 @@
     buildBzzManifestNode,
     hexToUint8Array,
     saveMantarayTreeRecursively,
-  } from '@snaha/swarm-id'
+  } from '@solarpunkltd/swarm-id'
   import type { ResultData } from './result-types'
 
   interface Props {

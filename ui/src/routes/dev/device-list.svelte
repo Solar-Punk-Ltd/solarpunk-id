@@ -10,7 +10,7 @@
   import CircleCheckBig from '@lucide/svelte/icons/circle-check-big'
   import Laptop from '@lucide/svelte/icons/laptop'
   import RefreshCw from '@lucide/svelte/icons/refresh-cw'
-  import { hexToUint8Array } from '@snaha/swarm-id'
+  import { hexToUint8Array } from '@solarpunkltd/swarm-id'
   import {
     PartitionLease,
     type PartitionLeaseStateSnapshot,
@@ -18,7 +18,7 @@
     deriveSwarmEncryptionKey,
     getOrCreateDeviceId,
     leaseCacheStorageKey,
-  } from '@snaha/swarm-id/internal'
+  } from '@solarpunkltd/swarm-id/internal'
 
   import { browser } from '$app/environment'
 

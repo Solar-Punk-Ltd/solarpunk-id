@@ -1,7 +1,7 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 import { PrivateKey } from '@ethersphere/bee-js'
-import type { fetchOnChainBatchStateResult } from '@snaha/swarm-id/internal'
+import type { fetchOnChainBatchStateResult } from '@solarpunkltd/swarm-id/internal'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { fetchExistingBatchFromChain } from './contract'
@@ -9,8 +9,8 @@ import { fetchExistingBatchFromChain } from './contract'
 vi.mock('$app/environment', () => ({ browser: false }))
 
 const internal = vi.hoisted(() => ({ fetchOnChainBatchStateResult: vi.fn() }))
-vi.mock('@snaha/swarm-id/internal', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@snaha/swarm-id/internal')>()),
+vi.mock('@solarpunkltd/swarm-id/internal', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@solarpunkltd/swarm-id/internal')>()),
   ...internal,
 }))
 
