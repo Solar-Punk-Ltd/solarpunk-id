@@ -9,6 +9,13 @@ put your node's API URL in **Bee address**.
 An application that embeds the identity site and runs the node itself can write that setting
 directly; [Storage Layout](../storage-layout/) has the key and the shape.
 
+An app can also name a node for its own content alone, with the `beeApiUrl` option or
+`setBeeApiUrl()`, which leaves the person's setting as it is and applies nowhere else. The app's
+reads and stamped uploads go there. The person's own node still carries everything that coordinates
+their account: the check that this site's session was not ended, the device roster, and the write
+lock, lease and state chunks of their drive. So with an app's node set, both nodes are used. See
+[The site's own Bee node](../api/#the-sites-own-bee-node). The CORS rule below applies to both.
+
 One thing has to be configured on the node itself: **CORS**. Requests reach Bee from a browser, and
 a node that does not allow the origin they come from rejects every one of them.
 

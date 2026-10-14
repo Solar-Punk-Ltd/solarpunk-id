@@ -65,6 +65,15 @@ describe("connectionInfoEqual", () => {
     ).toBe(false)
   })
 
+  it("returns false when the Bee address in effect differs", () => {
+    expect(
+      connectionInfoEqual(
+        { ...BASE, beeApiUrl: "https://a.example.com/" },
+        { ...BASE, beeApiUrl: "https://b.example.com/" },
+      ),
+    ).toBe(false)
+  })
+
   it("returns false when appKey differs", () => {
     expect(
       connectionInfoEqual(

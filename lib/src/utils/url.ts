@@ -27,6 +27,19 @@ export function isHttpUrl(value: string): boolean {
 }
 
 /**
+ * True for an address a site may name as its Bee node: an `http:` or
+ * `https:` URL, optionally with a path, the way a gateway in front of Bee is
+ * often mounted. Refused besides what `isHttpUrl` refuses: credentials, which
+ * `fetch` will not send from a URL and throws on, and a query or fragment,
+ * which bee-js would put in the middle of every request path it appends.
+ */
+export function isBeeApiUrl(value: string): boolean {
+  if (!isHttpUrl(value) || /[\s?#]/.test(value)) return false
+  const { username, password } = new URL(value)
+  return username === "" && password === ""
+}
+
+/**
  * Configuration options for building the authentication URL.
  */
 export interface BuildAuthUrlOptions {

@@ -329,7 +329,15 @@ export class PartitionLease {
       BACKUP_KEY_LABEL,
     )
     const backupSigner = new PrivateKey(backupKeyHex)
-    return new PartitionLease({ ...opts, backupSigner })
+    return new PartitionLease({
+      ...opts,
+      backupSigner,
+      // Read through rather than copied by the spread: the coordinator passes
+      // a getter that follows a change of node for the whole session.
+      get bee() {
+        return opts.bee
+      },
+    })
   }
 
   /**

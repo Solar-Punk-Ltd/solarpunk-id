@@ -10,13 +10,16 @@ Two package entries, one build: `@solarpunkltd/swarm-id` (`src/index.ts`) is the
 All cross-origin communication via `postMessage` with Zod validation.
 
 The full unions live in `types.ts` (`ParentToIframeMessageSchema`, `IframeToParentMessageSchema`,
-`PopupToIframeMessageSchema`), 41 and 46 members, one `…Response` per request. The ones worth
+`PopupToIframeMessageSchema`), 42 and 47 members, one `…Response` per request. The ones worth
 knowing by name:
 
 - **Parent → Iframe**: `parentIdentify`, `checkAuth`, `connect`, `disconnect`, `uploadData`,
   `downloadData`, `deriveAppSecret`, `getChatKey` (the site's chat key, whose address the
   site's chat binding names, `docs/Chat-Binding.md`), `stampChunk` (the iframe stamps a whole
-  chunk and returns the stamp, so the app sends the chunk through its own Swarm access)
+  chunk and returns the stamp, so the app sends the chunk through its own Swarm access),
+  `setBeeApiUrl` (the site's own Bee node for its content, which `parentIdentify` can carry
+  too, held in memory by that site's frame and never stored. The proxy's `accountBee`, the
+  person's own node, keeps the revocation check, the roster and the coordinator's chunks)
 - **Iframe → Parent**: `proxyReady`, `initError`, `authStatusResponse`, `authSuccess`,
   `connectResponse`, `connectionInfoChanged` (what `initialize()` awaits), `uploadDataResponse`,
   `error`

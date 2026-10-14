@@ -55,7 +55,7 @@ import {
   type BatchWriteCoordinatorDeps,
 } from "./batch-write-coordinator"
 import { NO_HOLDER_DEVICE_ID } from "./partition-lock"
-import type { LeaseRefreshOutcome } from "./partition-lease"
+import { PartitionLease, type LeaseRefreshOutcome } from "./partition-lease"
 import { STATE_POINTER_EPOCH_MS } from "./partition-state"
 import {
   LEASE_REFRESH_MS,
@@ -2119,5 +2119,43 @@ describe("BatchWriteCoordinator — bus-accelerated leases (docs/Account-Bus.md)
     const coordinator = new BatchWriteCoordinator(makeDeps())
     coordinator.teardown()
     await expect(coordinator.yieldForPeer()).resolves.toBeUndefined()
+  })
+})
+
+// The proxy hands the coordinator a `bee` getter that follows the site's Bee
+// address. The lease it builds lives for the whole session, so it has
+// to read that getter on every use too, or its lock and state writes stay on
+// the node the session started with.
+describe("BatchWriteCoordinator follows a change of node", () => {
+  it("hands the lease a bee that follows the coordinator's", async () => {
+    const firstBee =
+      new MockBee() as unknown as BatchWriteCoordinatorDeps["bee"]
+    const nextBee = new MockBee() as unknown as BatchWriteCoordinatorDeps["bee"]
+    let currentBee = firstBee
+    const deps = makeDeps({
+      stamper: makeStamper(
+        [],
+      ) as unknown as BatchWriteCoordinatorDeps["stamper"],
+    })
+    // After `makeDeps`, whose spread would read a getter once.
+    Object.defineProperty(deps, "bee", { get: () => currentBee })
+    const coordinator = new BatchWriteCoordinator(deps)
+    leaseController.lease = makeLease({
+      acquireResult: {
+        partition: 1,
+        partitionCount: 4,
+        localCounter: new Uint32Array(8),
+        isReadOnly: false,
+      },
+    })
+    vi.mocked(PartitionLease.fromSwarmEncryptionKey).mockClear()
+
+    await (coordinator as unknown as Internals).acquire()
+    const [leaseOpts] = vi.mocked(PartitionLease.fromSwarmEncryptionKey).mock
+      .calls[0]
+    expect(leaseOpts.bee).toBe(firstBee)
+
+    currentBee = nextBee
+    expect(leaseOpts.bee).toBe(nextBee)
   })
 })

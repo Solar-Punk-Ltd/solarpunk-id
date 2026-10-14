@@ -37,6 +37,9 @@ const client = new SwarmIdClient({
     name: "My dApp",
     description: "A demo Swarm application",
   },
+  // Optional: the Bee node this site's content goes through, in place of the
+  // person's own setting. Change it later with client.setBeeApiUrl(url).
+  // beeApiUrl: "https://bee.example.com/",
   onConnectionChange: (info) => {
     console.log(
       "Connection changed:",

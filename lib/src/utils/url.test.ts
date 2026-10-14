@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, it, expect } from "vitest"
-import { buildAuthUrl } from "./url"
+import { buildAuthUrl, isBeeApiUrl } from "./url"
 
 describe("buildAuthUrl", () => {
   it("should build URL with origin only", () => {
@@ -101,5 +101,34 @@ describe("buildAuthUrl", () => {
     )
 
     expect(url).not.toContain("challenge")
+  })
+})
+
+describe("isBeeApiUrl", () => {
+  it.each([
+    "https://bee.example.com",
+    "https://bee.example.com/",
+    "http://localhost:1633",
+    "https://gateway.example.com/bee/",
+    "https://gateway.example.com/swarm/api",
+  ])("accepts %s", (value) => {
+    expect(isBeeApiUrl(value)).toBe(true)
+  })
+
+  it.each([
+    ["a script URL", "javascript:alert(1)"],
+    ["a data URL", "data:text/html,hi"],
+    ["a non-http scheme", "ftp://bee.example.com"],
+    ["a scheme-less host", "localhost:1633"],
+    ["a relative path", "/bee"],
+    ["an empty string", ""],
+    ["credentials", "https://user:pass@bee.example.com"],
+    ["a user name alone", "https://user@bee.example.com"],
+    ["a query", "https://bee.example.com/?token=1"],
+    ["an empty query", "https://bee.example.com/?"],
+    ["a fragment", "https://bee.example.com/#x"],
+    ["whitespace", " https://bee.example.com"],
+  ])("refuses %s", (_, value) => {
+    expect(isBeeApiUrl(value)).toBe(false)
   })
 })

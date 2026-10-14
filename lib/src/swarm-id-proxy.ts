@@ -12,6 +12,7 @@ import type {
   DownloadDataMessage,
   DeriveAppSecretMessage,
   GetChatKeyMessage,
+  SetBeeApiUrlMessage,
   StampChunkMessage,
   UploadFileMessage,
   DownloadFileMessage,
@@ -269,6 +270,8 @@ const LEASE_REQUEST_ID_LENGTH = 8
  *  call off a yield whose rank timer has fired. Small: a round's id is spent
  *  the moment a holder claims it, and stale entries only cost a `Set` slot. */
 const ANSWERED_REQUEST_MEMORY = 32
+/** Content, account and gateway clients, with room for a site's next address. */
+const MAX_BEE_CLIENTS = 4
 
 /** Identifies one slot-wait round, so every holder ranks itself the same way.
  *  A UUID's first block is hex, so this is hex without any rewriting. */
@@ -472,7 +475,22 @@ export class SwarmIdProxy {
    */
   private lastRestampMs = new Map<string, number>()
   private utilizationStore: UtilizationStoreDB | undefined
-  private beeApiUrl: string
+  /** The Bee node the person set in Swarm ID's network settings. */
+  private ownBeeApiUrl: string
+  /**
+   * The Bee node the embedding site named for its own session, from
+   * `parentIdentify` or `setBeeApiUrl`. In memory only: a frame
+   * serves the one parent origin it was identified by, so this is that
+   * site's alone, and nothing writes it to storage, the account or a sync
+   * feed. The site sends it again on every load.
+   */
+  private siteBeeApiUrl: string | undefined
+  /**
+   * The subsidised gateway the site asked for, kept apart from
+   * `subsidisedGatewayUrl`, which the person's own custom node can switch
+   * off, so the gateway can come back once the site names its own node.
+   */
+  private siteSubsidisedGatewayUrl: string | undefined
   private gnosisRpcUrl: string
   private postageStampContractAddress: string
   private signalingUrl: string | undefined
@@ -481,11 +499,10 @@ export class SwarmIdProxy {
   private popupMode: "popup" | "window" = "window"
   private appMetadata: AppMetadata | undefined
   /**
-   * The last Bee client built, with the URL it was asked for. Keyed on that
-   * input URL, not on the client's own `url`, which bee-js keeps without the
-   * trailing slash.
+   * Bee clients by the URL they were asked for. Keyed on that input URL, not
+   * on the client's own `url`, which bee-js keeps without the trailing slash.
    */
-  private beeClient: { url: string; bee: Bee } | undefined
+  private beeClients = new Map<string, Bee>()
   private unsubscribeStorageListeners: Array<() => void> = []
   private storageWorkQueue: Promise<void> = Promise.resolve()
   private lastConnectionInfo: ConnectionInfo | undefined
@@ -512,6 +529,32 @@ export class SwarmIdProxy {
   }
 
   /**
+   * The node the site's own content goes through: the site's address when it
+   * named one, the person's setting otherwise. Content only, the reads and
+   * stamped uploads the site asks for. Nothing that decides whether this
+   * session may write, or that coordinates the person's devices, reads it
+   * (`accountBee`), because a site could answer those from a node of its own.
+   */
+  private get beeApiUrl(): string {
+    return this.siteBeeApiUrl ?? this.ownBeeApiUrl
+  }
+
+  /**
+   * Switch off the site's subsidised gateway when the node in effect is the
+   * person's own custom one, so their uploads go to the node they chose. A
+   * node the site named is not the person's choice, and the site asked for
+   * both, so it keeps the gateway.
+   */
+  private dropGatewayForOwnCustomNode(): void {
+    if (
+      this.siteBeeApiUrl === undefined &&
+      this.ownBeeApiUrl !== DEFAULT_BEE_NODE_URL
+    ) {
+      this.subsidisedGatewayUrl = undefined
+    }
+  }
+
+  /**
    * The client for the node the current mode writes to: the dApp's gateway
    * while the session is subsidised, the configured node otherwise. Reads have
    * to come from where the uploads go, or a dApp reads back a 404 for the
@@ -532,22 +575,38 @@ export class SwarmIdProxy {
   }
 
   /**
-   * The client for the configured node, whatever the mode. The coordinator
-   * writes there, and only there: it runs in user-stamp mode alone, and a
-   * refused drive (expired, unusable) keeps one while `bee` points at the
-   * gateway. What it writes — the roster, this device's state — is read back
-   * through this client too.
+   * The client for the site's content node, whatever the mode: where the
+   * site's stamped uploads go in user-stamp mode, which `bee` also reads from
+   * then.
    */
   private get nodeBee(): Bee {
     return this.beeClientFor(this.beeApiUrl)
   }
 
-  /** A client for `url`, rebuilt only when the URL differs from the last. */
+  /**
+   * The client for the person's own node, whatever the site named. The
+   * coordinator's lock, lease and state chunks, the device roster and the
+   * restored session's revocation check go through it: they decide what this
+   * session may do with the person's account and stamp, so the embedding
+   * site must not be able to answer them.
+   */
+  private get accountBee(): Bee {
+    return this.beeClientFor(this.ownBeeApiUrl)
+  }
+
+  /**
+   * A client for `url`, kept per URL so the content, account and gateway
+   * clients do not rebuild each other. Bounded, because a site can name a
+   * new address at any time.
+   */
   private beeClientFor(url: string): Bee {
-    if (this.beeClient?.url !== url) {
-      this.beeClient = { url, bee: new Bee(url) }
+    let bee = this.beeClients.get(url)
+    if (!bee) {
+      if (this.beeClients.size >= MAX_BEE_CLIENTS) this.beeClients.clear()
+      bee = new Bee(url)
+      this.beeClients.set(url, bee)
     }
-    return this.beeClient.bee
+    return bee
   }
 
   /**
@@ -599,7 +658,7 @@ export class SwarmIdProxy {
     this.siteAllowList = config.siteAllowList
     // Load Bee API URL from network settings, falling back to default
     const networkSettings = createNetworkSettingsStorageManager().load()
-    this.beeApiUrl = networkSettings?.beeNodeUrl || DEFAULT_BEE_NODE_URL
+    this.ownBeeApiUrl = networkSettings?.beeNodeUrl || DEFAULT_BEE_NODE_URL
     this.gnosisRpcUrl = networkSettings?.gnosisRpcUrl || DEFAULT_GNOSIS_RPC_URL
     // PostageStamp contract address for on-chain TTL reads. The host app
     // supplies this from a build-time env so local dev can point at the
@@ -684,6 +743,7 @@ export class SwarmIdProxy {
           return
         }
         this.applyNetworkSettings()
+        this.emitConnectionInfoIfChanged()
       }
       window.addEventListener("storage", onNetworkSettingsChange)
       this.unsubscribeStorageListeners.push(() =>
@@ -737,18 +797,16 @@ export class SwarmIdProxy {
     this.gnosisRpcUrl = settings?.gnosisRpcUrl || DEFAULT_GNOSIS_RPC_URL
 
     const beeNodeUrl = settings?.beeNodeUrl || DEFAULT_BEE_NODE_URL
-    if (beeNodeUrl === this.beeApiUrl) {
+    if (beeNodeUrl === this.ownBeeApiUrl) {
       return
     }
-    this.beeApiUrl = beeNodeUrl
+    this.ownBeeApiUrl = beeNodeUrl
 
-    // A custom node disables the dApp-provided subsidised gateway (mirrors the
-    // parentIdentify override). ponytail: reverting to the default URL won't
-    // re-enable a dropped subsidised gateway — that needs a fresh parentIdentify
-    // (dApp reload); rare enough to not build for.
-    if (this.beeApiUrl !== DEFAULT_BEE_NODE_URL) {
-      this.subsidisedGatewayUrl = undefined
-    }
+    // Mirrors the parentIdentify override. ponytail: reverting to the default
+    // URL won't re-enable a dropped subsidised gateway. That needs a fresh
+    // parentIdentify (dApp reload) or the site naming its own node. Rare
+    // enough to not build for.
+    this.dropGatewayForOwnCustomNode()
   }
 
   /**
@@ -2121,8 +2179,14 @@ export class SwarmIdProxy {
     // keyed on it, so a snapshot filed under a batch we have since moved off
     // hints at a lane nobody holds (#684), and a lease message naming that
     // batch answers nobody (#589). `batchId` is the capture from the top.
+    const accountBee = (): Bee => this.accountBee
     this.coordinator = new BatchWriteCoordinator({
-      bee: this.nodeBee,
+      // The person's node, read on every use so a change to their settings
+      // reaches the coordinator already built. The site's content uploads
+      // are moved to the site's node in `withModeAwareWriteLock`.
+      get bee() {
+        return accountBee()
+      },
       batchId,
       stamper,
       deviceId: this.requireDeviceId(),
@@ -2368,7 +2432,13 @@ export class SwarmIdProxy {
         "Stamper not initialized. Please login first.",
       )
     }
-    return this.coordinator.withWrite(operation, targetOptions)
+    return this.coordinator.withWrite(
+      (target) =>
+        operation(
+          target.mode === "stamper" ? { ...target, bee: this.nodeBee } : target,
+        ),
+      targetOptions,
+    )
   }
 
   /**
@@ -2516,16 +2586,13 @@ export class SwarmIdProxy {
       this.buttonConfig = parentButtonConfig
     }
 
-    // Store subsidised gateway URL from parent
-    const parentSubsidisedGatewayUrl = message.subsidisedGatewayUrl
-    if (parentSubsidisedGatewayUrl) {
-      this.subsidisedGatewayUrl = parentSubsidisedGatewayUrl
-    }
+    // Before `loadAuthData`, whose restored-session check is the first read
+    // this session makes.
+    this.siteBeeApiUrl = message.beeApiUrl
 
-    // Override: disable subsidised gateway when using custom Bee API URL
-    if (this.beeApiUrl !== DEFAULT_BEE_NODE_URL && this.subsidisedGatewayUrl) {
-      this.subsidisedGatewayUrl = undefined
-    }
+    this.siteSubsidisedGatewayUrl = message.subsidisedGatewayUrl
+    this.subsidisedGatewayUrl = message.subsidisedGatewayUrl
+    this.dropGatewayForOwnCustomNode()
 
     // Load existing secret if available
     await this.loadAuthData()
@@ -2581,6 +2648,10 @@ export class SwarmIdProxy {
 
       case "getChatKey":
         await this.handleGetChatKey(message, event)
+        break
+
+      case "setBeeApiUrl":
+        this.handleSetBeeApiUrl(message, event)
         break
 
       case "stampChunk":
@@ -2727,7 +2798,7 @@ export class SwarmIdProxy {
       const connection = this.findConnectionForParent()
       if (connection) {
         this.startRestoredSessionCheck({
-          bee: this.bee,
+          bee: this.accountBee,
           derivationKey: connection.account.derivationKey,
           accountId: connection.account.id.toHex(),
           appOrigin: this.parentOrigin,
@@ -2789,7 +2860,7 @@ export class SwarmIdProxy {
     // Before hydrating, which builds the write path and would otherwise claim
     // a lease before the check could hold it.
     this.startRestoredSessionCheck({
-      bee: this.bee,
+      bee: this.accountBee,
       derivationKey: data.account.derivationKey,
       accountId: data.account.id.toHex(),
       appOrigin: this.parentOrigin!,
@@ -2862,7 +2933,9 @@ export class SwarmIdProxy {
     let check = this.restoredSessionCheck
     if (!check) return
     if (check.settled === "unconfirmed") {
-      this.startRestoredSessionCheck(check.input)
+      // At the person's node as it is now, which their settings may have
+      // changed since. Never the site's.
+      this.startRestoredSessionCheck({ ...check.input, bee: this.accountBee })
       check = this.restoredSessionCheck!
     }
     const verdict = await check.verdict
@@ -3051,7 +3124,7 @@ export class SwarmIdProxy {
       )
       const owner = backupKey.publicKey().address()
       const rosterDevices = await readRoster({
-        bee: this.nodeBee,
+        bee: this.accountBee,
         accountId: account.id.toHex(),
         owner,
       })
@@ -3289,7 +3362,7 @@ export class SwarmIdProxy {
       const deviceId = this.requireDeviceId()
       if (reason === "acquired") {
         const rosterDevices = await readRoster({
-          bee: this.nodeBee,
+          bee: this.accountBee,
           accountId: snapshot.accountId,
           owner,
         }).catch(() => [])
@@ -3349,7 +3422,7 @@ export class SwarmIdProxy {
 
       await coordinator.withWrite((target) =>
         publishDeviceState({
-          bee: this.nodeBee,
+          bee: this.accountBee,
           accountId: snapshot.accountId,
           device: thisDevice,
           accountKey,
@@ -3722,7 +3795,9 @@ export class SwarmIdProxy {
       requestId: message.requestId,
       authenticated: this.authenticated,
       origin: this.authenticated ? this.parentOrigin : undefined,
-      beeApiUrl: this.beeApiUrl,
+      // The site's own address only. The person's node is theirs, and a site
+      // has no need to learn it.
+      beeApiUrl: this.siteBeeApiUrl,
     })
   }
 
@@ -3828,6 +3903,7 @@ export class SwarmIdProxy {
       appKey,
       partition: this.coordinator?.currentPartition,
       chatBinding: this.authenticated ? this.chatBinding : undefined,
+      beeApiUrl: this.siteBeeApiUrl,
     }
   }
 
@@ -3877,6 +3953,7 @@ export class SwarmIdProxy {
       appKey: info.appKey,
       partition: info.partition,
       chatBinding: info.chatBinding,
+      beeApiUrl: info.beeApiUrl,
     })
   }
 
@@ -4828,6 +4905,28 @@ export class SwarmIdProxy {
     } catch (error) {
       this.sendErrorToParent(event, requestId, error, "getChatKey failed")
     }
+  }
+
+  /**
+   * The site names a new Bee node for its session, as the source its viewer
+   * picked changes. Needs no sign-in: it says where this site's reads go,
+   * which is the site's to decide whether or not anyone is connected.
+   *
+   * The site naming its node also brings back a subsidised gateway the
+   * person's own custom node had switched off (`dropGatewayForOwnCustomNode`).
+   */
+  private handleSetBeeApiUrl(
+    message: SetBeeApiUrlMessage,
+    event: MessageEvent,
+  ): void {
+    this.siteBeeApiUrl = message.beeApiUrl
+    this.subsidisedGatewayUrl = this.siteSubsidisedGatewayUrl
+    this.postMessage(event, {
+      type: "setBeeApiUrlResponse",
+      requestId: message.requestId,
+      beeApiUrl: message.beeApiUrl,
+    })
+    this.emitConnectionInfoIfChanged()
   }
 
   /**

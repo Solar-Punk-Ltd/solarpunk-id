@@ -95,7 +95,7 @@ import { EthAddress, Identifier, PrivateKey, Topic } from "@ethersphere/bee-js"
 import { generatedAvatar } from "./utils/avatar"
 import { uint8ArrayToHex } from "./utils/hex"
 import { collectionPath } from "./utils/collection"
-import { buildAuthUrl } from "./utils/url"
+import { buildAuthUrl, isBeeApiUrl } from "./utils/url"
 import { TimeoutError, withTimeout } from "./utils/promise"
 
 const DEFAULT_TIMEOUT_MS = 30000
@@ -118,6 +118,22 @@ function initDeadline(
       ? new SwarmIdError("init-failed", error.message, { cause: error })
       : error
   })
+}
+
+/**
+ * The site's Bee address, refused here rather than by the outgoing message
+ * check, so a bad one never reaches the frame and the error says what is
+ * wrong. The value is left out of the message, since a refused one may carry
+ * credentials.
+ */
+function parseBeeApiUrl(url: string): string {
+  if (!isBeeApiUrl(url)) {
+    throw new SwarmIdError(
+      "invalid-request",
+      "Invalid beeApiUrl: must be an http(s) URL, optionally with a path, and no credentials, query or fragment",
+    )
+  }
+  return url
 }
 
 /**
@@ -168,6 +184,7 @@ export class SwarmIdClient {
   private buttonConfig?: ButtonConfig
   private containerId?: string
   private subsidisedGatewayUrl?: string
+  private beeApiUrl?: string
   private ready: boolean = false
   /**
    * Whether the proxy iframe can read the trusted domain's first-party store,
@@ -225,8 +242,10 @@ export class SwarmIdClient {
    * @param options.buttonConfig.fontSize - CSS font-size for the button; the default floating iframe is a fixed 300x50 px and hides its overflow, so a size that does not fit is clipped — pass `containerId` to own the box (optional)
    * @param options.buttonConfig.fontWeight - CSS font-weight for the button, as a keyword or a number (optional)
    * @param options.containerId - ID of container element to place iframe in (optional)
+   * @param options.subsidisedGatewayUrl - A gateway that stamps uploads for a person with no drive of their own (optional)
+   * @param options.beeApiUrl - The Bee node this site's content reads and stamped uploads go through, in place of the person's own setting. Their account and device coordination stay on their own node. Change it later with {@link setBeeApiUrl} (optional)
    * @throws {Error} If constructed where there is no `window` (a server render)
-   * @throws {SwarmIdError} `invalid-request` if the provided app metadata is invalid
+   * @throws {SwarmIdError} `invalid-request` if the provided app metadata is invalid, or `beeApiUrl` is not an http(s) URL without credentials, query or fragment
    */
   constructor(options: ClientOptions) {
     // Before anything touches `window`: a server render reached
@@ -249,6 +268,9 @@ export class SwarmIdClient {
     this.buttonConfig = options.buttonConfig
     this.containerId = options.containerId
     this.subsidisedGatewayUrl = options.subsidisedGatewayUrl
+    if (options.beeApiUrl !== undefined) {
+      this.beeApiUrl = parseBeeApiUrl(options.beeApiUrl)
+    }
 
     // Validate metadata
     try {
@@ -420,6 +442,7 @@ export class SwarmIdClient {
       metadata: this.metadata,
       buttonConfig: this.buttonConfig,
       subsidisedGatewayUrl: this.subsidisedGatewayUrl,
+      beeApiUrl: this.beeApiUrl,
     })
 
     // Wait for iframe to be ready
@@ -540,6 +563,7 @@ export class SwarmIdClient {
           appKey: message.appKey,
           partition: message.partition,
           chatBinding: message.chatBinding,
+          beeApiUrl: message.beeApiUrl,
         }
         this.lastConnectionInfo = info
         if (this.firstConnectionInfoResolve) {
@@ -827,6 +851,7 @@ export class SwarmIdClient {
    * @returns A promise resolving to the authentication status object
    * @returns return.authenticated - Whether the user is currently authenticated
    * @returns return.origin - The origin that authenticated (if authenticated)
+   * @returns return.beeApiUrl - The Bee node this site gave, if it gave one. The person's own node is never reported
    * @throws {Error} If the client is not initialized
    * @throws {Error} If the request times out
    *
@@ -858,6 +883,45 @@ export class SwarmIdClient {
       origin: response.origin,
       beeApiUrl: response.beeApiUrl,
     }
+  }
+
+  /**
+   * Changes the Bee node this site's content reads and stamped uploads go
+   * through, without a reload, for example when the viewer picks another source. It
+   * replaces the `beeApiUrl` given at construction, and takes over from the
+   * person's own Bee setting on this site if none was given. Every other site,
+   * and Swarm ID itself, keep the person's setting. The checks and writes
+   * that coordinate the person's account and devices always use their own
+   * node. Nothing is stored: the next page load starts from the
+   * constructor's `beeApiUrl` again.
+   *
+   * Works signed in or not. A subsidised gateway the person's own custom node
+   * had switched off comes back once the site names its node.
+   *
+   * @param url - An http(s) URL, optionally with a path, without credentials, query or fragment
+   * @throws {SwarmIdError} `invalid-request` if `url` is not such a URL, and nothing is sent
+   * @throws {SwarmIdError} `invalid-state` if the client is not initialized
+   * @throws {SwarmIdError} `timeout` if the request times out
+   *
+   * @example
+   * ```typescript
+   * await client.setBeeApiUrl('https://bee.example.com/')
+   * console.log(client.connectionInfo.beeApiUrl)
+   * ```
+   */
+  async setBeeApiUrl(url: string): Promise<void> {
+    const beeApiUrl = parseBeeApiUrl(url)
+    this.ensureReady()
+    await this.sendRequest<{
+      type: "setBeeApiUrlResponse"
+      requestId: string
+      beeApiUrl: string
+    }>({
+      type: "setBeeApiUrl",
+      requestId: this.generateRequestId(),
+      beeApiUrl,
+    })
+    this.beeApiUrl = beeApiUrl
   }
 
   /**
