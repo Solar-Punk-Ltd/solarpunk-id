@@ -7,10 +7,8 @@ import { defineConfig } from 'astro/config'
 import starlight from '@astrojs/starlight'
 
 export default defineConfig({
-  site: 'https://swarm.snaha.net/docs',
-  // Deployments pass their own base on the command line — `--base /docs/` for
-  // main, `--base /docs/pr-N/` for a preview (deploy-main-pages.yml,
-  // deploy-preview.yml). This default is the one `pnpm dev:docs` runs on.
+  // The docs are not hosted. A host that serves them under a path passes its
+  // own `--base` on the command line.
   //
   // Links between pages must stay relative (`../architecture/`), never
   // root-absolute: Astro does not rewrite a `/architecture` href for the base,

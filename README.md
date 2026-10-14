@@ -59,34 +59,14 @@ client.destroy()
 
 ## Deployment
 
-### GitHub Pages — `swarm.snaha.net`
+The identity site (`ui/`) is served from Swarm at https://solarpunkid.bzz.link, with the ENS name
+`solarpunkid.eth` pointing at the upload. How it is built and uploaded, and why every route is
+served from one `index.html`, is in
+[Hosting on Swarm](./docs-site/src/content/docs/swarm-hosting.mdx).
 
-The latest `main` build of every app deploys to root paths, and every PR gets previews under
-`…/pr-N/` (workflows: `deploy-main-pages.yml`, `deploy-preview.yml`):
-
-| Path                    | App                         |
-| ----------------------- | --------------------------- |
-| `swarm.snaha.net/id/`   | identity UI (`ui/`)         |
-| `swarm.snaha.net/demo/` | demo, running against `/id` |
-| `swarm.snaha.net/docs/` | documentation site          |
-
-### DigitalOcean App Platform (canonical domains)
-
-Deployed on every push to `main` (workflow: `deploy-do.yml`):
-
-**swarm-id.snaha.net** (`ui/build/`)
-
-- New SvelteKit identity UI (`ui/`)
-- Proxy/connect pages for iframe communication
-
-**swarm-demo.snaha.net** (`demo/build/`)
-
-- SvelteKit demo app showcasing SwarmIdClient integration, run against swarm-id.snaha.net
-- Built with `@sveltejs/adapter-static`
-
-**swarm-id.snaha.net/bus** (`signaling/`)
-
-- The account-bus signaling and relay server, as the `bus-signaling` service of the same app; the UI build points at it through `PUBLIC_BUS_SIGNALING_URL`
+The documentation is not hosted. It is read from
+[`docs-site/src/content/docs`](./docs-site/src/content/docs) in this repository. The demo
+(`demo/`) is not hosted either and runs locally with `pnpm dev`.
 
 ## Local Development
 

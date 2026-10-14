@@ -44,7 +44,7 @@ This will:
 
 ## Deployment
 
-The demo is deployed to **swarm-demo.snaha.net** using DigitalOcean App Platform. The deployment configuration is in `.do/swarm-demo-app.yaml`.
+The demo is not hosted. Run it locally with `pnpm dev` from the repository root.
 
 ## Local Development
 
@@ -95,7 +95,7 @@ The client automatically:
 - Validates all messages with Zod schemas
 - Provides a type-safe API for authentication and Bee operations
 
-The identity management (authentication, key derivation, storage) is handled by the Swarm ID UI at `swarm-id.snaha.net` (see `../ui/`)
+The identity management (authentication, key derivation, storage) is handled by the Swarm ID UI (see `../ui/`), the origin `PUBLIC_ID_DOMAIN` names (`http://localhost:5500` under `pnpm dev`)
 
 ## API Examples
 

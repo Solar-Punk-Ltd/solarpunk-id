@@ -93,11 +93,11 @@ only _deltas and coordination between live peers_ — which is why WebRTC's
 
 One interface (`BusTransport`, `lib/src/bus/account-bus.ts`), three transports:
 
-| Transport                                       | Scope                                                                                                                                     | Status                                                                                 |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `BroadcastChannel`                              | same origin + same partition — its **reach** (SwarmID tab↔tab, same-dApp Safari tabs), not who attaches it: see "Who attaches what" below | shipped; generalizes the old `BroadcastChannel("swarm-id-utilization")` channel        |
-| WebRTC DataChannel mesh, self-hosted signaling  | across partitions, dApps, and devices                                                                                                     | shipped and deployed: `signaling/`, reached at `wss://swarm-id.snaha.net/bus` (`.do/`) |
-| SWIP-60 (`pubsubConnect`, `FEED_TOPIC` binding) | synced accounts, once bee/bee-js release it                                                                                               | future adapter behind the same interface                                               |
+| Transport                                       | Scope                                                                                                                                     | Status                                                                                                |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `BroadcastChannel`                              | same origin + same partition — its **reach** (SwarmID tab↔tab, same-dApp Safari tabs), not who attaches it: see "Who attaches what" below | shipped; generalizes the old `BroadcastChannel("swarm-id-utilization")` channel                       |
+| WebRTC DataChannel mesh, self-hosted signaling  | across partitions, dApps, and devices                                                                                                     | shipped: `signaling/`, reached through `PUBLIC_BUS_SIGNALING_URL`, none on the hosted site by default |
+| SWIP-60 (`pubsubConnect`, `FEED_TOPIC` binding) | synced accounts, once bee/bee-js release it                                                                                               | future adapter behind the same interface                                                              |
 
 The signaling WebSocket **doubles as an encrypted-blob relay** for peer pairs WebRTC cannot
 connect (restrictive NATs — there is no TURN). Same service, no extra infrastructure; the
@@ -300,9 +300,10 @@ Each landed as its own PR chain, in this order:
 2. **Signaling service + WebRTC transport** (#547, hardened in #573/#575/#577): a bespoke
    `ws` server (`signaling/`, chosen over Trystero's `ws-relay` because the per-peer relay
    fallback is not in Trystero's protocol and the bespoke server stays dependency-light), the
-   DataChannel mesh transport, and the relay fallback. Deployed as the `bus-signaling`
-   service in `.do/swarm-id-app.yaml` at `wss://swarm-id.snaha.net/bus`, with the URL baked
-   into the UI build as `PUBLIC_BUS_SIGNALING_URL`; `pnpm dev` runs it on port 5520.
+   DataChannel mesh transport, and the relay fallback. A build reaches it through
+   `PUBLIC_BUS_SIGNALING_URL`, baked in at build time, and `pnpm dev` runs it on port 5520.
+   The hosted site at `https://solarpunkid.bzz.link` is built without one unless that
+   setting is given, and the bus then runs over `BroadcastChannel` only.
 3. **Safari write enablement** (#547, #578, #635, #642, #643, #644): the widened `AuthData`
    and `sendSecretToOpener`, hydration in `handlePopupMessage`, the persisted partition
    session, roster naming for partition devices, the tombstone that survives a poll, and the

@@ -54,13 +54,12 @@ Two environment variables:
 
 | Variable          | Default | Effect                                                                                                                         |
 | ----------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `PORT`            | `8080`  | Listen port. `pnpm dev` sets `5520`; the DigitalOcean app spec sets its `http_port` to the default.                            |
+| `PORT`            | `8080`  | Listen port. `pnpm dev` sets `5520`.                                                                                           |
 | `ALLOWED_ORIGINS` | unset   | Comma-separated origin allowlist. When set, a WebSocket upgrade whose `Origin` is not listed is refused. Unset means no check. |
 
-Production sets `ALLOWED_ORIGINS` to `https://swarm-id.snaha.net` in `.do/swarm-id-app.yaml`.
+A deployment of your own sets `ALLOWED_ORIGINS` to the identity site's origin.
 
-The UI reaches it through `PUBLIC_BUS_SIGNALING_URL` (baked in at build time); in dev it falls
-back to `ws://localhost:5520`. In production it is the `bus-signaling` service of
-`.do/swarm-id-app.yaml`, reached at `wss://swarm-id.snaha.net/bus` with `/healthz` for the
-platform's health check. A build with no URL configured (GitHub Pages) runs the bus over
-`BroadcastChannel` only.
+The UI reaches it through `PUBLIC_BUS_SIGNALING_URL`, baked in at build time. In dev it falls
+back to `ws://localhost:5520`. `/healthz` answers a platform's health check. The hosted site at
+`https://solarpunkid.bzz.link` is built without a signaling URL unless one is set, and a build
+with no URL configured runs the bus over `BroadcastChannel` only.

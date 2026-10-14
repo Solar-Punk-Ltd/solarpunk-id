@@ -142,19 +142,13 @@ Chain-backed suites are NOT in `check:all` — they need a chain running. `pnpm 
 
 ## Deployment
 
-GitHub Pages (`gh-pages` branch, CNAME `swarm.snaha.net`) hosts the latest `main` build of every
-app at root paths, plus per-PR previews under `…/pr-N/` (`deploy-main-pages.yml` /
-`deploy-preview.yml`):
+The identity site (`ui/`) is a Swarm website at https://solarpunkid.bzz.link, ENS name
+`solarpunkid.eth`. The build and upload recipe, and the rule that no route may become a folder,
+are in `docs-site/src/content/docs/swarm-hosting.mdx`. Nothing deploys it automatically.
 
-| Path                    | App                     |
-| ----------------------- | ----------------------- |
-| `swarm.snaha.net/id/`   | identity UI (`ui/`)     |
-| `swarm.snaha.net/demo/` | demo, run against `/id` |
-| `swarm.snaha.net/docs/` | docs site               |
-
-DigitalOcean (`deploy-do.yml`, push to main) keeps the canonical domains:
-
-- **Identity UI (`ui/`)**: https://swarm-id.snaha.net
-- **Demo**: https://swarm-demo.snaha.net, run against swarm-id.snaha.net
-- **Account-bus signaling (`signaling/`)**: wss://swarm-id.snaha.net/bus, the `bus-signaling` service
-  of the same app; baked into the UI build as `PUBLIC_BUS_SIGNALING_URL`
+- A production build needs `PUBLIC_ETHEREUM_RPC_URL`, or it serves no site, and an app's origin
+  must be on the ENS allow list ([docs/Site-Allow-List.md](docs/Site-Allow-List.md)).
+- No account-bus signaling server is part of the hosting. The build runs without one unless
+  `PUBLIC_BUS_SIGNALING_URL` is set at build time, and works without it (`ui/.env.example`).
+- The docs site and the demo are not hosted. The docs are read from
+  `docs-site/src/content/docs`, and the demo runs locally with `pnpm dev`.

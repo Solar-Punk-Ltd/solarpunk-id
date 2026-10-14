@@ -63,11 +63,5 @@ Conventions:
 
 ## Deployment
 
-Built and published to `https://swarm.snaha.net/id/` from `main` via
-`.github/workflows/deploy-main-pages.yml`, and to `https://swarm.snaha.net/id/pr-N/`
-for pull-request previews. The demo app at `https://swarm.snaha.net/demo/` runs
-against it (`PUBLIC_ID_DOMAIN=https://swarm.snaha.net/id`).
-
-Also deployed to the canonical DigitalOcean domain `https://swarm-id.snaha.net`
-on every push to `main` (`.github/workflows/deploy-do.yml`, config in
-`.do/swarm-id-app.yaml`).
+Served from Swarm at `https://solarpunkid.bzz.link`. The build and upload recipe is in
+[Hosting on Swarm](../docs-site/src/content/docs/swarm-hosting.mdx).
