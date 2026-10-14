@@ -77,11 +77,12 @@ document.
 a Bee node's `POST /chunks`, so the Bee node does not have to own the stamp. Run it from that folder:
 
 ```sh
-STAMP_KEY=<stamp-owner-private-key> node upload-site.mjs --build ../../ui/build \
+node upload-site.mjs --build ../../ui/build \
   --bee <bee-api-url> --batch <stamp-id> --depth <stamp-depth> --slots <slot-record-file>
 ```
 
-`STAMP_KEY` is the private key of the wallet that owns the stamp. `--slots` names the stamp's slot
+`STAMP_KEY` in the environment is the private key of the wallet that owns the stamp. Hand it in
+from a secret manager rather than typing it into the shell, where the history keeps it. `--slots` names the stamp's slot
 record, a file that says which slot of the stamp each chunk holds, so the next version reuses those
 slots instead of filling the stamp. Keep one per stamp and pass the same file on every upload with
 it. A file that does not exist yet starts a new one. `--dry-run` needs no key, sends nothing and
