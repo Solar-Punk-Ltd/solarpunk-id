@@ -126,4 +126,19 @@ describe("connectionInfoEqual", () => {
       ),
     ).toBe(true)
   })
+
+  it("returns false when the site's stamp changes", () => {
+    expect(
+      connectionInfoEqual(
+        { ...BASE, postageBatchId: "aa".repeat(32) },
+        { ...BASE, postageBatchId: "bb".repeat(32) },
+      ),
+    ).toBe(false)
+    expect(
+      connectionInfoEqual(
+        { ...BASE, postageBatchId: "aa".repeat(32) },
+        { ...BASE },
+      ),
+    ).toBe(false)
+  })
 })

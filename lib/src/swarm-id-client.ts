@@ -564,6 +564,7 @@ export class SwarmIdClient {
           partition: message.partition,
           chatBinding: message.chatBinding,
           beeApiUrl: message.beeApiUrl,
+          postageBatchId: message.postageBatchId,
         }
         this.lastConnectionInfo = info
         if (this.firstConnectionInfoResolve) {

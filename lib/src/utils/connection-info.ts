@@ -40,6 +40,7 @@ export function connectionInfoEqual(
     // the dApp has to hear of it.
     a.chatBinding?.message === b.chatBinding?.message &&
     a.chatBinding?.signature === b.chatBinding?.signature &&
-    a.beeApiUrl === b.beeApiUrl
+    a.beeApiUrl === b.beeApiUrl &&
+    a.postageBatchId === b.postageBatchId
   )
 }

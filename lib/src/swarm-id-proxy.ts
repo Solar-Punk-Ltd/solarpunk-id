@@ -3904,6 +3904,7 @@ export class SwarmIdProxy {
       partition: this.coordinator?.currentPartition,
       chatBinding: this.authenticated ? this.chatBinding : undefined,
       beeApiUrl: this.siteBeeApiUrl,
+      postageBatchId: this.authenticated ? this.postageBatchId : undefined,
     }
   }
 
@@ -3954,6 +3955,7 @@ export class SwarmIdProxy {
       partition: info.partition,
       chatBinding: info.chatBinding,
       beeApiUrl: info.beeApiUrl,
+      postageBatchId: info.postageBatchId,
     })
   }
 

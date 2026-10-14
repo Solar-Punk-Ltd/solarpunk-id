@@ -247,7 +247,7 @@ import {
   openedValue,
   sealValue,
 } from "./utils/sealed-values"
-import { DEFAULT_BEE_NODE_URL } from "./schemas"
+import { DEFAULT_BEE_NODE_URL, NO_POSTAGE_STAMP } from "./schemas"
 import type {
   ConnectedApp,
   Device,
@@ -1004,6 +1004,86 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       expect(internals().buildConnectionInfo()).toMatchObject({
         uploadMode: "unavailable",
         uploadUnavailableReason: "no-stamp",
+      })
+    })
+
+    describe("the stamp the person picks for this site in Swarm ID", () => {
+      const OTHER_SIGNER_KEY_HEX = "ef".repeat(32)
+
+      /** What the Apps screen writes: the site's choice on its own clock */
+      const chooseForSite = (choice: ConnectedApp["postageStampBatchID"]) => {
+        const shell = createAccountsStorageManager()
+        const [current] = shell.load() as SignedInAccount[]
+        shell.save([
+          {
+            ...current,
+            postageStamps: [
+              ...current.postageStamps,
+              {
+                ...current.postageStamps[0],
+                batchID: new BatchId(OTHER_BATCH_ID_HEX),
+                signerKey: new PrivateKey(OTHER_SIGNER_KEY_HEX),
+              },
+            ],
+            connectedApps: current.connectedApps.map((app) => ({
+              ...app,
+              postageStampBatchID: choice,
+              postageStampBatchIDAt: Date.now(),
+            })),
+          },
+        ])
+      }
+
+      it("moves the write path to the new stamp and tells the site", async () => {
+        await seedConnectedAccount()
+        await identify()
+        expect(lastConnectionInfo()?.postageBatchId).toBe(BATCH_ID_HEX)
+        const previous = latestCoordinator()
+
+        chooseForSite(new BatchId(OTHER_BATCH_ID_HEX))
+        await vi.waitFor(() =>
+          expect(lastConnectionInfo()?.postageBatchId).toBe(OTHER_BATCH_ID_HEX),
+        )
+
+        expect(previous.teardown).toHaveBeenCalled()
+        expect(latestCoordinator().batchId).toBe(OTHER_BATCH_ID_HEX)
+        expect(
+          String(
+            vi.mocked(UtilizationAwareStamper.create).mock.calls.at(-1)![0],
+          ),
+        ).toBe(OTHER_SIGNER_KEY_HEX)
+        expect(lastConnectionInfo()?.uploadMode).toBe("user-stamp")
+      })
+
+      it("leaves the site with no stamp, and the site's gateway paying, when the person picks none", async () => {
+        await seedConnectedAccount()
+        await identify(GATEWAY_URL)
+        const previous = latestCoordinator()
+
+        chooseForSite(NO_POSTAGE_STAMP)
+        await vi.waitFor(() =>
+          expect(lastConnectionInfo()?.uploadMode).toBe("subsidised"),
+        )
+
+        expect(lastConnectionInfo()?.postageBatchId).toBeUndefined()
+        expect(previous.teardown).toHaveBeenCalled()
+        await expect(uploadTarget()).resolves.toEqual({
+          mode: "subsidised",
+          gatewayUrl: GATEWAY_URL,
+        })
+      })
+
+      it("says the site has no stamp when it names no gateway", async () => {
+        await seedConnectedAccount()
+        await identify()
+
+        chooseForSite(NO_POSTAGE_STAMP)
+        await vi.waitFor(() =>
+          expect(lastConnectionInfo()?.uploadUnavailableReason).toBe(
+            "no-stamp",
+          ),
+        )
+        expect(lastConnectionInfo()?.postageBatchId).toBeUndefined()
       })
     })
 
@@ -3500,6 +3580,64 @@ describe("SwarmIdProxy partitioned write enablement", () => {
           }
         ).partitionAccount.postageStamps
         expect(held.map((s) => s.batchID.toHex())).toContain(OTHER_BATCH_ID_HEX)
+      } finally {
+        busChannel.close()
+      }
+    })
+
+    it("tells the site the stamp a delta re-points it at", async () => {
+      const busChannel = await hydratedSession()
+      try {
+        busChannel.postMessage(
+          accountDelta({
+            connectedApps: [
+              {
+                appUrl: PARENT_ORIGIN,
+                appName: "dApp",
+                lastConnectedAt: Date.now(),
+                postageStampBatchIDAt: Date.now() + 1,
+                postageStampBatchID: new BatchId(OTHER_BATCH_ID_HEX),
+              },
+            ],
+            postageStamps: [makeSyncedAccount().postageStamps[0], otherStamp()],
+          }),
+        )
+        await vi.waitFor(() =>
+          expect(
+            messagesOfType("connectionInfoChanged").at(-1)?.postageBatchId,
+          ).toBe(OTHER_BATCH_ID_HEX),
+        )
+      } finally {
+        busChannel.close()
+      }
+    })
+
+    it("holds no stamp once a delta sets the site to none", async () => {
+      const busChannel = await hydratedSession()
+      try {
+        busChannel.postMessage(
+          accountDelta({
+            connectedApps: [
+              {
+                appUrl: PARENT_ORIGIN,
+                appName: "dApp",
+                lastConnectedAt: Date.now(),
+                postageStampBatchIDAt: Date.now() + 1,
+                postageStampBatchID: NO_POSTAGE_STAMP,
+              },
+            ],
+          }),
+        )
+        await vi.waitFor(() =>
+          expect(
+            messagesOfType("connectionInfoChanged").at(-1)
+              ?.uploadUnavailableReason,
+          ).toBe("no-stamp"),
+        )
+        const held = (
+          proxy as unknown as { partitionAccount: { postageStamps: unknown[] } }
+        ).partitionAccount.postageStamps
+        expect(held).toEqual([])
       } finally {
         busChannel.close()
       }

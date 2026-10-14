@@ -1803,6 +1803,36 @@ describe("SwarmIdClient beeApiUrl option", () => {
   })
 })
 
+// A person can change the stamp a site uses in Swarm ID while the site is open,
+// and the stamp is the only thing that changes.
+describe("SwarmIdClient postageBatchId", () => {
+  it("carries the site's stamp into connectionInfo and onConnectionChange", () => {
+    const env = stubBrowserGlobals()
+    const onConnectionChange = vi.fn()
+    const client = new SwarmIdClient({
+      iframeOrigin: IFRAME_ORIGIN,
+      metadata: APP_METADATA,
+      onConnectionChange,
+    })
+    internals(client).iframe = env.iframeElement
+    internals(client).ready = true
+
+    env.dispatch({
+      data: {
+        type: "connectionInfoChanged",
+        canUpload: true,
+        uploadMode: "user-stamp",
+        postageBatchId: "cc".repeat(32),
+      },
+    })
+
+    expect(client.connectionInfo.postageBatchId).toBe("cc".repeat(32))
+    expect(onConnectionChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ postageBatchId: "cc".repeat(32) }),
+    )
+  })
+})
+
 // A server render (Next.js App Router, SvelteKit with SSR) reaches the
 // constructor with no `window`. It used to throw a bare `ReferenceError` from
 // inside `setupMessageListener` — in the published build, a stack into

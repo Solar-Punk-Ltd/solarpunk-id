@@ -886,6 +886,13 @@ export const ConnectionInfoSchema = z.object({
    * In subsidised mode the gateway is used instead (`uploadMode`).
    */
   beeApiUrl: z.string().optional(),
+  /**
+   * The batch id of the stamp the person gave this site in Swarm ID, which
+   * `getPostageBatch` reads and `stampChunk` stamps with. Absent when the site
+   * has none. The person can change it on Swarm ID's Apps screen while the
+   * site is open, and a change arrives as a new `connectionInfoChanged`.
+   */
+  postageBatchId: BatchIdSchema.optional(),
 })
 
 export type ConnectionInfo = z.infer<typeof ConnectionInfoSchema>
@@ -1723,6 +1730,7 @@ export const ConnectionInfoChangedMessageSchema = z.object({
   partition: z.number().int().min(0).optional(),
   chatBinding: ChatBindingSchema.optional(),
   beeApiUrl: z.string().optional(),
+  postageBatchId: BatchIdSchema.optional(),
 })
 
 export const ConnectResponseMessageSchema = z.object({
