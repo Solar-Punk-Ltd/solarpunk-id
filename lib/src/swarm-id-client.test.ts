@@ -1722,6 +1722,6 @@ describe("SwarmIdClient on a server", () => {
           iframeOrigin: "https://swarm-id.snaha.net",
           metadata: { name: "ssr" },
         }),
-    ).toThrow(/@snaha\/swarm-id .*browser/)
+    ).toThrow(/@solarpunkltd\/swarm-id .*browser/)
   })
 })
