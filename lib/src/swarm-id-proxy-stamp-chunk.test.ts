@@ -557,6 +557,44 @@ describe("SwarmIdProxy stampChunk", () => {
       expect(unmarshalStamp(lastReply().stamp).slot).not.toBe(first.slot)
     })
 
+    // The person can change the stamp a site uses in Swarm ID while it is
+    // open. Counters and slots belong to the stamp, so going back to one finds
+    // it as it was left, and the inbox replaces its own chunk there.
+    it("keeps each stamp's slot and counts when the site switches stamps and back", async () => {
+      await identify()
+      const onFirst = await userStampMode()
+      await stampChunk(inbox("on the first stamp"), "r1")
+      const first = unmarshalStamp(lastReply().stamp)
+      const firstCounter = counterCopy(onFirst)
+
+      // The second stamp has slots of its own in use, so its slot for the
+      // inbox differs from the first stamp's.
+      const address = inboxAddress()
+      const usedOnSecond = new Uint32Array(NUM_BUCKETS)
+      usedOnSecond[(address[0] << 8) | address[1]] = 1
+      await userStampMode({
+        batchId: OTHER_BATCH_ID,
+        localCounter: usedOnSecond,
+      })
+      await stampChunk(inbox("on the second stamp"), "r2")
+      const second = unmarshalStamp(lastReply().stamp)
+      expect(Binary.uint8ArrayToHex(second.batchId)).toBe(OTHER_BATCH_ID)
+      expect(second.slot).not.toBe(first.slot)
+      expect(storedUsage(OTHER_BATCH_ID).count).toBe(1)
+      expect(storedUsage().count).toBe(1)
+
+      await userStampMode({ localCounter: firstCounter })
+      await stampChunk(inbox("back on the first stamp"), "r3")
+      const back = unmarshalStamp(lastReply().stamp)
+
+      expect(Binary.uint8ArrayToHex(back.batchId)).toBe(BATCH_ID)
+      expect(back.index).toEqual(first.index)
+      expect(back.timestampNs).toBeGreaterThan(first.timestampNs)
+      expect(storedUsage().count).toBe(1)
+      expect(storedUsage().windowCount).toBe(2)
+      expect(storedUsage(OTHER_BATCH_ID).count).toBe(1)
+    })
+
     const storedSlot = (address: Uint8Array) =>
       parseSocRestampSlots(
         store.get(socRestampSlotsStorageKey(PARENT_ORIGIN, BATCH_ID)) ?? null,
