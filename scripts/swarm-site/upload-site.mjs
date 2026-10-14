@@ -22,11 +22,11 @@
  * private, so they are not importable from here.
  */
 
-import { createHash } from "node:crypto"
-import { createRequire } from "node:module"
-import { join, relative, sep } from "node:path"
-import { readFile, readdir, realpath, rename, writeFile } from "node:fs/promises"
-import { fileURLToPath } from "node:url"
+import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
+import { join, relative, sep } from 'node:path'
+import { readFile, readdir, realpath, rename, writeFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 
 /** Swarm's bucket depth, the same for every stamp */
 export const BUCKET_DEPTH = 16
@@ -35,16 +35,16 @@ export function slotsPerBucket(depth) {
   return 2 ** (depth - BUCKET_DEPTH)
 }
 
-const INDEX_DOCUMENT = "index.html"
-const ERROR_DOCUMENT = "index.html"
+const INDEX_DOCUMENT = 'index.html'
+const ERROR_DOCUMENT = 'index.html'
 const SEND_CONCURRENCY = 8
 const SEND_ATTEMPTS = 4
 const RETRY_BASE_MS = 1000
 const REQUEST_TIMEOUT_MS = 60_000
 const SPAN_SIZE = 8
-const CHECK_PATHS = ["", "proxy", "connect"]
+const CHECK_PATHS = ['', 'proxy', 'connect']
 const FORK_LIB =
-  process.env.SOLARPUNK_ID_LIB ?? fileURLToPath(new URL("../../lib", import.meta.url))
+  process.env.SOLARPUNK_ID_LIB ?? fileURLToPath(new URL('../../lib', import.meta.url))
 
 // ============================================================================
 // Stamp slots
@@ -56,7 +56,7 @@ export class SlotOverflowError extends Error {
     super(
       `Bucket ${bucket} would need ${needed} slots for this version, and the stamp has ${available} per bucket. Nothing was sent.`,
     )
-    this.name = "SlotOverflowError"
+    this.name = 'SlotOverflowError'
     this.bucket = bucket
     this.needed = needed
   }
@@ -67,7 +67,7 @@ export class SlotOverflowError extends Error {
  * The id is public on chain, the record only needs to recognise it.
  */
 function stampFingerprint(batchId) {
-  return createHash("sha256").update(batchId.toLowerCase()).digest("hex")
+  return createHash('sha256').update(batchId.toLowerCase()).digest('hex')
 }
 
 /**
@@ -103,10 +103,14 @@ export function bucketOf(addressHex) {
  */
 export function planSlots(record, addresses, batchId, depth = record.depth) {
   if (batchId !== undefined && record.stamp !== stampFingerprint(batchId)) {
-    throw new Error("The slot record belongs to another stamp. Pass this stamp's own record with --slots.")
+    throw new Error(
+      "The slot record belongs to another stamp. Pass this stamp's own record with --slots.",
+    )
   }
   if (record.depth !== depth || record.bucketDepth !== BUCKET_DEPTH) {
-    throw new Error(`The slot record was kept for depth ${record.depth}/${record.bucketDepth}, not ${depth}/${BUCKET_DEPTH}`)
+    throw new Error(
+      `The slot record was kept for depth ${record.depth}/${record.bucketDepth}, not ${depth}/${BUCKET_DEPTH}`,
+    )
   }
   const available = slotsPerBucket(depth)
 
@@ -162,16 +166,16 @@ export function planSlots(record, addresses, batchId, depth = record.depth) {
 
 async function readSlotRecord(file, batchId, depth) {
   try {
-    return JSON.parse(await readFile(file, "utf8"))
+    return JSON.parse(await readFile(file, 'utf8'))
   } catch (error) {
-    if (error.code === "ENOENT") return emptySlotRecord(batchId, depth)
+    if (error.code === 'ENOENT') return emptySlotRecord(batchId, depth)
     throw error
   }
 }
 
 async function writeSlotRecord(file, record) {
   const temporary = `${file}.tmp`
-  await writeFile(temporary, JSON.stringify(record, null, 2) + "\n")
+  await writeFile(temporary, JSON.stringify(record, null, 2) + '\n')
   await rename(temporary, file)
 }
 
@@ -180,13 +184,13 @@ async function writeSlotRecord(file, record) {
 // ============================================================================
 
 function loadForkPackages() {
-  const require = createRequire(join(FORK_LIB, "package.json"))
-  const core = require("@ethersphere/core-sdk")
-  const { Strings } = require("cafe-utility")
+  const require = createRequire(join(FORK_LIB, 'package.json'))
+  const core = require('@ethersphere/core-sdk')
+  const { Strings } = require('cafe-utility')
   // bee-js's own Content-Type table, the one its directory upload uses. Its
   // package exports only the root, so the file is required by path.
-  const beeJsRoot = require.resolve("@ethersphere/bee-js").replace(/index\.js$/, "")
-  const { mimes } = require(join(beeJsRoot, "utils", "mime.js"))
+  const beeJsRoot = require.resolve('@ethersphere/bee-js').replace(/index\.js$/, '')
+  const { mimes } = require(join(beeJsRoot, 'utils', 'mime.js'))
   return { core, Strings, mimes }
 }
 
@@ -198,7 +202,7 @@ function chunkBytes(builder) {
 /** Lowercase hex of a chunk address, checked against the padded form so a trim can never move it */
 function addressOf(core, builder, bytes) {
   const address = core.calculateChunkAddress(bytes).toHex()
-  if (address !== builder.hash().toHex()) throw new Error("A trimmed chunk changed its address")
+  if (address !== builder.hash().toHex()) throw new Error('A trimmed chunk changed its address')
   return address
 }
 
@@ -208,7 +212,7 @@ async function listFiles(dir) {
     for (const entry of await readdir(current, { withFileTypes: true })) {
       const full = join(current, entry.name)
       if (entry.isDirectory()) await walk(full)
-      else if (entry.isFile()) files.push(relative(dir, full).split(sep).join("/"))
+      else if (entry.isFile()) files.push(relative(dir, full).split(sep).join('/'))
       else throw new Error(`Not a file or a folder: ${relative(dir, full)}`)
     }
   }
@@ -218,8 +222,8 @@ async function listFiles(dir) {
 
 /** Matches bee-js's directory upload, which adds a charset to HTML and CSS */
 function contentTypeOf(mimes, extension) {
-  const mime = mimes[extension.toLowerCase()] || "application/octet-stream"
-  return ["text/html", "text/css"].includes(mime) ? `${mime}; charset=utf-8` : mime
+  const mime = mimes[extension.toLowerCase()] || 'application/octet-stream'
+  return ['text/html', 'text/css'].includes(mime) ? `${mime}; charset=utf-8` : mime
 }
 
 /**
@@ -251,17 +255,17 @@ export async function buildSite(dir) {
     keep(root)
     const { filename, extension } = Strings.parseFilename(path)
     manifest.addFork(path, root.hash(), {
-      "Content-Type": contentTypeOf(mimes, extension),
+      'Content-Type': contentTypeOf(mimes, extension),
       Filename: filename,
     })
   }
-  manifest.addFork("/", new Uint8Array(32), {
-    "website-index-document": INDEX_DOCUMENT,
-    "website-error-document": ERROR_DOCUMENT,
+  manifest.addFork('/', new Uint8Array(32), {
+    'website-index-document': INDEX_DOCUMENT,
+    'website-error-document': ERROR_DOCUMENT,
   })
   const saved = await manifest.saveRecursively(async (chunk) => keep(chunk))
 
-  return { files, chunks, reference: Buffer.from(saved.reference).toString("hex") }
+  return { files, chunks, reference: Buffer.from(saved.reference).toString('hex') }
 }
 
 // ============================================================================
@@ -279,10 +283,10 @@ async function sendChunk(bee, address, bytes, stampHex) {
     let status
     try {
       const response = await fetch(`${bee}/chunks`, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "content-type": "application/octet-stream",
-          "swarm-postage-stamp": stampHex,
+          'content-type': 'application/octet-stream',
+          'swarm-postage-stamp': stampHex,
         },
         body: bytes,
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -326,7 +330,13 @@ async function sendAll(bee, chunks, slots, signer, batchId, record) {
   async function worker() {
     while (queue.length > 0 && failure === null) {
       const address = queue.shift()
-      const envelope = core.stamp(signer, batchId, Buffer.from(address, "hex"), slots.get(address), nextTimestamp())
+      const envelope = core.stamp(
+        signer,
+        batchId,
+        Buffer.from(address, 'hex'),
+        slots.get(address),
+        nextTimestamp(),
+      )
       const stampHex = core.convertEnvelopeToMarshaledStamp(envelope).toHex()
       try {
         await sendChunk(bee, address, chunks.get(address), stampHex)
@@ -365,22 +375,24 @@ function parseArgs(argv) {
   const options = { dryRun: false }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
-    if (arg === "--dry-run") options.dryRun = true
-    else if (arg === "--build") options.build = argv[++i]
-    else if (arg === "--bee") options.bee = argv[++i]
-    else if (arg === "--batch") options.batch = argv[++i]
-    else if (arg === "--depth") options.depth = Number(argv[++i])
-    else if (arg === "--slots") options.slots = argv[++i]
+    if (arg === '--dry-run') options.dryRun = true
+    else if (arg === '--build') options.build = argv[++i]
+    else if (arg === '--bee') options.bee = argv[++i]
+    else if (arg === '--batch') options.batch = argv[++i]
+    else if (arg === '--depth') options.depth = Number(argv[++i])
+    else if (arg === '--slots') options.slots = argv[++i]
     else throw new Error(`Unknown argument: ${arg}`)
   }
-  if (!options.build) throw new Error("--build <dir> is required")
-  if (!options.bee || !/^https?:\/\//.test(options.bee)) throw new Error("--bee <http(s) url> is required")
-  if (!options.batch || !/^[0-9a-fA-F]{64}$/.test(options.batch)) throw new Error("--batch <64 hex stamp id> is required")
+  if (!options.build) throw new Error('--build <dir> is required')
+  if (!options.bee || !/^https?:\/\//.test(options.bee))
+    throw new Error('--bee <http(s) url> is required')
+  if (!options.batch || !/^[0-9a-fA-F]{64}$/.test(options.batch))
+    throw new Error('--batch <64 hex stamp id> is required')
   if (!Number.isInteger(options.depth) || options.depth <= BUCKET_DEPTH) {
     throw new Error(`--depth <the stamp's depth, above ${BUCKET_DEPTH}> is required`)
   }
-  if (!options.slots) throw new Error("--slots <slot record file> is required")
-  options.bee = options.bee.replace(/\/+$/, "")
+  if (!options.slots) throw new Error('--slots <slot record file> is required')
+  options.bee = options.bee.replace(/\/+$/, '')
   options.batch = options.batch.toLowerCase()
   return options
 }
@@ -395,7 +407,7 @@ function signerFrom(key) {
   try {
     return new core.PrivateKey(key)
   } catch {
-    throw new Error("STAMP_KEY is not a 32-byte hex private key")
+    throw new Error('STAMP_KEY is not a 32-byte hex private key')
   }
 }
 
@@ -406,7 +418,9 @@ async function main() {
   const plan = planSlots(record, [...site.chunks.keys()], options.batch, options.depth)
 
   console.log(`files ${site.files.length}, chunks ${site.chunks.size}`)
-  console.log(`fullest bucket ${plan.fullest.bucket} uses ${plan.fullest.used} of ${slotsPerBucket(options.depth)} slots`)
+  console.log(
+    `fullest bucket ${plan.fullest.bucket} uses ${plan.fullest.used} of ${slotsPerBucket(options.depth)} slots`,
+  )
   if (options.dryRun) {
     console.log(`dry run, nothing sent, no record written`)
     console.log(site.reference)
@@ -416,14 +430,24 @@ async function main() {
   const signer = signerFrom(process.env.STAMP_KEY)
   console.log(`stamp signer ${signer.publicKey().address().toHex()}`)
 
-  const lastTimestampMs = await sendAll(options.bee, site.chunks, plan.slots, signer, options.batch, plan.record)
+  const lastTimestampMs = await sendAll(
+    options.bee,
+    site.chunks,
+    plan.slots,
+    signer,
+    options.batch,
+    plan.record,
+  )
   await writeSlotRecord(options.slots, { ...plan.record, lastTimestampMs })
   console.log(`all ${site.chunks.size} chunks accepted, slot record written`)
   await checkSite(options.bee, site.reference)
   console.log(site.reference)
 }
 
-if (process.argv[1] && (await realpath(process.argv[1])) === (await realpath(fileURLToPath(import.meta.url)))) {
+if (
+  process.argv[1] &&
+  (await realpath(process.argv[1])) === (await realpath(fileURLToPath(import.meta.url)))
+) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error))
     process.exit(1)
