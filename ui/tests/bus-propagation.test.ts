@@ -254,9 +254,10 @@ test('the bus carries an app removal to a partitioned session', async ({ page })
 // Two `BrowserContext`s are two devices: separate storage, separate device ids,
 // one signaling server. Device B is seeded with A's account document rather
 // than importing it through the UI, which keeps the test off the chain and off
-// Swarm entirely. Its keys are sealed again under B's own wrapping key, since a
-// key sealed on A opens only on A and B would read it as signed out — the bus publisher has no default-stamp gate, so an account
-// with no drive still publishes.
+// Swarm entirely — the bus publisher has no default-stamp gate, so an account
+// with no drive still publishes. Its keys are sealed again under B's own
+// wrapping key, since a key sealed on A opens only on A, and B would read the
+// copy as signed out.
 test('a change on one device reaches another device’s stored account', async ({
   page,
   browser,
