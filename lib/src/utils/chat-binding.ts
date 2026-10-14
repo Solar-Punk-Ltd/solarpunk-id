@@ -5,10 +5,11 @@
  * The chat binding: one statement per site, signed by the account's own key,
  * saying "this chat address on this site is mine" (docs/Chat-Binding.md).
  *
- * A site only ever sees its per-origin app key (`deriveSecret(masterKey,
- * origin)`), and nothing in that key says which account it came from. The
- * binding is what lets a reader of the site's chat prove it: recover the
- * signer of the message and compare it with the account's address.
+ * A site's chat signs with its per-site chat key (`deriveChatKey` of the app
+ * secret `deriveSecret(masterKey, origin)`), and nothing in that key says
+ * which account it came from. The binding is what lets a reader of the site's
+ * chat prove it: recover the signer of the message and compare it with the
+ * account's address.
  *
  * The message is plain text signed with EIP-191 `personal_sign`, so any
  * Ethereum library recovers the signer the same way. It is the only thing the
@@ -20,7 +21,7 @@ import { PrivateKey } from "@ethersphere/bee-js"
 import { secp256k1 } from "@noble/curves/secp256k1"
 import { keccak_256 } from "@noble/hashes/sha3"
 import { hexToUint8Array, uint8ArrayToHex } from "./hex"
-import { deriveSecretSync } from "./key-derivation"
+import { deriveChatKey, deriveSecretSync } from "./key-derivation"
 
 /** The first line, which also versions the format. */
 export const CHAT_BINDING_TITLE = "Swarm ID chat binding v1"
@@ -227,9 +228,21 @@ function addressOfPublicKey(uncompressed: Uint8Array): string {
 }
 
 /**
+ * The chat address a site's binding names: the address of the site's chat key
+ * (`deriveChatKey`), bare lower-case hex. The one place that says which key a
+ * binding is about, for the window that signs one and the frame that checks a
+ * handed-over one.
+ *
+ * @param appSecret - the site's app secret (bare hex)
+ */
+export function siteChatAddress(appSecret: string): string {
+  return new PrivateKey(deriveChatKey(appSecret)).publicKey().address().toHex()
+}
+
+/**
  * Sign the binding for `site` with the account's own key. The chat address is
- * the address of the site's app secret, derived from that same key here, so
- * no caller can bind an address the account does not hold for that site.
+ * the address of the site's chat key, derived from that same key here, so no
+ * caller can bind an address the account does not hold for that site.
  *
  * @param accountKey - the account's private key (bare hex), whose address is
  *   the account's `id`
@@ -241,8 +254,7 @@ export function createChatBinding(
   options: SiteOriginOptions = {},
 ): ChatBinding {
   requireSite(site, options)
-  const appSecret = deriveSecretSync(accountKey, site)
-  const chatAddress = new PrivateKey(appSecret).publicKey().address().toHex()
+  const chatAddress = siteChatAddress(deriveSecretSync(accountKey, site))
   const message = buildChatBindingMessage({ site, chatAddress, date }, options)
   const signed = secp256k1.sign(
     personalMessageHash(message),

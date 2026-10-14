@@ -189,7 +189,11 @@ import {
 import { hexToUint8Array, uint8ArrayToHex } from "./utils/hex"
 import { generatedAvatar } from "./utils/avatar"
 import { connectionInfoEqual } from "./utils/connection-info"
-import { acceptedChatBinding, onlySiteChatBinding } from "./utils/chat-binding"
+import {
+  acceptedChatBinding,
+  onlySiteChatBinding,
+  siteChatAddress,
+} from "./utils/chat-binding"
 import type { ChatBinding } from "./utils/chat-binding"
 import {
   activeDeviceIds,
@@ -1048,8 +1052,10 @@ export class SwarmIdProxy {
 
   /**
    * The handed-over chat binding, if it names exactly this parent origin, the
-   * address of the secret it came with and the account it came with, so the
-   * dApp is never shown a statement about another site, key or account.
+   * address of the chat key of the secret it came with and the account it came
+   * with, so the dApp is never shown a statement about another site, key or
+   * account. A restored session runs through here again, so a stored binding
+   * naming any other address is dropped on reload as well.
    *
    * Local http is allowed in the parse because the comparison with
    * `parentOrigin`, which the browser reported, is the check here. Which sites
@@ -1062,7 +1068,7 @@ export class SwarmIdProxy {
       data.chatBinding,
       {
         site: this.parentOrigin,
-        chatAddress: new PrivateKey(data.secret).publicKey().address().toHex(),
+        chatAddress: siteChatAddress(data.secret),
         signer: data.account.id.toHex(),
       },
       { allowLocalHttp: true },

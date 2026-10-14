@@ -121,7 +121,11 @@ export {
   mergeDevices,
 } from "./utils/device-id"
 
-export { createChatBinding, onlySiteChatBinding } from "./utils/chat-binding"
+export {
+  createChatBinding,
+  onlySiteChatBinding,
+  siteChatAddress,
+} from "./utils/chat-binding"
 
 export {
   DEFAULT_SITE_ALLOW_LIST_ENS_NAME,
@@ -137,6 +141,7 @@ export type {
 export { hexAddress } from "./utils/hex"
 
 export {
+  deriveChatKey,
   derivePostageSignerKeySync,
   deriveSecret,
   deriveSecretSync,

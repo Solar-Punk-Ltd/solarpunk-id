@@ -15,10 +15,10 @@
  *
  * While the master key is unlocked here, and only here, it also signs the
  * site's chat binding (docs/Chat-Binding.md): the account's statement that the
- * address of that app secret is its chat address on the site. One binding per
- * site is kept on the connection, so a reconnect reuses it.
+ * address of the site's chat key, derived from that app secret, is its chat
+ * address on the site. One binding per site is kept on the connection, so a
+ * reconnect reuses it.
  */
-import { PrivateKey } from '@ethersphere/bee-js'
 import { type ChatBinding, acceptedChatBinding } from '@snaha/swarm-id'
 import {
   type ConnectedApp,
@@ -28,6 +28,7 @@ import {
   deriveSecret,
   onlySiteChatBinding,
   serializeSyncedAccount,
+  siteChatAddress,
   stampsReachableByApp,
 } from '@snaha/swarm-id/internal'
 
@@ -64,8 +65,8 @@ function saveConnection(
 
 /**
  * The binding this account already keeps for the site, if it still names this
- * site, the address of this app secret and this account. Anything else is
- * replaced, never handed over.
+ * site, the address of this app secret's chat key and this account. Anything
+ * else is replaced, never handed over.
  */
 function keptChatBinding(
   account: Account,
@@ -77,7 +78,7 @@ function keptChatBinding(
     kept,
     {
       site: appOrigin,
-      chatAddress: new PrivateKey(appSecret).publicKey().address().toHex(),
+      chatAddress: siteChatAddress(appSecret),
       signer: account.id.toHex(),
     },
     { allowLocalHttp: import.meta.env.DEV },
@@ -201,8 +202,9 @@ function findReusableConnection(account: Account, appOrigin: string): ConnectedA
 
 /**
  * Reconnect with the secret of a still-valid prior connection, skipping the
- * unlock ceremony. Returns false when there is none and a full
- * unlock + derivation is required.
+ * unlock ceremony. Returns false when there is none, or when the connection
+ * keeps no binding that still names this site's chat key, so a full unlock +
+ * derivation is required and signs a fresh binding. Only the unlock can sign.
  */
 export function reuseConnection(account: Account, request: ConnectRequest): boolean {
   requireCleanSite(request.appOrigin)
@@ -211,6 +213,9 @@ export function reuseConnection(account: Account, request: ConnectRequest): bool
     return false
   }
   const chatBinding = keptChatBinding(account, request.appOrigin, existing.appSecret)
+  if (!chatBinding) {
+    return false
+  }
   saveConnection(account, request, existing.appSecret, chatBinding)
   sendSecretToOpener(account, request, existing.appSecret, chatBinding)
   return true

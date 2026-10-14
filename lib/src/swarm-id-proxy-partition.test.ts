@@ -216,7 +216,7 @@ import { BatchId, EthAddress, PrivateKey } from "@ethersphere/bee-js"
 
 import { SwarmIdProxy, PUBLISH_DEBOUNCE_MS } from "./swarm-id-proxy"
 import type { ProxyConfig } from "./swarm-id-proxy"
-import { allowingSites } from "./test-fixtures"
+import { allowingSites, appSecretAddressChatBinding } from "./test-fixtures"
 import { SignalingTransport } from "./bus/signaling-transport"
 import { busChannelName } from "./bus/account-bus"
 import { BusMessageSchema } from "./bus/messages"
@@ -2146,6 +2146,23 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       )
 
       expect(messagesOfType("authSuccess")).toHaveLength(1)
+      expect(lastInfo()?.canUpload).toBe(true)
+      expect(lastInfo()?.chatBinding).toBeUndefined()
+    })
+
+    // The account's own signature over the address of the app secret, as
+    // bindings were signed before sites had a chat key. The stored session
+    // keeps what the popup sent, so the reload checks it again.
+    it("drops a binding naming the app secret's address, across a reload too", async () => {
+      await connectWithBinding(
+        appSecretAddressChatBinding(ACCOUNT_KEY, PARENT_ORIGIN, new Date()),
+      )
+
+      expect(messagesOfType("authSuccess")).toHaveLength(1)
+      expect(lastInfo()?.chatBinding).toBeUndefined()
+
+      await reload()
+
       expect(lastInfo()?.canUpload).toBe(true)
       expect(lastInfo()?.chatBinding).toBeUndefined()
     })
