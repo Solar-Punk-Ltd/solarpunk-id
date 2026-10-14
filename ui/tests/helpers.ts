@@ -492,18 +492,44 @@ export function openSealedInPage(page: Page, sealed: string): Promise<string> {
   }, sealed)
 }
 
+/**
+ * Seals with the page's wrapping key, making it first when the page has none
+ * yet, as the app does on its first seal.
+ */
 export function sealInPage(page: Page, plain: string): Promise<string> {
   return page.evaluate(async (value) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('swarm-id-keys', 1)
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains('wrapping-keys')) {
+          request.result.createObjectStore('wrapping-keys')
+        }
+      }
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => reject(request.error)
     })
-    const key = await new Promise<CryptoKey>((resolve, reject) => {
+    const stored = await new Promise<CryptoKey | undefined>((resolve, reject) => {
       const read = db.transaction('wrapping-keys').objectStore('wrapping-keys').get('at-rest-v1')
-      read.onsuccess = () => resolve(read.result as CryptoKey)
+      read.onsuccess = () => resolve(read.result as CryptoKey | undefined)
       read.onerror = () => reject(read.error)
     })
+    const key =
+      stored ??
+      (await (async () => {
+        const made = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
+          'encrypt',
+          'decrypt',
+        ])
+        await new Promise<void>((resolve, reject) => {
+          const write = db
+            .transaction('wrapping-keys', 'readwrite')
+            .objectStore('wrapping-keys')
+            .put(made, 'at-rest-v1')
+          write.onsuccess = () => resolve()
+          write.onerror = () => reject(write.error)
+        })
+        return made
+      })())
     db.close()
     const iv = crypto.getRandomValues(new Uint8Array(12))
     const sealed = new Uint8Array(
@@ -513,4 +539,29 @@ export function sealInPage(page: Page, plain: string): Promise<string> {
       Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
     return `sealed:v1:${hex(iv)}${hex(sealed)}`
   }, plain)
+}
+
+interface StoredAccounts {
+  data?: {
+    derivationKey?: string
+    connectedApps?: { appSecret?: string }[]
+    postageStamps?: { signerKey?: string }[]
+  }[]
+}
+
+/**
+ * The stored account document of `from`, with every key opened there and
+ * sealed again in `to`. A sealed key opens only on the device that sealed it,
+ * so this is how a second device holds the same account.
+ */
+export async function resealAccounts(from: Page, to: Page, accounts: string): Promise<string> {
+  const reseal = async (value: string | undefined) =>
+    value === undefined ? undefined : sealInPage(to, await openSealedInPage(from, value))
+  const doc = JSON.parse(accounts) as StoredAccounts
+  for (const account of doc.data ?? []) {
+    account.derivationKey = await reseal(account.derivationKey)
+    for (const app of account.connectedApps ?? []) app.appSecret = await reseal(app.appSecret)
+    for (const stamp of account.postageStamps ?? []) stamp.signerKey = await reseal(stamp.signerKey)
+  }
+  return JSON.stringify(doc)
 }
