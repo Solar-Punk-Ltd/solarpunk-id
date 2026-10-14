@@ -387,5 +387,22 @@ describe("SwarmIdProxy with the site's own Bee address", () => {
         "subsidised",
       )
     })
+
+    // The person's settings arrive as a storage event, and what the site was
+    // told has to follow without waiting for some other change to send it.
+    it("tells the site when the person's custom node switches its gateway off", async () => {
+      const frame = mount()
+      await frame.identify({ subsidisedGatewayUrl: GATEWAY_URL })
+      signIn(frame.proxy)
+      const before = frame.sent("connectionInfoChanged").length
+
+      setOwnBeeUrl(OWN_BEE_URL)
+
+      expect(frame.sent("connectionInfoChanged")).toHaveLength(before + 1)
+      expect(frame.lastConnectionInfo()).toMatchObject({
+        uploadMode: "unavailable",
+        uploadUnavailableReason: "no-stamp",
+      })
+    })
   })
 })
