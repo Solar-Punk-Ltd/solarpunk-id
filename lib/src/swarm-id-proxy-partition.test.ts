@@ -1034,10 +1034,10 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         expect(internals().bee.url).toBe(CONFIGURED_NODE_URL)
       })
 
-      // The site's own Bee address: the coordinator's lock, lease and
-      // roster traffic and every stamped upload go through it, and a later
-      // change reaches the coordinator already built, without a rebuild.
-      it("writes and reads at the site's address, and follows a later change", async () => {
+      // The site's own Bee address answers the site's content only. The
+      // coordinator's lock, lease and state chunks, and the roster, are the
+      // person's devices coordinating, and stay on the person's own node.
+      it("coordinates on the person's node and sends stamped content to the site's", async () => {
         const SITE_BEE_URL = "https://site-bee.example.com/"
         const NEXT_SITE_BEE_URL = "https://gateway.example.org/bee/"
         await seedConnectedAccount()
@@ -1053,8 +1053,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         )
         await vi.waitFor(() => expect(coordinatorCount()).toBeGreaterThan(0))
         const coordinator = latestCoordinator()
-        const coordinatorsBefore = coordinatorCount()
-        expect(coordinator.deps.bee.url).toBe(SITE_BEE_URL.replace(/\/$/, ""))
+        expect(coordinator.deps.bee.url).toBe(CONFIGURED_NODE_URL)
 
         await dispatch(
           {
@@ -1066,11 +1065,29 @@ describe("SwarmIdProxy partitioned write enablement", () => {
           parentWindow,
         )
 
-        expect(coordinatorCount()).toBe(coordinatorsBefore)
-        expect(coordinator.deps.bee.url).toBe(
-          NEXT_SITE_BEE_URL.replace(/\/$/, ""),
-        )
+        expect(coordinator.deps.bee.url).toBe(CONFIGURED_NODE_URL)
         expect(internals().bee.url).toBe(NEXT_SITE_BEE_URL.replace(/\/$/, ""))
+        coordinator.withWrite.mockImplementationOnce(
+          (write: (target: unknown) => unknown) =>
+            write({ mode: "stamper", bee: coordinator.deps.bee, stamper: {} }),
+        )
+        await expect(uploadTarget()).resolves.toMatchObject({
+          mode: "stamper",
+          bee: { url: NEXT_SITE_BEE_URL.replace(/\/$/, "") },
+        })
+
+        vi.mocked(readRoster).mockClear()
+        await (
+          coordinator.deps as unknown as {
+            refreshKnownDeviceIds: () => Promise<void>
+          }
+        ).refreshKnownDeviceIds()
+        expect(vi.mocked(readRoster)).toHaveBeenCalled()
+        for (const [args] of vi.mocked(readRoster).mock.calls) {
+          expect((args as { bee: { url: string } }).bee.url).toBe(
+            CONFIGURED_NODE_URL,
+          )
+        }
       })
 
       it("reads from the gateway once the drive's lifetime runs out in an open session", async () => {
@@ -2112,6 +2129,81 @@ describe("SwarmIdProxy partitioned write enablement", () => {
 
         expect(vi.mocked(checkRestoredSession)).toHaveBeenCalled()
         await expect(gate().ensureCanWrite()).rejects.toThrow(/ended/)
+      })
+
+      // A site that names its own Bee node could otherwise answer the check
+      // itself, with an empty roster, and keep a revoked session writing.
+      describe("on a site that names its own Bee node", () => {
+        const HOSTILE_BEE_URL = "https://hostile-bee.example.com/"
+        const OWN_NODE_URL = DEFAULT_BEE_NODE_URL.replace(/\/$/, "")
+
+        /** The site's node says "allowed", the person's own node "ended". */
+        const verdictByNode = (input: { bee: { url: string } }) =>
+          Promise.resolve(
+            input.bee.url === OWN_NODE_URL ? "ended" : "allowed",
+          ) as Promise<"allowed" | "ended" | "unconfirmed">
+
+        it("asks the person's own node, so the site cannot keep a revoked session allowed", async () => {
+          await seedConnectedAccount()
+          vi.mocked(checkRestoredSession).mockClear()
+          vi.mocked(checkRestoredSession).mockImplementationOnce(
+            verdictByNode as never,
+          )
+
+          await dispatch(
+            {
+              type: "parentIdentify",
+              requestId: "r1",
+              metadata: { name: "dApp" },
+              beeApiUrl: HOSTILE_BEE_URL,
+            },
+            PARENT_ORIGIN,
+            parentWindow,
+          )
+
+          expect(vi.mocked(checkRestoredSession)).toHaveBeenCalledWith(
+            expect.objectContaining({
+              bee: expect.objectContaining({ url: OWN_NODE_URL }),
+            }),
+          )
+          await expect(gate().ensureCanWrite()).rejects.toThrow(/ended/)
+        })
+
+        it("asks the person's own node again on the retry, after the site changed its node", async () => {
+          await seedConnectedAccount()
+          restoredSessionVerdict.value = Promise.resolve("unconfirmed")
+          await dispatch(
+            {
+              type: "parentIdentify",
+              requestId: "r1",
+              metadata: { name: "dApp" },
+              beeApiUrl: HOSTILE_BEE_URL,
+            },
+            PARENT_ORIGIN,
+            parentWindow,
+          )
+          await expect(gate().ensureCanWrite()).rejects.toThrow()
+          await dispatch(
+            {
+              type: "setBeeApiUrl",
+              requestId: "r2",
+              beeApiUrl: "https://other-hostile.example.com/",
+            },
+            PARENT_ORIGIN,
+            parentWindow,
+          )
+          vi.mocked(checkRestoredSession).mockClear()
+          vi.mocked(checkRestoredSession).mockImplementationOnce(
+            verdictByNode as never,
+          )
+
+          await expect(gate().ensureCanWrite()).rejects.toThrow(/ended/)
+          expect(vi.mocked(checkRestoredSession)).toHaveBeenCalledWith(
+            expect.objectContaining({
+              bee: expect.objectContaining({ url: OWN_NODE_URL }),
+            }),
+          )
+        })
       })
     })
 

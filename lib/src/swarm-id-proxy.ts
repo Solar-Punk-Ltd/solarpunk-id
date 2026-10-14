@@ -270,6 +270,8 @@ const LEASE_REQUEST_ID_LENGTH = 8
  *  call off a yield whose rank timer has fired. Small: a round's id is spent
  *  the moment a holder claims it, and stale entries only cost a `Set` slot. */
 const ANSWERED_REQUEST_MEMORY = 32
+/** Content, account and gateway clients, with room for a site's next address. */
+const MAX_BEE_CLIENTS = 4
 
 /** Identifies one slot-wait round, so every holder ranks itself the same way.
  *  A UUID's first block is hex, so this is hex without any rewriting. */
@@ -497,11 +499,10 @@ export class SwarmIdProxy {
   private popupMode: "popup" | "window" = "window"
   private appMetadata: AppMetadata | undefined
   /**
-   * The last Bee client built, with the URL it was asked for. Keyed on that
-   * input URL, not on the client's own `url`, which bee-js keeps without the
-   * trailing slash.
+   * Bee clients by the URL they were asked for. Keyed on that input URL, not
+   * on the client's own `url`, which bee-js keeps without the trailing slash.
    */
-  private beeClient: { url: string; bee: Bee } | undefined
+  private beeClients = new Map<string, Bee>()
   private unsubscribeStorageListeners: Array<() => void> = []
   private storageWorkQueue: Promise<void> = Promise.resolve()
   private lastConnectionInfo: ConnectionInfo | undefined
@@ -528,9 +529,11 @@ export class SwarmIdProxy {
   }
 
   /**
-   * The node this site's session reads and writes through: the site's own
-   * address when it named one, the person's setting otherwise. Every Bee
-   * client and every direct Bee read of the frame is built from this.
+   * The node the site's own content goes through: the site's address when it
+   * named one, the person's setting otherwise. Content only, the reads and
+   * stamped uploads the site asks for. Nothing that decides whether this
+   * session may write, or that coordinates the person's devices, reads it
+   * (`accountBee`), because a site could answer those from a node of its own.
    */
   private get beeApiUrl(): string {
     return this.siteBeeApiUrl ?? this.ownBeeApiUrl
@@ -572,22 +575,38 @@ export class SwarmIdProxy {
   }
 
   /**
-   * The client for the configured node, whatever the mode. The coordinator
-   * writes there, and only there: it runs in user-stamp mode alone, and a
-   * refused drive (expired, unusable) keeps one while `bee` points at the
-   * gateway. What it writes — the roster, this device's state — is read back
-   * through this client too.
+   * The client for the site's content node, whatever the mode: where the
+   * site's stamped uploads go in user-stamp mode, which `bee` also reads from
+   * then.
    */
   private get nodeBee(): Bee {
     return this.beeClientFor(this.beeApiUrl)
   }
 
-  /** A client for `url`, rebuilt only when the URL differs from the last. */
+  /**
+   * The client for the person's own node, whatever the site named. The
+   * coordinator's lock, lease and state chunks, the device roster and the
+   * restored session's revocation check go through it: they decide what this
+   * session may do with the person's account and stamp, so the embedding
+   * site must not be able to answer them.
+   */
+  private get accountBee(): Bee {
+    return this.beeClientFor(this.ownBeeApiUrl)
+  }
+
+  /**
+   * A client for `url`, kept per URL so the content, account and gateway
+   * clients do not rebuild each other. Bounded, because a site can name a
+   * new address at any time.
+   */
   private beeClientFor(url: string): Bee {
-    if (this.beeClient?.url !== url) {
-      this.beeClient = { url, bee: new Bee(url) }
+    let bee = this.beeClients.get(url)
+    if (!bee) {
+      if (this.beeClients.size >= MAX_BEE_CLIENTS) this.beeClients.clear()
+      bee = new Bee(url)
+      this.beeClients.set(url, bee)
     }
-    return this.beeClient.bee
+    return bee
   }
 
   /**
@@ -2160,13 +2179,13 @@ export class SwarmIdProxy {
     // keyed on it, so a snapshot filed under a batch we have since moved off
     // hints at a lane nobody holds (#684), and a lease message naming that
     // batch answers nobody (#589). `batchId` is the capture from the top.
-    const nodeBee = (): Bee => this.nodeBee
+    const accountBee = (): Bee => this.accountBee
     this.coordinator = new BatchWriteCoordinator({
-      // A getter, so a node change (the site's `setBeeApiUrl`, the person's
-      // settings) reaches the coordinator already built: its lock, lease and
-      // stamped writes all go where the session's reads go.
+      // The person's node, read on every use so a change to their settings
+      // reaches the coordinator already built. The site's content uploads
+      // are moved to the site's node in `withModeAwareWriteLock`.
       get bee() {
-        return nodeBee()
+        return accountBee()
       },
       batchId,
       stamper,
@@ -2413,7 +2432,13 @@ export class SwarmIdProxy {
         "Stamper not initialized. Please login first.",
       )
     }
-    return this.coordinator.withWrite(operation, targetOptions)
+    return this.coordinator.withWrite(
+      (target) =>
+        operation(
+          target.mode === "stamper" ? { ...target, bee: this.nodeBee } : target,
+        ),
+      targetOptions,
+    )
   }
 
   /**
@@ -2773,7 +2798,7 @@ export class SwarmIdProxy {
       const connection = this.findConnectionForParent()
       if (connection) {
         this.startRestoredSessionCheck({
-          bee: this.bee,
+          bee: this.accountBee,
           derivationKey: connection.account.derivationKey,
           accountId: connection.account.id.toHex(),
           appOrigin: this.parentOrigin,
@@ -2835,7 +2860,7 @@ export class SwarmIdProxy {
     // Before hydrating, which builds the write path and would otherwise claim
     // a lease before the check could hold it.
     this.startRestoredSessionCheck({
-      bee: this.bee,
+      bee: this.accountBee,
       derivationKey: data.account.derivationKey,
       accountId: data.account.id.toHex(),
       appOrigin: this.parentOrigin!,
@@ -2908,8 +2933,9 @@ export class SwarmIdProxy {
     let check = this.restoredSessionCheck
     if (!check) return
     if (check.settled === "unconfirmed") {
-      // At the node in effect now, which the site may have changed since.
-      this.startRestoredSessionCheck({ ...check.input, bee: this.bee })
+      // At the person's node as it is now, which their settings may have
+      // changed since. Never the site's.
+      this.startRestoredSessionCheck({ ...check.input, bee: this.accountBee })
       check = this.restoredSessionCheck!
     }
     const verdict = await check.verdict
@@ -3098,7 +3124,7 @@ export class SwarmIdProxy {
       )
       const owner = backupKey.publicKey().address()
       const rosterDevices = await readRoster({
-        bee: this.nodeBee,
+        bee: this.accountBee,
         accountId: account.id.toHex(),
         owner,
       })
@@ -3336,7 +3362,7 @@ export class SwarmIdProxy {
       const deviceId = this.requireDeviceId()
       if (reason === "acquired") {
         const rosterDevices = await readRoster({
-          bee: this.nodeBee,
+          bee: this.accountBee,
           accountId: snapshot.accountId,
           owner,
         }).catch(() => [])
@@ -3396,7 +3422,7 @@ export class SwarmIdProxy {
 
       await coordinator.withWrite((target) =>
         publishDeviceState({
-          bee: this.nodeBee,
+          bee: this.accountBee,
           accountId: snapshot.accountId,
           device: thisDevice,
           accountKey,

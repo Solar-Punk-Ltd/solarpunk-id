@@ -25,6 +25,7 @@ type ProxyInternals = {
   appSecret: string
   bee: { url: string }
   nodeBee: { url: string }
+  accountBee: { url: string }
   buildConnectionInfo: () => { uploadMode: string; beeApiUrl?: string }
   ensureCanUpload: () => void
   withModeAwareWriteLock: <T>(
@@ -150,6 +151,18 @@ describe("SwarmIdProxy with the site's own Bee address", () => {
       expect(internals(frame.proxy).nodeBee.url).toBe(clientUrl(SITE_BEE_URL))
       expect(frame.sent("proxyReady")).toHaveLength(1)
       expect(unsendable).toEqual([])
+    })
+
+    // The person's devices coordinate, and the session's revocation is
+    // checked, through the person's own node, never one a site can answer.
+    it("keeps the person's own node for coordinating their account", async () => {
+      store.set(STORAGE_KEY_NETWORK_SETTINGS, NETWORK_SETTINGS(OWN_BEE_URL))
+      const frame = mount()
+
+      await frame.identify({ beeApiUrl: SITE_BEE_URL })
+      await frame.setBeeApiUrl(NEXT_SITE_BEE_URL)
+
+      expect(internals(frame.proxy).accountBee.url).toBe(clientUrl(OWN_BEE_URL))
     })
 
     it("reports it in checkAuth and in the connection info", async () => {
