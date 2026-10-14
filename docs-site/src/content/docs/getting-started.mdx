@@ -34,6 +34,16 @@ yarn add @snaha/swarm-id
   </TabItem>
 </Tabs>
 
+## Get your site on the allow list
+
+The hosted identity site at `https://solarpunkid.bzz.link` serves only the sites named on its
+allow list, the `buzz.solarpunk.sites` text record of the ENS name `solarpunkid.eth`. Until your
+app's exact origin (scheme, host and port) is in that record, `initialize()` rejects with
+`init-failed` and the connect window says the site cannot connect. Ask whoever controls
+`solarpunkid.eth` to add your origin, or [host your own](../self-hosting/) identity site with an
+allow list you control. `docs/Site-Allow-List.md` in the repository has the record's format and
+every reason a site is refused.
+
 ## Connect and upload
 
 ```typescript

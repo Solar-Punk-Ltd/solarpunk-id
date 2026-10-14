@@ -10,7 +10,8 @@ The identity UI is a SvelteKit SPA.
 - **License headers**: enforced by eslint via `@swarm-id/eslint-rules` (`license/header` for
   TS/JS, `license/svelte-header` for Svelte — no third-party plugin);
   `pnpm --filter @swarm-id/ui format` auto-inserts them
-- **`BASE_PATH`** env var sets the SvelteKit base path at build time (`/id` in deployments)
+- **`BASE_PATH`** env var sets the SvelteKit base path at build time. It stays unset when the site
+  is served from the root of its host, as on Swarm (`docs-site/src/content/docs/swarm-hosting.mdx`)
 - **Wallet picker** (`src/lib/crypto/onboard.ts`): injected wallets, Coinbase Wallet, and
   WalletConnect when there is a project id. The last two need nothing installed and are the only
   routes on a browser with no wallet extension (Safari, mobile)
@@ -18,8 +19,9 @@ The identity UI is a SvelteKit SPA.
   the picker offers no WalletConnect. Never hand `@web3-onboard/walletconnect` a blank id: it
   throws, at import of a module every wallet page loads. Go through `walletConnectOptions`, which
   returns `undefined` instead
-- **Local env**: `.env.example` → `.env` (gitignored) documents the `PUBLIC_*` build vars; both are
-  optional, so an empty `.env` is fine for dev
+- **Local env**: `.env.example` → `.env` (gitignored) documents the `PUBLIC_*` build vars. All are
+  optional for dev, so an empty `.env` is fine there. A production build must set
+  `PUBLIC_ETHEREUM_RPC_URL`, or it serves no site
 - **Dev mock stamp purchase** (`/dev` → Chain tab, backed by `src/lib/stores/dev-settings.svelte.ts`):
   toggles that make the **Add drive** flow's _widget_ payment method settle a mocked postage batch
   instead of a real cross-chain payment. They apply to that method only — the built-in engine

@@ -29,7 +29,8 @@ pnpm dev:ui
 pnpm --filter @swarm-id/ui build    # outputs to ./build
 ```
 
-`BASE_PATH` controls the base path of the build (e.g. `/id` for the GitHub Pages deploy).
+`BASE_PATH` controls the base path of the build, for a host that serves it under a path. Leave it
+unset for the Swarm hosting, which serves it from the root.
 
 ## Checks & tests
 
