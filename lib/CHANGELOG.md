@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.1
+
+### Features
+
+- **lib:** a site names the Bee node its session reads and writes through. `SwarmIdClient` takes a
+  `beeApiUrl` option, and `client.setBeeApiUrl(url)` changes it without a reload. In that site's
+  frame it takes the place of the person's own Bee setting for every read and write, the write
+  lock and lease chunks included, while every other site and Swarm ID itself keep the person's
+  setting. The address is held in memory by that site's frame and never stored.
+- **lib:** `connectionInfo.beeApiUrl` reports the Bee node in effect for the site, and
+  `checkAuthStatus().beeApiUrl` now reports that node too rather than always the person's own.
+- **lib:** a subsidised gateway the site gives beside its own node is kept. The person's custom
+  node switches the gateway off only while that node is the one in effect.
+
+### Bug Fixes
+
+- **lib:** the write coordinator and its partition lease follow a change of Bee node mid-session.
+  Before, a person who changed their Bee setting with a page open kept uploading and writing lock
+  chunks through the old node until the page reloaded.
+
 ## 0.8.0
 
 The fork's first release, published to npm as `@solarpunkltd/swarm-id`. The package is the
