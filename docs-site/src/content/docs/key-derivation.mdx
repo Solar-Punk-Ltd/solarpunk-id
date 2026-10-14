@@ -51,7 +51,8 @@ re-encrypts the same seed under a new key.
 recovery phrase (BIP-39)
 └─ master key  (wallet private key; address = account id)
    ├─ app secret            = deriveSecret(master, appOrigin)           one per app origin
-   │  └─ app material       = deriveSecret(appSecret, label)            client.deriveAppSecret(label)
+   │  ├─ app material       = deriveSecret(appSecret, label)            client.deriveAppSecret(label)
+   │  └─ chat key           = deriveSecret(appSecret, "swarm-id chat key v1")   named by the chat binding
    └─ derivationKey         = deriveSecret(master, "derivation-key")    stored on the account
       ├─ swarmEncryptionKey = deriveSecret(derivationKey, "swarm-encryption")
       │  └─ backupKey       = deriveSecret(swarmEncryptionKey, "backup-key")
@@ -76,6 +77,23 @@ deployment (every `*.vercel.app` preview has a hostname of its own) all derive d
 secrets, so a wallet, key or feed topic derived with `deriveAppSecret` on a preview URL is
 not the one production will see. Settle the production origin before anything derived from
 the app secret is used as an identity or published.
+
+### Chat key
+
+`deriveSecret(appSecret, "swarm-id chat key v1")`, the key a site's chat signs its messages
+with. Its address is the chat address the site's chat binding names, so a reader can tie a
+message to the account (`docs/Chat-Binding.md` in the repository). It depends on the account
+and the site alone, so every device of the account arrives at the same chat key for a site.
+
+The 32 bytes are used as a secp256k1 private key when they are a number from 1 to n - 1, n
+being the curve order. Otherwise, which an HMAC output is with a chance of about 2^-128, the
+same derivation runs again under `"swarm-id chat key v1/1"`, then `/2`, and so on, and the
+first valid one is the key.
+
+It is the same derivation `client.deriveAppSecret(label)` runs, under a label of Swarm ID's
+own, so an app must not use that label for material of its own. The `v1` is how a leaked chat
+key is replaced: a new label gives every account a new chat key on every site, and the
+connect window signs a fresh binding the next time, since the kept one names the old address.
 
 ### derivationKey
 

@@ -11,6 +11,7 @@
  */
 
 import { PrivateKey } from "@ethersphere/bee-js"
+import { secp256k1 } from "@noble/curves/secp256k1"
 import { hmac } from "@noble/hashes/hmac"
 import { sha256 } from "@noble/hashes/sha256"
 import { hexToUint8Array, uint8ArrayToHex } from "./hex"
@@ -25,6 +26,19 @@ export const POSTAGE_SIGNER_LABEL = "postage-signer"
 export const BACKUP_KEY_LABEL = "backup-key"
 /** Derivation key → the account-wide ACT sharing key (#519) */
 export const ACT_SHARING_LABEL = "act-sharing"
+/**
+ * App secret → the site's chat key, the key a site's chat signs with and whose
+ * address the site's chat binding names (docs/Chat-Binding.md).
+ *
+ * The version in the label is how a leaked chat key is replaced: a new label
+ * gives every account a new chat key on every site, the identity UI then signs
+ * a fresh binding at the next connect because the kept one names the old
+ * address, and readers stop accepting the old key because no binding names it.
+ */
+export const CHAT_KEY_LABEL = "swarm-id chat key v1"
+
+/** How many numbered labels `firstValidPrivateKey` tries before giving up. */
+const MAX_PRIVATE_KEY_ATTEMPTS = 16
 
 /**
  * Derive a secret from a parent key under a label, with Web Crypto.
@@ -162,6 +176,50 @@ export function deriveSharingKey(derivationKey: string): {
     secret,
     publicKey: new PrivateKey(secret).publicKey().toCompressedHex(),
   }
+}
+
+/**
+ * The first output of `derive` that is a valid secp256k1 private key, a
+ * number from 1 to n - 1 where n is the curve order. It asks under `label`
+ * first, then under `label/1`, `label/2` and so on. An HMAC-SHA256 output
+ * misses that range with a chance of about 2^-128, so in practice the first
+ * answer is the key, but the rule is fixed so every device agrees even then.
+ *
+ * @throws if no candidate within the attempt bound is a key, which only a
+ *   broken `derive` can cause
+ */
+export function firstValidPrivateKey(
+  derive: (label: string) => Uint8Array,
+  label: string,
+): Uint8Array {
+  for (let attempt = 0; attempt < MAX_PRIVATE_KEY_ATTEMPTS; attempt++) {
+    const candidate = derive(attempt === 0 ? label : `${label}/${attempt}`)
+    if (secp256k1.utils.isValidPrivateKey(candidate)) {
+      return candidate
+    }
+  }
+  throw new Error(
+    `No valid secp256k1 private key under "${label}" in ${MAX_PRIVATE_KEY_ATTEMPTS} attempts.`,
+  )
+}
+
+/**
+ * The site's chat key, from the site's app secret
+ * (`deriveSecret(masterKey, origin)`): `HMAC(appSecret, CHAT_KEY_LABEL)`, the
+ * same derivation `deriveAppSecret` runs for an app's own label, held to a
+ * valid secp256k1 key by `firstValidPrivateKey`. It depends on the account and
+ * the site alone, so every device of the account derives the same key.
+ * Synchronous because ConnectionInfo and the binding are built without
+ * awaiting.
+ *
+ * @param appSecret - the site's app secret (bare hex)
+ * @returns the 32-byte chat private key
+ */
+export function deriveChatKey(appSecret: string): Uint8Array {
+  return firstValidPrivateKey(
+    (label) => hexToUint8Array(deriveSecretSync(appSecret, label)),
+    CHAT_KEY_LABEL,
+  )
 }
 
 // Export utility functions for testing
