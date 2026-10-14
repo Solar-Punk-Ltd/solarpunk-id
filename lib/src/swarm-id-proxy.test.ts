@@ -445,6 +445,10 @@ describe("SwarmIdProxy getChatKey", () => {
     expect(new PrivateKey(response.chatKey).publicKey().address().toHex()).toBe(
       siteChatAddress(APP_SECRET_HEX),
     )
+    // A private key: it goes to the page that asked and to no other origin.
+    expect(source.postMessage.mock.calls.at(-1)?.[1]).toEqual({
+      targetOrigin: PARENT_ORIGIN,
+    })
   })
 
   it("refuses an unauthenticated caller and hands over no key", async () => {
