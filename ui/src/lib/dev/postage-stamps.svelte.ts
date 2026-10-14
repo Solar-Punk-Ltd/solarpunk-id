@@ -5,7 +5,7 @@ import {
   type PostageStamp,
   UtilizationAwareStamper,
   UtilizationStoreDB,
-} from '@snaha/swarm-id/internal'
+} from '@solarpunkltd/swarm-id/internal'
 
 import { browser } from '$app/environment'
 

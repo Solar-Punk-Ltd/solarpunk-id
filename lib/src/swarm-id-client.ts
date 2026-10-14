@@ -235,7 +235,7 @@ export class SwarmIdClient {
     // fix instead.
     if (typeof window === "undefined") {
       throw new Error(
-        "@snaha/swarm-id runs in the browser only: construct SwarmIdClient in code that runs there (an effect, onMount, or behind `typeof window !== 'undefined'`), not in a server render",
+        "@solarpunkltd/swarm-id runs in the browser only: construct SwarmIdClient in code that runs there (an effect, onMount, or behind `typeof window !== 'undefined'`), not in a server render",
       )
     }
     this.iframeOrigin = options.iframeOrigin

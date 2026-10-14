@@ -13,7 +13,7 @@ import {
   createAccountsStorageManager,
   isSignedOutAccount,
   serializePostageStamp,
-} from '@snaha/swarm-id/internal'
+} from '@solarpunkltd/swarm-id/internal'
 
 import { browser } from '$app/environment'
 
@@ -58,7 +58,7 @@ type DeviceAuth =
  * mutate the account they already hold (`account.rename(…)`), never a store
  * method that takes an id and looks the account up.
  *
- * The shape mirrors the shared `@snaha/swarm-id` `Account` record union —
+ * The shape mirrors the shared `@solarpunkltd/swarm-id` `Account` record union —
  * `applyRecord`/`toRecord` project from/to it (byte-class fields are serialized
  * to hex by the lib storage manager). The private `#commit` makes the class
  * nominal, so a plain record can't be mistaken for a live account.
@@ -615,7 +615,7 @@ function revoked(app: ConnectedApp, tombstone: boolean): ConnectedApp {
 // Collection store — create / look up / remove whole accounts. Per-account
 // state changes live on the Account object itself.
 //
-// Backed by the `@snaha/swarm-id` Zod storage manager (key STORAGE_KEY_ACCOUNTS)
+// Backed by the `@solarpunkltd/swarm-id` Zod storage manager (key STORAGE_KEY_ACCOUNTS)
 // — the SAME nested-account document the proxy iframe and sync engine read. The
 // product UI, the /dev tooling and sync all drive off this one reactive store.
 // ============================================================================
@@ -688,7 +688,7 @@ function load(): Account[] {
 
 /**
  * Resolves once the stored accounts are read with their keys opened
- * (`@snaha/swarm-id`'s sealed storage). Until then the store is
+ * (`@solarpunkltd/swarm-id`'s sealed storage). Until then the store is
  * empty, and the root layout renders no page, because a page that changed an
  * account before its keys were open would write it back without them.
  */

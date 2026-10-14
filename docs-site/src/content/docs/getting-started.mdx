@@ -5,55 +5,37 @@ description: Add Swarm ID to your app in a few minutes
 
 import { Tabs, TabItem } from '@astrojs/starlight/components'
 
-Build and install the library, create a client, call `connect()`. That is the whole integration.
+Install the library, create a client, call `connect()`. That is the whole integration.
 The rest of this page is what happens around it.
 
 ## Install
 
-This fork is not published to npm. The package called `@snaha/swarm-id` on npm is snaha's upstream
-library without this fork's changes, so `pnpm add @snaha/swarm-id` or `npm install @snaha/swarm-id`
-gets the wrong code. An app builds the library from this repository at a commit it chooses, and
-still imports it as `@snaha/swarm-id`. Building needs Node 22 or later and pnpm 11.
-
-### Build a tarball at a pinned commit
-
-```bash
-git clone https://github.com/Solar-Punk-Ltd/solarpunk-id.git
-cd solarpunk-id
-git checkout <commit>
-pnpm install --frozen-lockfile
-pnpm build:lib
-cd lib
-pnpm pack --pack-destination <your-app>/vendor
-```
-
-That writes `snaha-swarm-id-0.7.0.tgz` into the app's `vendor/` folder. Install it from the app:
+The library is published to npm as `@solarpunkltd/swarm-id`. The package called `@snaha/swarm-id`
+on npm is snaha's upstream library without this fork's changes, so installing that name gets the
+wrong code. The library runs on Node 22 or later.
 
 <Tabs syncKey="pkg">
   <TabItem label="pnpm">
 
 ```bash
-pnpm add ./vendor/snaha-swarm-id-0.7.0.tgz
+pnpm add @solarpunkltd/swarm-id
 ```
 
   </TabItem>
   <TabItem label="npm">
 
 ```bash
-npm install ./vendor/snaha-swarm-id-0.7.0.tgz
+npm install @solarpunkltd/swarm-id
 ```
 
   </TabItem>
 </Tabs>
 
-Commit the tarball with the app, so the app installs the same build everywhere without a checkout
-of this repository. The file name carries the package version, not the commit, so note the commit
-beside it. To move to a newer commit, repeat the steps and install the new tarball.
-
 ### Depend on a built checkout
 
 While working on the library and an app side by side, the app can depend on the built `lib/` folder
-of a checkout instead. Build it as above, without the `pnpm pack` step, then from the app:
+of a checkout instead. Building needs pnpm 11. In a checkout of this repository run
+`pnpm install --frozen-lockfile` and `pnpm build:lib`, then from the app:
 
 <Tabs syncKey="pkg">
   <TabItem label="pnpm">
@@ -96,7 +78,7 @@ every reason a site is refused.
 ## Connect and upload
 
 ```typescript
-import { SwarmIdClient } from '@snaha/swarm-id'
+import { SwarmIdClient } from '@solarpunkltd/swarm-id'
 
 // What the connect popup and the identity site show for your app. The icon is
 // any data URL under 4 KB, SVG or PNG; an emoji in an SVG will do to start.

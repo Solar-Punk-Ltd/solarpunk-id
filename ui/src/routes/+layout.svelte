@@ -6,8 +6,8 @@
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte'
 
-  import { isSignedOutAccount, markFirstPartyStorage } from '@snaha/swarm-id/internal'
-  import type { SyncedAccount } from '@snaha/swarm-id/internal'
+  import { isSignedOutAccount, markFirstPartyStorage } from '@solarpunkltd/swarm-id/internal'
+  import type { SyncedAccount } from '@solarpunkltd/swarm-id/internal'
 
   import { resolve } from '$app/paths'
   import { page } from '$app/state'

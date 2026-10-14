@@ -5,13 +5,13 @@
 
 <!--
   Iframe proxy endpoint. dApps embed this page in a hidden iframe via the
-  @snaha/swarm-id client; the library renders the auth button into the
+  @solarpunkltd/swarm-id client; the library renders the auth button into the
   container and handles the postMessage protocol.
 -->
 <script lang="ts">
   import { onMount } from 'svelte'
 
-  import { initProxy } from '@snaha/swarm-id/internal'
+  import { initProxy } from '@solarpunkltd/swarm-id/internal'
 
   import { siteAllowList } from '$lib/accepted-site'
   import { busSignalingUrl } from '$lib/bus-signaling-url'

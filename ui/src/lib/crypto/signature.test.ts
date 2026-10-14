@@ -1,12 +1,12 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
-import { hexToUint8Array } from '@snaha/swarm-id'
+import { hexToUint8Array } from '@solarpunkltd/swarm-id'
 import {
   decryptSeed,
   deriveKeyFromSignature,
   encryptSeed,
   randomSalt,
-} from '@snaha/swarm-id/internal'
+} from '@solarpunkltd/swarm-id/internal'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, it } from 'vitest'
 

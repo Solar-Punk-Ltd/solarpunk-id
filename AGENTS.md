@@ -14,7 +14,7 @@ Where the two are genuinely cross-site, or the browser partitions regardless (Sa
 users to keep and no data to migrate, so backwards compatibility and migration are not required — a
 schema, wire format, storage key, or protocol may change in place, and the old path is deleted
 rather than kept beside the new one. `0.x` says the same thing to anyone consuming
-`@snaha/swarm-id`. That changes at `1.0`, and this note with it.
+`@solarpunkltd/swarm-id`. That changes at `1.0`, and this note with it.
 
 ## Architecture
 
@@ -55,7 +55,7 @@ Master Key (from the account's BIP-39 seed entropy)
 
 ## Packages
 
-- **lib/** ([AGENTS.md](lib/AGENTS.md)): TypeScript library (`@snaha/swarm-id`) — auth and Bee API operations
+- **lib/** ([AGENTS.md](lib/AGENTS.md)): TypeScript library (`@solarpunkltd/swarm-id`) — auth and Bee API operations
 - **ui/** ([AGENTS.md](ui/AGENTS.md)): `@swarm-id/ui` — SvelteKit identity UI (trusted domain), hosts the keystore UI and management
 - **demo/**: Demo dApp showing library integration
 - **docs-site/** ([AGENTS.md](docs-site/AGENTS.md)): Starlight (Astro) documentation website
@@ -87,7 +87,7 @@ Before committing, you MUST pass `pnpm check:all`. It runs the repo-wide `format
 package's own `check:all` in order:
 
 - **`@swarm-id/eslint-rules`**: `typecheck`
-- **`@snaha/swarm-id`**, **`@swarm-id/multichain`**, **`@swarm-id/signaling`**: `format:check`, `lint`, `typecheck`, `test`
+- **`@solarpunkltd/swarm-id`**, **`@swarm-id/multichain`**, **`@swarm-id/signaling`**: `format:check`, `lint`, `typecheck`, `test`
 - **`@swarm-id/ui`**, **`@swarm-id/demo`**: `lint` (includes license headers), `check`, `knip`, `test`
 
 Chain-backed suites are NOT in `check:all` — they need a chain running. `pnpm test:fork` (needs
@@ -117,7 +117,7 @@ Chain-backed suites are NOT in `check:all` — they need a chain running. `pnpm 
   rejects with `TimeoutError`, so discriminate timeouts with `instanceof TimeoutError`, not by
   message.
 - **JSON-RPC: use `jsonRpcCall`/`jsonRpcBatch`** (`lib/src/utils/json-rpc.ts`, exported from
-  `@snaha/swarm-id`) — never a hand-rolled `fetch` + envelope read. Reach for a null-tolerant
+  `@solarpunkltd/swarm-id`) — never a hand-rolled `fetch` + envelope read. Reach for a null-tolerant
   variant only where `null` is a real outcome. A deadline rejects with `TimeoutError`, as above,
   and every rejection from them names the endpoint, so `error.message` can be shown as-is.
   `@swarm-id/multichain` keeps its own copy of the envelope checks (`multichain/src/json-rpc.ts`)

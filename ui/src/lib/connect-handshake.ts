@@ -3,7 +3,7 @@
 /**
  * Completing a dApp connection from the connect popup.
  *
- * The account is the single nested record (the `@snaha/swarm-id` Zod model
+ * The account is the single nested record (the `@solarpunkltd/swarm-id` Zod model
  * persisted under `STORAGE_KEY_ACCOUNTS`): it owns the `connectedApps` entry
  * carrying the app secret the dApp's proxy iframe authenticates from. Writing it
  * (via `accountsStore`) fires a storage event in the iframe, which picks up the
@@ -19,7 +19,7 @@
  * address on the site. One binding per site is kept on the connection, so a
  * reconnect reuses it.
  */
-import { type ChatBinding, acceptedChatBinding } from '@snaha/swarm-id'
+import { type ChatBinding, acceptedChatBinding } from '@solarpunkltd/swarm-id'
 import {
   type ConnectedApp,
   type SyncedAccount,
@@ -30,7 +30,7 @@ import {
   serializeSyncedAccount,
   siteChatAddress,
   stampsReachableByApp,
-} from '@snaha/swarm-id/internal'
+} from '@solarpunkltd/swarm-id/internal'
 
 import { requireCleanSite } from '$lib/accepted-site'
 import { strip0x } from '$lib/crypto/hex'

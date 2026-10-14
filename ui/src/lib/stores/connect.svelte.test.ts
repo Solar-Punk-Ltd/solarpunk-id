@@ -5,7 +5,7 @@
  * does not accept never becomes a request: nothing is derived, signed or
  * stored for it, and the window says why.
  */
-import type { SiteCheck } from '@snaha/swarm-id/internal'
+import type { SiteCheck } from '@solarpunkltd/swarm-id/internal'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { connectStore } from './connect.svelte'

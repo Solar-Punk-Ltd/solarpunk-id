@@ -22,7 +22,7 @@
  * rail importing a value from here while this imported it back would be a
  * genuine initialisation cycle, and the type checker cannot see one.
  */
-import { withTimeout } from '@snaha/swarm-id'
+import { withTimeout } from '@solarpunkltd/swarm-id'
 import type { SwapInput } from '@swarm-id/multichain'
 import type { Chain } from 'viem'
 import { arbitrum, base, gnosis, mainnet, optimism, polygon } from 'viem/chains'

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * `@snaha/swarm-id/internal` — the identity UI's half of the trusted domain.
+ * `@solarpunkltd/swarm-id/internal` — the identity UI's half of the trusted domain.
  *
  * Everything here takes the account record, the master key or the
  * `derivationKey`, none of which ever leaves the trusted domain, so a dApp has

@@ -14,8 +14,8 @@
  *   so the compensating top-up must run FIRST (see `resizePlan`).
  */
 import type { PrivateKey } from '@ethersphere/bee-js'
-import { TimeoutError, withTimeout } from '@snaha/swarm-id'
-import { type PostageStamp } from '@snaha/swarm-id/internal'
+import { TimeoutError, withTimeout } from '@solarpunkltd/swarm-id'
+import { type PostageStamp } from '@solarpunkltd/swarm-id/internal'
 import {
   MultichainClient,
   type PostageBatch,

@@ -15,8 +15,8 @@
  * enrollment, which asks any wallet not known to be deterministic for the
  * signature twice and requires the same bytes.
  */
-import { hexToUint8Array } from '@snaha/swarm-id'
-import { deriveKeyFromSignature } from '@snaha/swarm-id/internal'
+import { hexToUint8Array } from '@solarpunkltd/swarm-id'
+import { deriveKeyFromSignature } from '@solarpunkltd/swarm-id/internal'
 import { type Hex, getAddress, recoverMessageAddress } from 'viem'
 
 import { connectAccessWallet } from '$lib/crypto/onboard'

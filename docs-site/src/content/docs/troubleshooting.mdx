@@ -126,7 +126,7 @@ one only (`encrypt: false`). See [The Public Gateway](../public-gateway/).
 **Fix.** Do not gate anything on it. It exists to detect a dev-mode node; against the public
 gateway keep the default `deferred`. See [The Public Gateway](../public-gateway/).
 
-### `@snaha/swarm-id runs in the browser only` on the server
+### `@solarpunkltd/swarm-id runs in the browser only` on the server
 
 **Cause.** Importing the package is harmless, but `new SwarmIdClient()` needs `window`, so a
 client constructed at module scope in a file that renders on the server (Next.js App Router,

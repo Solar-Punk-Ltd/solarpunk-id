@@ -10,14 +10,14 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
   import Info from '@lucide/svelte/icons/info'
   import Settings from '@lucide/svelte/icons/settings'
-  import { DEFAULT_BEE_NODE_URL, uint8ArrayToHex, withTimeout } from '@snaha/swarm-id'
+  import { DEFAULT_BEE_NODE_URL, uint8ArrayToHex, withTimeout } from '@solarpunkltd/swarm-id'
   import {
     DEFAULT_GNOSIS_RPC_URL,
     derivePostageSignerKey,
     downloadEncryptedSOC,
     sleep,
     uploadSOC,
-  } from '@snaha/swarm-id/internal'
+  } from '@solarpunkltd/swarm-id/internal'
   import { gnosisMainnetSettings } from '@swarm-id/multichain'
   import { DEV_FAUCET_ADDRESS } from '@swarm-id/multichain/dev'
   import { type Chain, formatUnits, parseUnits } from 'viem'

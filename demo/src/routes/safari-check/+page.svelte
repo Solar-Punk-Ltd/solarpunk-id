@@ -128,8 +128,8 @@
   <div class="text-foreground">
     <h1 class="mb-1 text-2xl font-bold">Safari check</h1>
     <p class="text-sm text-muted-foreground">
-      Run this on a real iPhone, with this demo served on a different site from the identity site
-      it embeds (the local rig is same-site, so nothing partitions there). Connect with an account that
+      Run this on a real iPhone, with this demo served on a different site from the identity site it
+      embeds (the local rig is same-site, so nothing partitions there). Connect with an account that
       <strong>already has a drive</strong>, upload, then reload a few times and come back in a few
       days.
     </p>
@@ -220,8 +220,8 @@
         to connect again after a reload is the correct answer, not a failure.
       </li>
       <li>
-        Come back after a few days: Safari deletes a site's storage after seven to 30 days of use without
-        visiting it, and a run in one sitting cannot show that.
+        Come back after a few days: Safari deletes a site's storage after seven to 30 days of use
+        without visiting it, and a run in one sitting cannot show that.
       </li>
       <li>Tap <strong>Copy report</strong> and paste it back.</li>
     </ol>

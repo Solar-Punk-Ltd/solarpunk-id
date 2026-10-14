@@ -10,7 +10,7 @@
  * hands out, and its own `disconnect` drops the promise — so the session is
  * ended here, through `connector`, where the promise can be awaited.
  */
-import { withTimeout } from '@snaha/swarm-id'
+import { withTimeout } from '@solarpunkltd/swarm-id'
 
 /** The part of an Onboard instance a disconnect needs. */
 interface WalletRegistry {

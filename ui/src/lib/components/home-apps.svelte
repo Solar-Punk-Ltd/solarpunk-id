@@ -7,7 +7,7 @@
   import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical'
   import Trash2 from '@lucide/svelte/icons/trash-2'
   import Unlink from '@lucide/svelte/icons/unlink'
-  import { appSessionDuration } from '@snaha/swarm-id/internal'
+  import { appSessionDuration } from '@solarpunkltd/swarm-id/internal'
 
   import AppIcon from '$lib/components/app-icon.svelte'
   import { Button } from '$lib/components/ui/button'

@@ -5,13 +5,13 @@
  * passkey / wallet / password branching shared by the account-creation access
  * step and the change-method ceremony.
  */
-import { uint8ArrayToHex } from '@snaha/swarm-id'
+import { uint8ArrayToHex } from '@solarpunkltd/swarm-id'
 import {
   type AccessMethod,
   PASSWORD_KDF_ITERATIONS,
   deriveKeyFromPassword,
   randomSalt,
-} from '@snaha/swarm-id/internal'
+} from '@solarpunkltd/swarm-id/internal'
 
 import { deriveWalletKey, enrollWalletKeySource } from '$lib/crypto/eth-wallet'
 import { createPasskeyKey } from '$lib/crypto/passkey'

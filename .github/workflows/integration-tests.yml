@@ -100,7 +100,7 @@ jobs:
           CLUSTER_WAIT_MINUTES: 10
 
       - name: Run integration tests
-        run: pnpm --filter @snaha/swarm-id test:integration
+        run: pnpm --filter @solarpunkltd/swarm-id test:integration
 
       # Takes no `page`, so it needs neither a browser nor the dev servers —
       # only the cluster already up in this job.

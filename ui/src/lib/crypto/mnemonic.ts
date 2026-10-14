@@ -1,7 +1,7 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 import { entropyToMnemonic, mnemonicToEntropy, validateMnemonic } from '@scure/bip39'
-import { uint8ArrayToHex } from '@snaha/swarm-id'
+import { uint8ArrayToHex } from '@solarpunkltd/swarm-id'
 import { english, mnemonicToAccount } from 'viem/accounts'
 
 import { prefix0x } from '$lib/crypto/hex'

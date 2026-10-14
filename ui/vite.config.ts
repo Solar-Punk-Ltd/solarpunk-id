@@ -76,15 +76,17 @@ export default defineConfig(({ command }) => ({
     alias:
       command === 'serve'
         ? {
-            '@snaha/swarm-id/internal': fileURLToPath(
+            '@solarpunkltd/swarm-id/internal': fileURLToPath(
               new URL('../lib/src/internal.ts', import.meta.url),
             ),
-            '@snaha/swarm-id': fileURLToPath(new URL('../lib/src/index.ts', import.meta.url)),
+            '@solarpunkltd/swarm-id': fileURLToPath(
+              new URL('../lib/src/index.ts', import.meta.url),
+            ),
           }
         : undefined,
   },
   optimizeDeps: {
-    exclude: ['@snaha/swarm-id', '@snaha/swarm-id/internal'],
+    exclude: ['@solarpunkltd/swarm-id', '@solarpunkltd/swarm-id/internal'],
   },
   test: {
     include: ['src/**/*.{test,spec}.{js,ts}'],

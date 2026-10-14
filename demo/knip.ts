@@ -14,7 +14,7 @@ const config: KnipConfig = {
   // Knip cannot resolve the workspace package through its exports map, so it
   // would misreport the dependency as unused.
   ignoreDependencies: [
-    '@snaha/swarm-id',
+    '@solarpunkltd/swarm-id',
     '@swarm-id/eslint-rules',
     '@ethersphere/bee-js',
     '@sveltejs/adapter-static',

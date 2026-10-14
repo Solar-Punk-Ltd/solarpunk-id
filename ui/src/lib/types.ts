@@ -4,9 +4,9 @@
 /**
  * The live, rich account aggregate the app works with: a reactive class whose
  * mutators are methods on the object (`account.rename(…)`), wrapping the shared
- * `@snaha/swarm-id` `Account` record. Re-exported from the store so `$lib/types`
+ * `@solarpunkltd/swarm-id` `Account` record. Re-exported from the store so `$lib/types`
  * is the home for the UI-local account types. The lib's record and entity types
  * (`Account`, `SyncedAccount`, `AccessMethod`, `PostageStamp`, …) are imported
- * straight from `@snaha/swarm-id`.
+ * straight from `@solarpunkltd/swarm-id`.
  */
 export type { Account } from '$lib/stores/accounts.svelte'

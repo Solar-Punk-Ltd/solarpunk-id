@@ -7,8 +7,8 @@
  * nothing local crosses between them.
  */
 import { BatchId, EthAddress, PrivateKey } from '@ethersphere/bee-js'
-import type { SignedInAccount } from '@snaha/swarm-id/internal'
-import { deriveBusContext } from '@snaha/swarm-id/internal'
+import type { SignedInAccount } from '@solarpunkltd/swarm-id/internal'
+import { deriveBusContext } from '@solarpunkltd/swarm-id/internal'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PUBLISH_DEBOUNCE_MS, accountBusStore } from './account-bus'
@@ -41,8 +41,8 @@ const transports = vi.hoisted(
  *  window rather than a race the two HMACs would normally win. Unset for every
  *  test that does not care. */
 const deriveGate = vi.hoisted(() => ({ value: undefined as Promise<void> | undefined }))
-vi.mock('@snaha/swarm-id/internal', async (importActual) => {
-  const actual = await importActual<typeof import('@snaha/swarm-id/internal')>()
+vi.mock('@solarpunkltd/swarm-id/internal', async (importActual) => {
+  const actual = await importActual<typeof import('@solarpunkltd/swarm-id/internal')>()
   return {
     ...actual,
     deriveBusContext: async (derivationKey: string) => {

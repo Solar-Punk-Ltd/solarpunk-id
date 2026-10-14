@@ -11,7 +11,7 @@
  * transfer on Gnosis, or locally the baked faucet playing solver for another
  * chain, see `payment-rail.ts`).
  */
-import { withTimeout } from '@snaha/swarm-id'
+import { withTimeout } from '@solarpunkltd/swarm-id'
 import type { SwapInput } from '@swarm-id/multichain'
 
 import { prefix0x } from '$lib/crypto/hex'

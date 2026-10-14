@@ -9,7 +9,7 @@
  * `derivationKey` — in memory at sign-out (no unlock happens there) and
  * re-derived from the seed at sign-back-in — instead of the phrase entropy.
  */
-import { hexToUint8Array, uint8ArrayToHex } from '@snaha/swarm-id'
+import { hexToUint8Array, uint8ArrayToHex } from '@solarpunkltd/swarm-id'
 import {
   type SyncedAccount,
   SyncedAccountSchemaV1,
@@ -19,7 +19,7 @@ import {
   isSignedOutAccount,
   randomSalt,
   serializeSyncedAccount,
-} from '@snaha/swarm-id/internal'
+} from '@solarpunkltd/swarm-id/internal'
 
 import type { Account } from '$lib/types'
 

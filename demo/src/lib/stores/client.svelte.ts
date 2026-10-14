@@ -8,7 +8,7 @@ import {
   type Avatar,
   type ConnectionInfo,
   type UploadUnavailableReason,
-} from '@snaha/swarm-id'
+} from '@solarpunkltd/swarm-id'
 import { resolveProxyOrigin } from '$lib/utils/environment'
 import { logStore } from './log.svelte'
 

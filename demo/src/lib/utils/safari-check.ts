@@ -16,7 +16,7 @@
  * the proxy (the `setSecret` handler), so a partitioned session reporting it is
  * proof the popup's postMessage arrived, whatever happens downstream.
  */
-import type { UploadUnavailableReason } from '@snaha/swarm-id'
+import type { UploadUnavailableReason } from '@solarpunkltd/swarm-id'
 
 /** What the page has observed in this load. */
 export interface CheckInput {

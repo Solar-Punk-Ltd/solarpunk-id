@@ -10,7 +10,7 @@
   import ArrowRight from '@lucide/svelte/icons/arrow-right'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import Wallet from '@lucide/svelte/icons/wallet'
-  import { TimeoutError, jsonRpcCall } from '@snaha/swarm-id'
+  import { TimeoutError, jsonRpcCall } from '@solarpunkltd/swarm-id'
   import { encodeFunctionData, erc20Abi, formatUnits } from 'viem'
 
   import { createAttemptTracker } from '$lib/attempt'

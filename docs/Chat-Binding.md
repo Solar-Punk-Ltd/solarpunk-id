@@ -74,10 +74,10 @@ What travels is the pair `{ message, signature }`.
 
 ## Verifying it
 
-`@snaha/swarm-id` exports the reader's side:
+`@solarpunkltd/swarm-id` exports the reader's side:
 
 ```typescript
-import { acceptedChatBinding, verifyChatBinding } from '@snaha/swarm-id'
+import { acceptedChatBinding, verifyChatBinding } from '@solarpunkltd/swarm-id'
 
 // The fields and the recovered signer, or a throw for any other shape:
 // another first line, a missing or extra line, a site with a path, an

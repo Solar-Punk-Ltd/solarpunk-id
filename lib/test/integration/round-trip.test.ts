@@ -7,7 +7,7 @@
  *
  * Run with:
  *   pnpm dev:cluster:start   # from the repo root, starts the cluster
- *   pnpm --filter @snaha/swarm-id test:integration
+ *   pnpm --filter @solarpunkltd/swarm-id test:integration
  *
  * `global-setup.ts` refuses the run when no cluster is reachable, rather than
  * skipping: this suite is opt-in (`pnpm test:integration`), so a run of it that

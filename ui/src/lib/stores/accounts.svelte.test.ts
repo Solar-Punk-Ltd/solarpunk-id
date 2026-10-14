@@ -18,7 +18,7 @@ import {
   type SignedInAccount,
   type SignedOutAccount,
   createAccountsStorageManager,
-} from '@snaha/swarm-id/internal'
+} from '@solarpunkltd/swarm-id/internal'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ACCOUNT_SAVE_FAILED_TEXT, Account, accountsStore } from './accounts.svelte'
