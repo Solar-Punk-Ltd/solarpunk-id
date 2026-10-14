@@ -6,7 +6,9 @@ A site that embeds Swarm ID gets its own key for each account, the app secret
 held to a valid secp256k1 key (the docs site's Key Derivation page gives the rule).
 The chat key is what the site's chat signs messages with, and its address is the
 site's chat address. It depends on the account and the site alone, so every
-device of the account has the same chat key for a site. Nothing in that key says
+device of the account has the same chat key for a site. The site's page gets it
+from `client.getChatKey()`, which the frame answers only for an authenticated
+session, and the library keeps it in memory only. Nothing in that key says
 which Swarm ID account it belongs to, and that is on purpose: two sites cannot
 link one person by comparing keys.
 

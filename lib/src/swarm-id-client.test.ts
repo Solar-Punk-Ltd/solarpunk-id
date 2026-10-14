@@ -843,6 +843,30 @@ describe("SwarmIdClient request seam", () => {
     await expect(promise).rejects.toThrow("Not authenticated")
   })
 
+  it("getChatKey asks the frame for the site's chat key and returns it", async () => {
+    const chatKey = new Uint8Array(32).fill(7)
+
+    const promise = client.getChatKey()
+
+    const sent = lastPostedMessage()
+    expect(sent).toMatchObject({ type: "getChatKey" })
+    deliver({ type: "getChatKeyResponse", requestId: sent.requestId, chatKey })
+    await expect(promise).resolves.toEqual(chatKey)
+  })
+
+  it("getChatKey rejects when the proxy is not authenticated", async () => {
+    const promise = client.getChatKey()
+
+    const sent = lastPostedMessage()
+    deliver({
+      type: "error",
+      requestId: sent.requestId,
+      error: "Not authenticated. Please login first.",
+      code: "not-authenticated",
+    })
+    await expect(promise).rejects.toThrow("Not authenticated")
+  })
+
   it("stampChunk sends the whole content chunk and returns the address and stamp", async () => {
     const data = new Uint8Array([3, 0, 0, 0, 0, 0, 0, 0, 7, 8, 9])
     const reply = { address: "a".repeat(64), stamp: "b".repeat(226) }

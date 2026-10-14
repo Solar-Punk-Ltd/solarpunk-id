@@ -1002,6 +1002,12 @@ export const DeriveAppSecretMessageSchema = z.object({
   label: z.string(),
 })
 
+// The site's chat key, the key its chat binding names (docs/Chat-Binding.md).
+export const GetChatKeyMessageSchema = z.object({
+  type: z.literal("getChatKey"),
+  requestId: z.string(),
+})
+
 /**
  * Who signs a single-owner chunk in `stampChunk`: the site's own app secret,
  * or a private key the site supplies (a chat's shared GSOC inbox key).
@@ -1369,6 +1375,7 @@ export const ParentToIframeMessageSchema = z.discriminatedUnion("type", [
   UploadDataMessageSchema,
   DownloadDataMessageSchema,
   DeriveAppSecretMessageSchema,
+  GetChatKeyMessageSchema,
   StampChunkMessageSchema,
   UploadFileMessageSchema,
   DownloadFileMessageSchema,
@@ -1413,6 +1420,7 @@ export type DownloadDataMessage = z.infer<typeof DownloadDataMessageSchema>
 export type DeriveAppSecretMessage = z.infer<
   typeof DeriveAppSecretMessageSchema
 >
+export type GetChatKeyMessage = z.infer<typeof GetChatKeyMessageSchema>
 export type StampChunkSigner = z.infer<typeof StampChunkSignerSchema>
 export type StampChunkRequest = z.infer<typeof StampChunkRequestSchema>
 export type StampChunkMessage = z.infer<typeof StampChunkMessageSchema>
@@ -1535,6 +1543,12 @@ export const DeriveAppSecretResponseMessageSchema = z.object({
   type: z.literal("deriveAppSecretResponse"),
   requestId: z.string(),
   secret: z.instanceof(Uint8Array),
+})
+
+export const GetChatKeyResponseMessageSchema = z.object({
+  type: z.literal("getChatKeyResponse"),
+  requestId: z.string(),
+  chatKey: z.instanceof(Uint8Array),
 })
 
 export const StampChunkResponseMessageSchema = z.object({
@@ -1915,6 +1929,7 @@ export const IframeToParentMessageSchema = z.discriminatedUnion("type", [
   UploadDataResponseMessageSchema,
   DownloadDataResponseMessageSchema,
   DeriveAppSecretResponseMessageSchema,
+  GetChatKeyResponseMessageSchema,
   StampChunkResponseMessageSchema,
   UploadFileResponseMessageSchema,
   DownloadFileResponseMessageSchema,
@@ -1968,6 +1983,9 @@ export type UploadDataResponseMessage = z.infer<
 >
 export type DownloadDataResponseMessage = z.infer<
   typeof DownloadDataResponseMessageSchema
+>
+export type GetChatKeyResponseMessage = z.infer<
+  typeof GetChatKeyResponseMessageSchema
 >
 export type DeriveAppSecretResponseMessage = z.infer<
   typeof DeriveAppSecretResponseMessageSchema

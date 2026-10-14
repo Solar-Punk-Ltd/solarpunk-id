@@ -9,9 +9,14 @@ vi.mock("virtual:stamp-worker-code", () => ({ default: "" }))
 import { DEFAULT_BEE_NODE_URL } from "./schemas"
 import { SwarmIdProxy } from "./swarm-id-proxy"
 import { allowingSites } from "./test-fixtures"
-import { deriveSecret } from "./utils/key-derivation"
+import { PrivateKey } from "@ethersphere/bee-js"
+import { siteChatAddress } from "./utils/chat-binding"
+import { deriveChatKey, deriveSecret } from "./utils/key-derivation"
 import { uint8ArrayToHex } from "./utils/hex"
-import { STORAGE_KEY_NETWORK_SETTINGS } from "./types"
+import {
+  ParentToIframeMessageSchema,
+  STORAGE_KEY_NETWORK_SETTINGS,
+} from "./types"
 import type { ButtonConfig } from "./types"
 import type { SiteAllowList } from "./utils/site-allow-list"
 import type { StampLifetimeFields } from "./utils/stamp-lifespan"
@@ -25,6 +30,10 @@ type ProxyInternals = {
   loadAuthData: () => Promise<unknown>
   handleDeriveAppSecret: (
     message: { type: string; requestId: string; label: string },
+    event: MessageEvent,
+  ) => Promise<void>
+  handleParentMessage: (
+    message: { type: "getChatKey"; requestId: string },
     event: MessageEvent,
   ) => Promise<void>
   authenticated: boolean
@@ -382,6 +391,71 @@ describe("SwarmIdProxy deriveAppSecret (#520)", () => {
       requestId: "r1",
       code: "not-authenticated",
     })
+  })
+})
+
+// The key the site's chat binding names (docs/Chat-Binding.md), handed to the
+// authenticated page so its chat can sign with it.
+describe("SwarmIdProxy getChatKey", () => {
+  const APP_SECRET_HEX = "11".repeat(32)
+  let proxy: SwarmIdProxy
+  let source: { postMessage: ReturnType<typeof vi.fn> }
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    vi.stubGlobal("window", {
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      parent: { postMessage: vi.fn() },
+      location: { origin: "https://id.example.com" },
+    })
+    proxy = new SwarmIdProxy({ siteAllowList: allowingSites(PARENT_ORIGIN) })
+    source = { postMessage: vi.fn() }
+  })
+
+  const getChatKey = () =>
+    internals(proxy).handleParentMessage(
+      { type: "getChatKey", requestId: "r1" },
+      { source, origin: PARENT_ORIGIN } as unknown as MessageEvent,
+    )
+
+  const lastMessage = () => source.postMessage.mock.calls.at(-1)?.[0]
+
+  it("is a message the parent may send", () => {
+    expect(
+      ParentToIframeMessageSchema.safeParse({
+        type: "getChatKey",
+        requestId: "r1",
+      }).success,
+    ).toBe(true)
+  })
+
+  it("hands over the site's chat key, whose address the binding names", async () => {
+    internals(proxy).authenticated = true
+    internals(proxy).appSecret = APP_SECRET_HEX
+
+    await getChatKey()
+
+    const response = lastMessage()
+    expect(response).toMatchObject({
+      type: "getChatKeyResponse",
+      requestId: "r1",
+    })
+    expect(response.chatKey).toEqual(deriveChatKey(APP_SECRET_HEX))
+    expect(new PrivateKey(response.chatKey).publicKey().address().toHex()).toBe(
+      siteChatAddress(APP_SECRET_HEX),
+    )
+  })
+
+  it("refuses an unauthenticated caller and hands over no key", async () => {
+    await getChatKey()
+
+    expect(lastMessage()).toMatchObject({
+      type: "error",
+      requestId: "r1",
+      code: "not-authenticated",
+    })
+    expect(lastMessage().chatKey).toBeUndefined()
   })
 })
 

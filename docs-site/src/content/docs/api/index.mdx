@@ -393,6 +393,19 @@ const seed = await client.deriveAppSecret('state-feed')
 const topic = keccak256(seed) // a stable feed topic nobody else can compute
 ```
 
+### `getChatKey()`
+
+The site's chat key: the secp256k1 private key your chat signs its messages with. Its address is the chat address that [`chatBinding`](#connectioninfo-property) names, so a reader who recovers a message's author can check it against the binding with `acceptedChatBinding`. The iframe derives it from the app secret, which never leaves the iframe, and the same account and site give the same key on every device. The library keeps it in memory only and never stores it. Hold it no longer than your chat needs it, and never publish it.
+
+**Returns:** `Promise<Uint8Array>`, the 32-byte private key
+
+**Throws:** `SwarmIdError` if the client is not initialized, or with code `not-authenticated` when no account is connected
+
+```typescript
+const chatKey = await client.getChatKey()
+const signer = new PrivateKey(chatKey) // signer.publicKey().address() is the binding's chat address
+```
+
 ### `connectionInfo` (property)
 
 Synchronous accessor for the current connection state. Populated by the proxy as soon as it is ready and refreshed automatically whenever any of the derived fields change (identity rename, default-stamp change, account migration, postage stamp purchased, auth transitions). Subscribe to `onConnectionChange` to react to updates.

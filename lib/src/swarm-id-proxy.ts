@@ -11,6 +11,7 @@ import type {
   UploadDataMessage,
   DownloadDataMessage,
   DeriveAppSecretMessage,
+  GetChatKeyMessage,
   StampChunkMessage,
   UploadFileMessage,
   DownloadFileMessage,
@@ -179,6 +180,7 @@ import {
   sealValue,
 } from "./utils/sealed-values"
 import {
+  deriveChatKey,
   deriveSecret,
   deriveSecretSync,
   deriveSharingKey,
@@ -2566,6 +2568,10 @@ export class SwarmIdProxy {
         await this.handleDeriveAppSecret(message, event)
         break
 
+      case "getChatKey":
+        await this.handleGetChatKey(message, event)
+        break
+
       case "stampChunk":
         await this.handleStampChunk(message, event)
         break
@@ -4780,6 +4786,36 @@ export class SwarmIdProxy {
       })
     } catch (error) {
       this.sendErrorToParent(event, requestId, error, "deriveAppSecret failed")
+    }
+  }
+
+  /**
+   * Hand the authenticated page its site's chat key, the key whose address the
+   * site's chat binding names (docs/Chat-Binding.md), so the site's chat can
+   * sign with it. Same authentication rule as `handleDeriveAppSecret`, and like
+   * it the app secret itself never leaves the frame.
+   */
+  private async handleGetChatKey(
+    message: GetChatKeyMessage,
+    event: MessageEvent,
+  ): Promise<void> {
+    const { requestId } = message
+
+    try {
+      if (!this.authenticated || !this.appSecret) {
+        throw new SwarmIdError(
+          "not-authenticated",
+          "Not authenticated. Please login first.",
+        )
+      }
+
+      this.postMessage(event, {
+        type: "getChatKeyResponse",
+        requestId,
+        chatKey: deriveChatKey(this.appSecret),
+      })
+    } catch (error) {
+      this.sendErrorToParent(event, requestId, error, "getChatKey failed")
     }
   }
 
