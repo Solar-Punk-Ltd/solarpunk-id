@@ -17,7 +17,9 @@ export default defineConfig(({ command }) => ({
     alias:
       command === 'serve'
         ? {
-            '@solarpunkltd/swarm-id': fileURLToPath(new URL('../lib/src/index.ts', import.meta.url)),
+            '@solarpunkltd/swarm-id': fileURLToPath(
+              new URL('../lib/src/index.ts', import.meta.url),
+            ),
           }
         : undefined,
   },
