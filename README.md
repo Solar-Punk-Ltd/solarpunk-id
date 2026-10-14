@@ -24,9 +24,21 @@ The project uses an OAuth-style popup authentication flow over shared localStora
 
 ## Quick Start
 
+This fork is not published to npm. `@snaha/swarm-id` on npm is snaha's upstream package without this fork's changes. Build the library from this repository at a pinned commit and install the tarball in your app:
+
 ```bash
-pnpm add @snaha/swarm-id
+git clone https://github.com/Solar-Punk-Ltd/solarpunk-id.git
+cd solarpunk-id
+git checkout <commit>
+pnpm install --frozen-lockfile
+pnpm build:lib
+cd lib
+pnpm pack --pack-destination <your-app>/vendor
+# then, in your app
+pnpm add ./vendor/snaha-swarm-id-0.7.0.tgz
 ```
+
+[Install](./docs-site/src/content/docs/getting-started.mdx#install) has the npm command, depending on a built checkout while developing, and why installing from git does not work.
 
 ```typescript
 import { SwarmIdClient } from '@snaha/swarm-id'

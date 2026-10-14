@@ -15,13 +15,22 @@ The package root, `@snaha/swarm-id`, is the dApp API and the only stable surface
 
 ## Installation
 
-```bash
-# Using pnpm (recommended)
-pnpm add @snaha/swarm-id
+This fork is not published to npm. `@snaha/swarm-id` on npm is snaha's upstream package without this fork's changes. Build this package from the repository at a pinned commit and install the tarball in your app:
 
-# Using npm
-npm install @snaha/swarm-id
+```bash
+# in a checkout of Solar-Punk-Ltd/solarpunk-id at the commit you want
+pnpm install --frozen-lockfile
+pnpm build:lib
+cd lib
+pnpm pack --pack-destination <your-app>/vendor
+
+# then, in your app, with pnpm
+pnpm add ./vendor/snaha-swarm-id-0.7.0.tgz
+# or with npm
+npm install ./vendor/snaha-swarm-id-0.7.0.tgz
 ```
+
+The docs site's Quick Start page (`docs-site/src/content/docs/getting-started.mdx`) also covers depending on a built checkout while developing, and why installing from git does not work.
 
 ## Basic Usage
 

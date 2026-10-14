@@ -5,34 +5,83 @@ description: Add Swarm ID to your app in a few minutes
 
 import { Tabs, TabItem } from '@astrojs/starlight/components'
 
-Install the package, create a client, call `connect()`. That is the whole integration; the rest of
-this page is what happens around it.
+Build and install the library, create a client, call `connect()`. That is the whole integration.
+The rest of this page is what happens around it.
 
 ## Install
+
+This fork is not published to npm. The package called `@snaha/swarm-id` on npm is snaha's upstream
+library without this fork's changes, so `pnpm add @snaha/swarm-id` or `npm install @snaha/swarm-id`
+gets the wrong code. An app builds the library from this repository at a commit it chooses, and
+still imports it as `@snaha/swarm-id`. Building needs Node 22 or later and pnpm 11.
+
+### Build a tarball at a pinned commit
+
+```bash
+git clone https://github.com/Solar-Punk-Ltd/solarpunk-id.git
+cd solarpunk-id
+git checkout <commit>
+pnpm install --frozen-lockfile
+pnpm build:lib
+cd lib
+pnpm pack --pack-destination <your-app>/vendor
+```
+
+That writes `snaha-swarm-id-0.7.0.tgz` into the app's `vendor/` folder. Install it from the app:
 
 <Tabs syncKey="pkg">
   <TabItem label="pnpm">
 
 ```bash
-pnpm add @snaha/swarm-id
+pnpm add ./vendor/snaha-swarm-id-0.7.0.tgz
 ```
 
   </TabItem>
   <TabItem label="npm">
 
 ```bash
-npm install @snaha/swarm-id
-```
-
-  </TabItem>
-  <TabItem label="yarn">
-
-```bash
-yarn add @snaha/swarm-id
+npm install ./vendor/snaha-swarm-id-0.7.0.tgz
 ```
 
   </TabItem>
 </Tabs>
+
+Commit the tarball with the app, so the app installs the same build everywhere without a checkout
+of this repository. The file name carries the package version, not the commit, so note the commit
+beside it. To move to a newer commit, repeat the steps and install the new tarball.
+
+### Depend on a built checkout
+
+While working on the library and an app side by side, the app can depend on the built `lib/` folder
+of a checkout instead. Build it as above, without the `pnpm pack` step, then from the app:
+
+<Tabs syncKey="pkg">
+  <TabItem label="pnpm">
+
+```bash
+pnpm add file:../solarpunk-id/lib
+```
+
+  </TabItem>
+  <TabItem label="npm">
+
+```bash
+npm install ../solarpunk-id/lib
+```
+
+  </TabItem>
+</Tabs>
+
+npm links the folder, so a rebuild with `pnpm build:lib` reaches the app at once. pnpm copies the
+folder when it installs, so run the app's `pnpm install` again after a rebuild. The commit is
+whatever the checkout has, which makes this a way to develop rather than a way to ship.
+
+### Not from git
+
+Installing the library straight from git does not work. `lib/dist/` is not committed and the
+library has no `prepare` script, so pnpm's
+`git+https://github.com/Solar-Punk-Ltd/solarpunk-id.git#<commit>&path:/lib` installs a package with
+no build in it, and npm cannot install a subfolder of a repository at all.
 
 ## Get your site on the allow list
 

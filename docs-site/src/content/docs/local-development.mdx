@@ -246,8 +246,8 @@ The identity site and the demo dev servers import the library's source directly,
 `pnpm dev`: switching branches, and running `pnpm build:lib`. Either can leave the dev server's
 module graph stale, which shows up as a missing export that plainly exists in the file.
 
-A build (`pnpm build:lib`) is only needed for the built demo and for anything that consumes the
-published package.
+A build (`pnpm build:lib`) is only needed for the built demo and for an app that installs the built
+library, as [Quick Start](../getting-started/#install) describes.
 
 ## Development Tips
 
