@@ -17,8 +17,9 @@ knowing by name:
   `downloadData`, `deriveAppSecret`, `getChatKey` (the site's chat key, whose address the
   site's chat binding names, `docs/Chat-Binding.md`), `stampChunk` (the iframe stamps a whole
   chunk and returns the stamp, so the app sends the chunk through its own Swarm access),
-  `setBeeApiUrl` (the site's own Bee node for its session, which `parentIdentify` can carry
-  too, held in memory by that site's frame and never stored)
+  `setBeeApiUrl` (the site's own Bee node for its content, which `parentIdentify` can carry
+  too, held in memory by that site's frame and never stored. The proxy's `accountBee`, the
+  person's own node, keeps the revocation check, the roster and the coordinator's chunks)
 - **Iframe → Parent**: `proxyReady`, `initError`, `authStatusResponse`, `authSuccess`,
   `connectResponse`, `connectionInfoChanged` (what `initialize()` awaits), `uploadDataResponse`,
   `error`

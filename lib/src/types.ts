@@ -2249,10 +2249,11 @@ export interface ClientOptions {
   /** URL of a subsidised gateway for users without postage stamps. Gateway handles stamping server-side. */
   subsidisedGatewayUrl?: string
   /**
-   * The Bee node the frame reads and writes through for this site, in place of
-   * the node the person set in Swarm ID, which keeps applying on every other
-   * site. An http(s) URL, optionally with a path. Change it later with
-   * `setBeeApiUrl`. Held by this site's frame alone and never stored.
+   * The Bee node this site's content reads and stamped uploads go through, in
+   * place of the node the person set in Swarm ID, which keeps applying on
+   * every other site. The person's account and device coordination stay on
+   * their own node. An http(s) URL, optionally with a path. Change it later
+   * with `setBeeApiUrl`. Held by this site's frame alone and never stored.
    */
   beeApiUrl?: string
 }

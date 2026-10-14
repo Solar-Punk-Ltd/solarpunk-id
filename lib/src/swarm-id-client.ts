@@ -243,7 +243,7 @@ export class SwarmIdClient {
    * @param options.buttonConfig.fontWeight - CSS font-weight for the button, as a keyword or a number (optional)
    * @param options.containerId - ID of container element to place iframe in (optional)
    * @param options.subsidisedGatewayUrl - A gateway that stamps uploads for a person with no drive of their own (optional)
-   * @param options.beeApiUrl - The Bee node the frame reads and writes through for this site, in place of the person's own setting. Change it later with {@link setBeeApiUrl} (optional)
+   * @param options.beeApiUrl - The Bee node this site's content reads and stamped uploads go through, in place of the person's own setting. Their account and device coordination stay on their own node. Change it later with {@link setBeeApiUrl} (optional)
    * @throws {Error} If constructed where there is no `window` (a server render)
    * @throws {SwarmIdError} `invalid-request` if the provided app metadata is invalid, or `beeApiUrl` is not an http(s) URL without credentials, query or fragment
    */
@@ -886,12 +886,14 @@ export class SwarmIdClient {
   }
 
   /**
-   * Changes the Bee node the frame reads and writes through for this site,
-   * without a reload, for example when the viewer picks another source. It
+   * Changes the Bee node this site's content reads and stamped uploads go
+   * through, without a reload, for example when the viewer picks another source. It
    * replaces the `beeApiUrl` given at construction, and takes over from the
    * person's own Bee setting on this site if none was given. Every other site,
-   * and Swarm ID itself, keep the person's setting. Nothing is stored: the
-   * next page load starts from the constructor's `beeApiUrl` again.
+   * and Swarm ID itself, keep the person's setting. The checks and writes
+   * that coordinate the person's account and devices always use their own
+   * node. Nothing is stored: the next page load starts from the
+   * constructor's `beeApiUrl` again.
    *
    * Works signed in or not. A subsidised gateway the person's own custom node
    * had switched off comes back once the site names its node.

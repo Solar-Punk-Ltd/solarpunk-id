@@ -62,7 +62,7 @@ The user has configured a custom Bee node URL in the identity provider's network
 
 A node the app names itself, with [`beeApiUrl` or `setBeeApiUrl()`](../api/#the-sites-own-bee-node), takes the place of the user's setting for that app's session, so the user's custom node is not in effect there and the gateway stays. The app asked for both: uploads use the gateway in subsidised mode and the app's node in user-stamp mode. An app that names its node later, with `setBeeApiUrl()`, brings back a gateway the user's custom node had disabled.
 
-The check is an exact inequality against the default gateway URL, and it runs in two places: once when the app identifies itself to the proxy, and again whenever network settings arrive or change. The second matters for a storage-partitioned session, whose settings are handed over by the connect popup _after_ the app has identified itself. Reverting to the default URL does not re-enable a gateway already dropped — that takes an app reload.
+The check is an exact inequality against the default gateway URL, and it runs in three places: once when the app identifies itself to the proxy, again whenever network settings arrive or change, and when the app names its own node with `setBeeApiUrl()`, which brings the gateway back. The second matters for a storage-partitioned session, whose settings are handed over by the connect popup _after_ the app has identified itself. Reverting to the default URL does not re-enable a gateway already dropped. That takes an app reload, or the app naming its own node.
 
 **Subsidised Configured**
 
@@ -110,7 +110,7 @@ The [public gateway](#using-the-public-gateway) is where this bites in practice:
 ## Priority Rules
 
 1. **User's own stamp** — Whenever the session resolved one, it is the stamp that is used
-2. **Custom Bee node** — If the user has configured a custom Bee node, the subsidised gateway is disabled (even if configured), unless the app named its own Bee node
+2. **Custom Bee node**: if the user has configured a custom Bee node, the subsidised gateway is disabled (even if configured), unless the app named its own Bee node
 3. **Subsidised gateway** — Used as a fallback when no user stamp is available
 
 This ensures users retain control over their uploads while providing a fallback for those without stamps.
