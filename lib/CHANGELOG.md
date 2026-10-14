@@ -1,6 +1,13 @@
 # Changelog
 
-The fork does not publish releases. The entries below are the upstream project's history.
+## 0.8.0
+
+The fork's first release, published to npm as `@solarpunkltd/swarm-id`. The package is the
+upstream library with this fork's changes on top, renamed out of snaha's npm scope. Code that
+imported `@snaha/swarm-id` imports `@solarpunkltd/swarm-id` instead, and nothing else about the
+import changes.
+
+The entries below 0.8.0 are the upstream project's history.
 
 ## [0.7.0](https://github.com/snaha/swarm-id/compare/v0.6.0...v0.7.0) (2026-10-09)
 

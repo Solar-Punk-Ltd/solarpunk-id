@@ -84,4 +84,4 @@ Full documentation is in the repository, under **[docs-site/src/content/docs](ht
 
 ## License
 
-[Apache 2.0](../LICENSE)
+[Apache 2.0](LICENSE). This package is Solar Punk's fork of [Swarm ID](https://github.com/snaha/swarm-id) by snaha, published under the same licence.

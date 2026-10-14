@@ -1,6 +1,6 @@
 {
   "name": "@solarpunkltd/swarm-id",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "type": "module",
   "description": "Swarm ID library for authentication and Bee API operations",
   "main": "dist/swarm-id.esm.js",
@@ -34,7 +34,9 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.check.json",
-    "check:all": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test"
+    "check:all": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "prepack": "npm run clean && npm run build",
+    "check:pack": "node dev/check-pack.js"
   },
   "keywords": [
     "swarm",
@@ -43,11 +45,16 @@
     "bee",
     "web3"
   ],
-  "author": "snaha",
+  "author": "Solar Punk, based on Swarm ID by snaha",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Solar-Punk-Ltd/solarpunk-id"
+    "url": "git+https://github.com/Solar-Punk-Ltd/solarpunk-id.git",
+    "directory": "lib"
+  },
+  "homepage": "https://github.com/Solar-Punk-Ltd/solarpunk-id/tree/main/lib#readme",
+  "bugs": {
+    "url": "https://github.com/Solar-Punk-Ltd/solarpunk-id/issues"
   },
   "dependencies": {
     "@ethersphere/bee-js": "^13.0.0",
@@ -80,6 +87,9 @@
   },
   "engines": {
     "node": ">=22",
-    "pnpm": "11.x"
+    "pnpm": ">=11"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
