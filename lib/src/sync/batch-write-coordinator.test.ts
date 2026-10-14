@@ -2123,7 +2123,7 @@ describe("BatchWriteCoordinator — bus-accelerated leases (docs/Account-Bus.md)
 })
 
 // The proxy hands the coordinator a `bee` getter that follows the site's Bee
-// address (D7 A). The lease it builds lives for the whole session, so it has
+// address. The lease it builds lives for the whole session, so it has
 // to read that getter on every use too, or its lock and state writes stay on
 // the node the session started with.
 describe("BatchWriteCoordinator follows a change of node", () => {

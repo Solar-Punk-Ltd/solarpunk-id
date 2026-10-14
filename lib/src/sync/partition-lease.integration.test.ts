@@ -2883,7 +2883,7 @@ describe("PartitionLease.refresh — occupancy displacement vs a PRUNED peer", (
 })
 
 // The coordinator hands its `bee` as a getter that follows the site's Bee
-// address (D7 A), and a lease lives for the whole session.
+// address, and a lease lives for the whole session.
 describe("PartitionLease.fromSwarmEncryptionKey", () => {
   it("keeps reading a bee getter rather than the node it named first", async () => {
     const nextBee = new MockBee(new MockChunkStore())
