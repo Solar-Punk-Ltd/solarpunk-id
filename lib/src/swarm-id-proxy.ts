@@ -1238,7 +1238,11 @@ export class SwarmIdProxy {
    * `parentOrigin` check below is now the belt to that pair of braces rather
    * than the only thing keeping two dApps apart. An expired, malformed or
    * unopenable record is removed on the way past: it will never become valid
-   * again, and a record whose seal does not open is no session. A record whose
+   * again, and a record whose seal does not open is no session. So is a record
+   * carrying a chat binding that fails `acceptHandedOverChatBinding`, such as
+   * one naming the app secret's address from before sites had a chat key:
+   * restored without it, the session would hand out a chat key no binding
+   * names, so the person unlocks once and the window signs a fresh one. A record whose
    * wrapping key this page could not read is no session for this page only,
    * and stays stored for a later load to open.
    */
@@ -1264,6 +1268,13 @@ export class SwarmIdProxy {
     }
     if (stored.record.parentOrigin !== parentOrigin) return undefined
     if (stored.record.connectedUntil <= Date.now()) {
+      this.clearPartitionSession()
+      return undefined
+    }
+    if (
+      data.data.chatBinding !== undefined &&
+      !this.acceptHandedOverChatBinding(data.data)
+    ) {
       this.clearPartitionSession()
       return undefined
     }

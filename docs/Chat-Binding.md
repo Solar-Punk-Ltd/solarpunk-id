@@ -177,9 +177,14 @@ Only through the handover the connect window already makes: the `setSecret`
 message to the proxy frame that opened it, which the frame checks against its
 own challenge and its parent origin. The binding rides in that message's data
 beside the secret. The frame passes it on only when it names exactly the parent
-origin, the address of the secret it came with and the account it came with. It
-keeps it with the session it saves, so a reload brings it back, and drops it on
-disconnect.
+origin, the address of the chat key of the secret it came with and the account
+it came with. It keeps it with the session it saves, so a reload brings it back,
+and drops it on disconnect.
+
+A reload checks the saved binding again. When it no longer passes, as a binding
+naming the app secret's address does, the frame ends the saved session rather
+than restore it without one, because that session would hand out a chat key no
+binding names. The person unlocks once, and the window signs a fresh binding.
 
 The dApp reads it as `client.connectionInfo.chatBinding`, and
 `onConnectionChange` fires when it arrives or changes.
