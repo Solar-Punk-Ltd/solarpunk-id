@@ -380,14 +380,14 @@ export class Account {
   }
 
   /**
-   * Point an app at a specific drive — or back at the account default with
-   * `undefined`. The choice carries through the cross-device merge on its OWN
+   * Point an app at a specific drive, at no drive with `NO_POSTAGE_STAMP`, or
+   * back at the account default with `undefined`. The choice carries through the cross-device merge on its OWN
    * clock: it says nothing about whether the app is still connected, and a
    * clock that ranked the whole entry let this edit outrank a revoke made on
    * another device (#681). No-op when the app has no entry (nothing to point)
    * or its site is not a clean origin.
    */
-  setAppStamp(appUrl: string, batchID: BatchId | undefined) {
+  setAppStamp(appUrl: string, batchID: ConnectedApp['postageStampBatchID']) {
     if (!isCleanSite(appUrl) || !this.connectedApps.some((app) => app.appUrl === appUrl)) {
       return
     }

@@ -40,7 +40,7 @@
 
   /** Shows the create/import choice while other accounts exist on the device. */
   let addingAccount = $state(false)
-  // Deep-linkable: `#<tab>[/<target>…]`, e.g. `#storage/<batchId>` or
+  // Deep-linkable: `#<tab>[/<target>…]`, e.g. `#storage/<batchId>`, `#apps/<encoded origin>` or
   // `#account/keys/data-sharing` — the target is handed to the tab to open.
   let tab = $state('apps')
   let target = $state<string[]>([])
@@ -153,7 +153,7 @@
         <!-- Keyed so per-account state (e.g. the unlocked seed) never survives a switch. -->
         {#key account.id}
           {#if tab === 'apps'}
-            <HomeApps {account} />
+            <HomeApps {account} {target} />
           {:else if tab === 'storage'}
             <HomeDrives {account} {target} />
           {:else}

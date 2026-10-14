@@ -14,6 +14,7 @@
 import { BatchId, EthAddress, PrivateKey } from '@ethersphere/bee-js'
 import {
   type Account as AccountRecord,
+  NO_POSTAGE_STAMP,
   STORAGE_KEY_ACCOUNTS,
   type SignedInAccount,
   type SignedOutAccount,
@@ -394,8 +395,15 @@ describe('Account.setAppStamp', () => {
     const account = accountWithApp()
     account.setAppStamp(APP_URL, new BatchId(BATCH_HEX))
     const app = account.connectedApps[0]
-    expect(app.postageStampBatchID?.toHex()).toBe(BATCH_HEX)
+    expect((app.postageStampBatchID as BatchId).toHex()).toBe(BATCH_HEX)
     expect(app.postageStampBatchIDAt).toEqual(expect.any(Number))
+  })
+
+  it('sets the app to no drive, and keeps that through a record', () => {
+    const account = accountWithApp()
+    account.setAppStamp(APP_URL, NO_POSTAGE_STAMP)
+    const rehydrated = new Account(account.toRecord(), noCommit)
+    expect(rehydrated.connectedApps[0].postageStampBatchID).toBe(NO_POSTAGE_STAMP)
   })
 
   it('clears the pointer back to the account default', () => {

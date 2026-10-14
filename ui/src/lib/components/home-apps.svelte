@@ -9,6 +9,13 @@
   import Unlink from '@lucide/svelte/icons/unlink'
   import { appSessionDuration } from '@solarpunkltd/swarm-id/internal'
 
+  import {
+    appSiteFromTarget,
+    appStampChoice,
+    appStampOptions,
+    appStampSummary,
+    appStampValue,
+  } from '$lib/app-stamp'
   import AppIcon from '$lib/components/app-icon.svelte'
   import { Button } from '$lib/components/ui/button'
   import { DropdownMenu, DropdownMenuItem } from '$lib/components/ui/dropdown-menu'
@@ -25,9 +32,15 @@
 
   interface Props {
     account: Account
+    /** `#apps/<encoded origin>`: the one site the link is about */
+    target?: string[]
   }
 
-  let { account }: Props = $props()
+  let { account, target = [] }: Props = $props()
+
+  const linkedSite = $derived(appSiteFromTarget(target))
+  const driveOptions = $derived(appStampOptions(account))
+  const rows: Record<string, HTMLElement> = {}
 
   let connectionDays = $derived(String(msToDays(appSessionDuration(account.settings))))
   // Revoked tombstones stay in the record for sync; only show live entries.
@@ -45,6 +58,16 @@
   function remove(appUrl: string) {
     account.removeApp(appUrl)
   }
+
+  function chooseDrive(appUrl: string, value: string) {
+    account.setAppStamp(appUrl, appStampChoice(value, account))
+  }
+
+  $effect(() => {
+    if (linkedSite) {
+      rows[linkedSite]?.scrollIntoView({ block: 'center' })
+    }
+  })
 </script>
 
 <div class="flex w-full flex-col gap-4">
@@ -60,16 +83,43 @@
 
   <div class="bg-border h-px w-full"></div>
 
+  {#if linkedSite && !activeApps.some((app) => app.appUrl === linkedSite)}
+    <p class="text-muted-foreground text-center text-sm break-all">
+      {linkedSite} is not connected to this account.
+    </p>
+  {/if}
+
   {#if activeApps.length === 0}
     <p class="text-muted-foreground py-8 text-center text-sm">No connected apps yet.</p>
   {:else}
     <div class="flex w-full flex-col">
-      {#each activeApps as app (app.appUrl)}
-        <div class="border-border flex w-full items-center gap-3 border-b py-2.5">
+      {#each activeApps as app, index (app.appUrl)}
+        <div
+          bind:this={rows[app.appUrl]}
+          aria-current={app.appUrl === linkedSite ? 'true' : undefined}
+          class={[
+            'border-border flex w-full items-start gap-3 border-b py-2.5',
+            app.appUrl === linkedSite && 'bg-muted rounded-md px-2',
+          ]}
+        >
           <AppIcon src={app.appIcon} name={app.appName} size={40} />
-          <div class="flex min-w-0 flex-1 flex-col">
-            <p class="truncate text-sm font-medium">{app.appName}</p>
-            <p class="text-muted-foreground truncate text-sm">{app.appUrl}</p>
+          <div class="flex min-w-0 flex-1 flex-col gap-2">
+            <div class="flex min-w-0 flex-col">
+              <p class="truncate text-sm font-medium">{app.appName}</p>
+              <p class="text-muted-foreground truncate text-sm">{app.appUrl}</p>
+            </div>
+            {#if account.stamps.length > 0}
+              <div class="flex w-full flex-col gap-1">
+                <label for="app-drive-{index}" class="text-sm">Drive this app uses</label>
+                <Select
+                  id="app-drive-{index}"
+                  options={driveOptions}
+                  value={appStampValue(app, account)}
+                  onchange={(value) => chooseDrive(app.appUrl, value)}
+                />
+              </div>
+            {/if}
+            <p class="text-muted-foreground text-sm">{appStampSummary(app, account)}</p>
           </div>
           {#if isConnected(app.connectedUntil)}
             <span class="bg-secondary text-secondary-foreground rounded-md px-2 py-0.5 text-xs">

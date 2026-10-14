@@ -21,6 +21,7 @@
   interface Props {
     options: SelectOption[]
     value: string
+    id?: string
     class?: string
     disabled?: boolean
     onchange?: (value: string) => void
@@ -29,6 +30,7 @@
   let {
     options,
     value = $bindable(),
+    id,
     class: className,
     disabled = false,
     onchange,
@@ -38,6 +40,7 @@
 <div class={cn('relative', className)}>
   <select
     bind:value
+    {id}
     {disabled}
     onchange={() => onchange?.(value)}
     class="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full cursor-pointer appearance-none rounded-lg border py-1 pr-8 pl-2.5 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"

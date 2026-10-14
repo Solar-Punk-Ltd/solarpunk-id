@@ -154,7 +154,10 @@ export {
   fetchOnChainBatchStateResult,
 } from "./utils/postage-contract"
 
-export { stampsReachableByApp } from "./utils/postage-stamp-association"
+export {
+  resolveStampForApp,
+  stampsReachableByApp,
+} from "./utils/postage-stamp-association"
 
 export { sleep, withIdleTimeout } from "./utils/promise"
 
