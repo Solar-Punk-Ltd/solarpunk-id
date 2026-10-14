@@ -1085,6 +1085,42 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         )
         expect(lastConnectionInfo()?.postageBatchId).toBeUndefined()
       })
+
+      it("refuses stampChunk as no-stamp when the site has none and names no gateway", async () => {
+        await seedConnectedAccount()
+        await identify()
+        chooseForSite(NO_POSTAGE_STAMP)
+        await vi.waitFor(() =>
+          expect(lastConnectionInfo()?.uploadUnavailableReason).toBe(
+            "no-stamp",
+          ),
+        )
+
+        const source = { postMessage: vi.fn() }
+        const span = new Uint8Array(8)
+        span[0] = 1
+        await dispatch(
+          {
+            type: "stampChunk",
+            requestId: "stamp-none",
+            chunk: { kind: "content", data: new Uint8Array([...span, 7]) },
+          },
+          PARENT_ORIGIN,
+          source,
+        )
+
+        await vi.waitFor(() =>
+          expect(source.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+              type: "error",
+              requestId: "stamp-none",
+              code: "upload-unavailable",
+              reason: "no-stamp",
+            }),
+            expect.anything(),
+          ),
+        )
+      })
     })
 
     // Reads have to come from where the uploads go, or a dApp reads back a 404

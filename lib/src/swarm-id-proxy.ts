@@ -3699,6 +3699,15 @@ export class SwarmIdProxy {
     if (this.isSubsidisedModeActive()) {
       return
     }
+    // A site the person set to no stamp, or an account with none, has no
+    // coordinator, and the lock would call that "not authenticated".
+    if (!this.postageBatchId || !this.signerKey) {
+      throw new SwarmIdError(
+        "upload-unavailable",
+        "This site has no drive in Swarm ID. Choose one for it on the Apps screen, or add one, before uploading.",
+        { reason: "no-stamp" },
+      )
+    }
     // Refuse here, before the write coordinator: its first stamped write is
     // the lease claim, and a refused claim reads as partition contention (#745).
     if (this.stampRefusal === "stamp-expired") {
