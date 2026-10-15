@@ -91,8 +91,10 @@ Date: 2026-10-15T12:00:00.000Z
 Both signatures are EIP-191 `personal_sign` over the same message: over
 `keccak256("\x19Ethereum Signed Message:\n" + byteLength + message)`. Each is
 `0x` and 65 bytes, r, s and v, with v 27 or 28 and s in the lower half of the
-curve order. A wallet that answers v as 0 or 1, or in the 64-byte EIP-2098
-form, is brought to this form before the link is stored.
+curve order. A wallet that answers v as 0 or 1, in the 64-byte EIP-2098
+form, or with s in the upper half, is brought to this form before the link is
+stored. The upper-half s is replaced by the curve order minus s, with v
+flipped, which signs for the same address.
 
 What travels is `{ message, walletSignature, accountSignature }`. This page is
 the canonical description of the format. A chat library that carries the link

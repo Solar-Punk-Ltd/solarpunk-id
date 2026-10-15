@@ -20,7 +20,7 @@ import { deriveKeyFromSignature } from '@solarpunkltd/swarm-id/internal'
 import { type Hex, getAddress, recoverMessageAddress } from 'viem'
 
 import { connectAccessWallet } from '$lib/crypto/onboard'
-import { canonicalSignature } from '$lib/crypto/signature'
+import { canonicalSignature, lowSSignature } from '$lib/crypto/signature'
 
 interface EthereumProvider {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>
@@ -144,8 +144,9 @@ export async function unlockWalletKeySource(): Promise<WalletKeySource> {
 export interface WalletForLink {
   source: WalletKeySource
   /**
-   * Ask the same wallet to sign a wallet link message, in canonical form,
-   * refusing a signature that does not recover to the wallet's own address.
+   * Ask the same wallet to sign a wallet link message, in canonical form with
+   * a low s, refusing a signature that does not recover to the wallet's own
+   * address.
    */
   signLink(message: string): Promise<Hex>
 }
@@ -160,7 +161,8 @@ export async function unlockWalletForLink(): Promise<WalletForLink> {
   const signature = await signKeyMessage(provider, walletAddress)
   return {
     source: { walletAddress: getAddress(walletAddress), signature },
-    signLink: (message) => signRecoverable(provider, walletAddress, message, UNVERIFIABLE_LINK),
+    signLink: (message) =>
+      signRecoverable(provider, walletAddress, message, UNVERIFIABLE_LINK).then(lowSSignature),
   }
 }
 

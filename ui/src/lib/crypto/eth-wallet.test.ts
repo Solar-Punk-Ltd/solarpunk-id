@@ -143,6 +143,18 @@ describe('unlockWalletForLink', () => {
     expect(signature).toBe(await deterministic(LINK_MESSAGE))
   })
 
+  // The high-s twin is as valid as the low one, but the link's readers accept
+  // only the low half, so it would reach the person as a library error.
+  it('brings a high-s link signature to the low-s form readers accept', async () => {
+    connect((message) =>
+      message === LINK_MESSAGE ? deterministic(message).then(twin) : deterministic(message),
+    )
+
+    const wallet = await unlockWalletForLink()
+
+    await expect(wallet.signLink(LINK_MESSAGE)).resolves.toBe(await deterministic(LINK_MESSAGE))
+  })
+
   it('refuses a link signature that does not recover the wallet', async () => {
     connect((message) =>
       message === LINK_MESSAGE ? otherAccount.signMessage({ message }) : deterministic(message),
