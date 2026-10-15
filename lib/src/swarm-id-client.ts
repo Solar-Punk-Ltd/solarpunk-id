@@ -994,9 +994,9 @@ export class SwarmIdClient {
    * Unmounting removes only the button, at any time. The session stays, and
    * signing out stays {@link disconnect}. A button unmounted while its window
    * is open stays hidden until the window closes, because the window reads
-   * from it, as it opens, where to hand the session. Removing its container
-   * yourself in the moment between the click and the window opening loses
-   * that sign-in, and the person signs in again.
+   * from it, as it opens, where to hand the session. Unmounting it, or
+   * removing its container, in the moment between the click and the window
+   * opening loses that sign-in, and the person signs in again.
    *
    * @param container - The element the button fills. Give it the size the button should have
    * @param options.action - `sign-in`, or `change-stamp` for a person signed in
