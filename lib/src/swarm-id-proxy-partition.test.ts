@@ -1687,6 +1687,84 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       expect(lastInfo()?.postageBatchId).toBe(BATCH_ID_HEX)
     })
 
+    it("refuses one under a challenge no window of this session carried", async () => {
+      await handedOverSession()
+
+      await sendSetSecret(crypto.randomUUID(), {
+        account: accountWithPick(new BatchId(PICKED_BATCH_ID_HEX)),
+      })
+
+      expect(lastInfo()?.postageBatchId).toBe(BATCH_ID_HEX)
+    })
+
+    it("refuses one in a session restored from the partition's store", async () => {
+      const challenge = await handedOverSession()
+      await reload()
+      await vi.waitFor(() =>
+        expect(lastInfo()?.postageBatchId).toBe(BATCH_ID_HEX),
+      )
+
+      await sendSetSecret(challenge, {
+        account: accountWithPick(new BatchId(PICKED_BATCH_ID_HEX)),
+      })
+
+      expect(lastInfo()?.postageBatchId).toBe(BATCH_ID_HEX)
+    })
+
+    // Each state below is one the frame cannot reach with that window's
+    // challenge still held, since every way out of a handed-over session
+    // clears it. The guard checks them anyway, so a later path that reaches
+    // one does not turn a stale window into a writer, and these pin it.
+    describe("refuses it in a state no handover left", () => {
+      type HandoverState = {
+        authenticated: boolean
+        storagePartitioned: boolean
+        handedOverChallenge: string | undefined
+        isStampHandover(message: unknown): boolean
+      }
+
+      async function handedOverState(): Promise<{
+        state: HandoverState
+        message: Record<string, unknown>
+      }> {
+        const challenge = await handedOverSession()
+        return {
+          state: proxy as unknown as HandoverState,
+          message: {
+            type: "setSecret",
+            appOrigin: PARENT_ORIGIN,
+            challenge,
+            data: { secret: HANDED_OVER_SECRET },
+          },
+        }
+      }
+
+      it("takes it from the handed-over state itself", async () => {
+        const { state, message } = await handedOverState()
+        expect(state.isStampHandover(message)).toBe(true)
+      })
+
+      it("unauthenticated", async () => {
+        const { state, message } = await handedOverState()
+        state.authenticated = false
+        expect(state.isStampHandover(message)).toBe(false)
+      })
+
+      it("unpartitioned", async () => {
+        const { state, message } = await handedOverState()
+        state.storagePartitioned = false
+        expect(state.isStampHandover(message)).toBe(false)
+      })
+
+      it("with no handed-over challenge, for a message without one", async () => {
+        const { state, message } = await handedOverState()
+        state.handedOverChallenge = undefined
+        expect(
+          state.isStampHandover({ ...message, challenge: undefined }),
+        ).toBe(false)
+      })
+    })
+
     it("refuses one after the site disconnected", async () => {
       const challenge = await handedOverSession()
       await dispatch(
