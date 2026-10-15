@@ -472,11 +472,14 @@ Done:
   `RTCPeerConnection`; the remaining ~7.5 s is the ordinary cold claim. A one-off script, not
   suite coverage: it runs on demand, never on commit.
 - Real Safari (iOS 18.7 / Safari 26.6, against snaha's deployment of the upstream project, #584): ITP partitions the
-  iframe, the connect popup's `window.opener` `postMessage` reaches it, the hydrated view
+  iframe, the connect popup's `postMessage` reaches it, the hydrated view
   builds a working stamper, a chunk uploads and reads back byte-identical, and the device id
   holds across a reload. A private window passes the same five checks, with its own device id,
   discarded when the window closes. Apps no longer receive the device id, so this is no longer
-  checked ([Hardening.md](Hardening.md)).
+  checked ([Hardening.md](Hardening.md)). That run measured the older path, a popup the session
+  frame opened posting through `window.opener`. The popup is now opened by the Swarm ID button
+  frame and posts to the Swarm ID frames beside it (`ui/src/lib/handover-targets.ts`), which
+  W6.1e measures on a device again.
 
 Not yet written:
 

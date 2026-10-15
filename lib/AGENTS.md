@@ -22,9 +22,9 @@ knowing by name:
   too, held in memory by that site's frame and never stored. The proxy's `accountBee`, the
   person's own node, keeps the revocation check, the roster and the coordinator's chunks)
 - **Iframe → Parent**: `proxyReady`, `initError`, `authStatusResponse`, `authSuccess`,
-  `connectResponse`, `connectionInfoChanged` (what `initialize()` awaits), `uploadDataResponse`,
+  `connectionInfoChanged` (what `initialize()` awaits), `uploadDataResponse`,
   `error`
-- **Popup → Iframe**: `setSecret` — the partitioned handover, below
+- **Popup → Iframe**: `setSecret`, the partitioned handover below, posted by the connect popup the button frame opened
 - **Page ↔ Button frame**: `buttonIdentify`, `buttonUpdate`, `buttonReady`, `buttonInitError`,
   `buttonWindowChanged`. **Button frame → Iframe**: `connectWindowOpened`, accepted only from a
   frame of the same parent page

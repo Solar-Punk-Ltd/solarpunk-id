@@ -147,7 +147,7 @@ test('a partitioned session with no drive reports the handover, not a failure', 
 
   await expect(
     page.getByText(
-      'Partitioned, and the session is authenticated — only the popup’s postMessage through window.opener can do that here, so it survived ITP.',
+      'Partitioned, and the session is authenticated. Only the popup’s handover to the Swarm ID frames beside the button can do that here, so it reached the frame under ITP.',
     ),
   ).toBeVisible({ timeout: 15000 })
   await expectProxyPartitioned(page)
@@ -209,7 +209,7 @@ test('the bus carries an app removal to a partitioned session', async ({ page })
   await connectPartitioned(page, '/account')
 
   // The demo renders `ConnectionInfo.identity.name`, so the account card is
-  // proof the popup's `window.opener` handover landed.
+  // proof the popup's handover landed.
   await expect(page.getByRole('heading', { name: 'Identity' })).toBeVisible({ timeout: 15000 })
   await expectProxyPartitioned(page)
   const shownName = page.getByText('Name', { exact: true }).locator('xpath=following-sibling::div')
@@ -264,8 +264,8 @@ test('a change on one device reaches another device’s stored account', async (
   await page.getByRole('link', { name: 'Get started' }).first().click()
   await completeCreateFlow(page)
   await page.getByRole('button', { name: 'Stay local for now' }).click()
-  // Through the proxy's own button, which reaches the popup in either storage
-  // mode — this test is about the bus, not about the transport (#613).
+  // Through the Swarm ID button, which reaches the popup in either storage
+  // mode, since this test is about the bus, not about the transport (#613).
   const demo = await page.context().newPage()
   await connectPartitioned(demo, '/')
   await demo.close()

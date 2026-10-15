@@ -1615,8 +1615,9 @@ export const ProxyReadyMessageSchema = z.object({
   /**
    * Whether the iframe can read the trusted domain's first-party store, which
    * decides which transport `connect()` can use (#613). Optional so an older
-   * deployed proxy stays wire-compatible; absent reads as "not proven shared",
-   * and the client delegates, which works in both modes.
+   * deployed proxy stays wire-compatible. Absent reads as "not proven shared",
+   * and `connect()` then refuses with `button-required`, since only the Swarm
+   * ID button works in both modes.
    */
   storageShared: z.boolean().optional(),
 })
@@ -2315,6 +2316,11 @@ export const SetSecretMessageSchema = z.object({
   data: AuthDataSchema,
 })
 
+/**
+ * What the connect popup posts to the session frame. The popup was opened by
+ * the button frame, and posts to the Swarm ID frames beside its opener
+ * (`ui/src/lib/handover-targets.ts`).
+ */
 export const PopupToIframeMessageSchema = z.discriminatedUnion("type", [
   SetSecretMessageSchema,
 ])

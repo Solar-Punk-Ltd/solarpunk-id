@@ -9,15 +9,18 @@ import {
 } from "./sealed-values"
 
 /**
- * Whether the proxy iframe can read the trusted domain's first-party store —
+ * Whether a Swarm ID frame can read the trusted domain's first-party store,
  * asked BEFORE authentication, because it decides which transport the auth
- * popup has to take (#613).
+ * popup has to take (#613). Both frames a site embeds read it: the session
+ * frame, to tell the client whether `connect()` can work, and the button
+ * frame, to decide whether to leave the popup's challenge in storage.
  *
  * The mirror image of the probe the connect popup already runs: there, the
- * iframe writes a challenge and the popup checks whether it can read it back
- * first-party (`ui/src/lib/stores/connect.svelte.ts`). That answer arrives far
- * too late to choose a transport, so the same question is asked the other way
- * round — the first-party app leaves a marker, and the iframe reads it back.
+ * button frame writes a challenge and the popup checks whether it can read it
+ * back first-party (`ui/src/lib/stores/connect.svelte.ts`). That answer
+ * arrives far too late to choose a transport, so the same question is asked
+ * the other way round: the first-party app leaves a marker, and the frames
+ * read it back.
  *
  * Deliberately NOT any of these:
  *

@@ -382,7 +382,8 @@ function sessionEndedError(): SwarmIdError {
  * Swarm ID Proxy - Runs inside the iframe
  *
  * Responsibilities:
- * - Receive app-specific secrets from auth popup
+ * - Receive app-specific secrets from the connect popup the button frame beside
+ *   it opened, under the challenge that frame told it
  * - Keep a partitioned session in this partition's own localStorage (#635)
  * - Proxy Bee API calls from parent dApp
  * - Augment requests with authentication
@@ -702,7 +703,8 @@ export class SwarmIdProxy {
    * Note: We always set up these listeners, even when storage might be partitioned.
    * In some browsers/configurations (like localhost development), storage events
    * work between same-origin windows even in iframes. If storage IS partitioned,
-   * the listeners simply won't fire, and we fall back to postMessage from the popup.
+   * the listeners simply won't fire, and the connect popup the button frame
+   * opened hands the session over by postMessage instead.
    */
   private setupStorageListeners(): void {
     // Avoid duplicate subscriptions
