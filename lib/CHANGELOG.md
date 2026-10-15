@@ -28,6 +28,10 @@
 - **lib:** disconnecting or removing your site on Swarm ID's Apps screen forgets the stamp chosen
   for it, so the next connect starts on the account default. Your own `disconnect()` leaves the
   choice alone.
+- **lib:** `uploadUnavailableReason: "no-stamp"` means your site has no drive, whether the account
+  has none, the person set your site to none, or the person has not yet confirmed its drive since
+  it signed in. The message of a write refused that way now tells the person to confirm the drive
+  in the sign-in window, or to choose one for the site on the Apps screen or add one.
 
 ### Bug Fixes
 
