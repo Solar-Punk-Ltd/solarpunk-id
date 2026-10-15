@@ -1564,7 +1564,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
 
   // The connect window asks for the site's stamp after the session was handed
   // over, so a stamp the person picks there reaches a frame kept apart only as
-  // a second handover from that same window (D10). It rides the same checks as
+  // a second handover from that same window. It rides the same checks as
   // the first one and takes nothing a fresh connect would not.
   describe("a stamp picked in the connect window after the handover", () => {
     const PICKED_BATCH_ID_HEX = "dd".repeat(32)

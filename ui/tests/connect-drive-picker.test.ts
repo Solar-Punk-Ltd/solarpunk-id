@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * The drive a site uses, picked in the connect window on every connect, and
- * reaching a site that is already open (D10 of the fork plan).
+ * reaching a site that is already open.
  *
  * Runs in the `chromium-partitioned` project: the demo is browsed under a
  * loopback literal, so its proxy iframe cannot read the identity site's
