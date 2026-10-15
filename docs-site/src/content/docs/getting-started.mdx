@@ -131,20 +131,31 @@ if (info.identity && info.canUpload) {
 client.destroy()
 ```
 
-:::note[Every new account starts without a drive]
-A drive is what pays for uploads, and a fresh Swarm ID has none. Without a subsidised gateway,
-the first upload of every first-time user fails: `canUpload` is `false` and
-`uploadUnavailableReason` is `'no-stamp'`. Downloads and key derivation work regardless.
+:::note[A signed-in site can have no drive]
+A drive is what pays for uploads. Without a subsidised gateway, a site with no drive cannot
+upload: `canUpload` is `false` and `uploadUnavailableReason` is `'no-stamp'`. Downloads and key
+derivation work regardless. A site has no drive in three cases, and the reason is the same for
+all three:
+
+- **The account has none.** A fresh Swarm ID starts without a drive, so this is every first-time
+  user.
+- **The person set the site to no drive**, in the connect window or on Swarm ID's Apps screen.
+- **The person has not confirmed the site's drive yet.** Every sign-in gives the site no drive
+  until the person confirms one with "Go to app" in the connect window. If they closed the window
+  first, the site has none until they connect again.
 
 Two ways to handle it, and most apps do both:
 
-- **Pass `subsidisedGatewayUrl`.** Uploads from accounts with no drive go through that gateway,
+- **Pass `subsidisedGatewayUrl`.** Uploads from a site with no drive go through that gateway,
   which stamps them (`uploadMode` becomes `'subsidised'`). The public gateway at
-  `https://api.gateway.ethswarm.org/` is fine for development and demos; see
+  `https://api.gateway.ethswarm.org/` is fine for development and demos. See
   [Using the public gateway](../subsidised-gateway/#using-the-public-gateway) for its limits.
-- **Send the user to add a drive.** When `uploadUnavailableReason === 'no-stamp'`, link to the
-  identity site's Storage tab (`https://solarpunkid.bzz.link/#storage`). Once the user has a drive,
-  the session uses it in preference to any gateway.
+- **Tell the user how to give the site a drive.** When `uploadUnavailableReason === 'no-stamp'`,
+  offer the three ways: confirm a drive in the connect window, which
+  [`connect()`](../api/#connectoptions) opens again, choose one for your site on the identity
+  site's Apps screen (`https://solarpunkid.bzz.link/#apps/<your origin, encoded>`), or add one on
+  its Storage tab (`https://solarpunkid.bzz.link/#storage`). Once the site has a drive, the session
+  uses it in preference to any gateway.
   :::
 
 :::caution[Browser only]

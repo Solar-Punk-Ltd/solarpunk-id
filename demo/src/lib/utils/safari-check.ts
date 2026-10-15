@@ -164,7 +164,7 @@ function writerPath(input: CheckInput): CheckResult {
         title,
         verdict: 'unknown',
         detail:
-          'This account has no drive, so there was no stamp to hand over and the writer path was never exercised. Buy a drive on the identity site, then reconnect and run this again.',
+          'This site has no drive in Swarm ID, so there was no stamp to hand over and the writer path was never exercised. If the account has no drive, add one on the identity site. If the sign-in window closed before "Go to app", or the site is set to no drive, connect again and confirm a drive there. Then run this again.',
       }
     case 'stamper-failed':
       return {

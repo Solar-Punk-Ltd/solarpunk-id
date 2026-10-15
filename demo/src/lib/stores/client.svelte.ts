@@ -186,7 +186,7 @@ async function updatePostageStampInfo(generation: number) {
 function uploadUnavailableDescription(info: ConnectionInfo): string {
   switch (info.uploadUnavailableReason) {
     case 'no-stamp':
-      return 'this account has no drive, so there is no postage stamp to upload with'
+      return 'this site has no drive in Swarm ID: the account has none, the site is set to none, or its drive was not confirmed in the sign-in window yet'
     case 'stamper-failed':
       return 'a postage stamp resolved but the write path would not build'
     case 'stamp-expired':

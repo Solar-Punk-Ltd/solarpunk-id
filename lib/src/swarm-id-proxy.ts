@@ -3746,12 +3746,13 @@ export class SwarmIdProxy {
     if (this.isSubsidisedModeActive()) {
       return
     }
-    // A site the person set to no stamp, or an account with none, has no
-    // coordinator, and the lock would call that "not authenticated".
+    // A site the person set to no stamp, one still waiting for the person to
+    // confirm its drive, or an account with none, has no coordinator, and the
+    // lock would call that "not authenticated".
     if (!this.postageBatchId || !this.signerKey) {
       throw new SwarmIdError(
         "upload-unavailable",
-        "This site has no drive in Swarm ID. Choose one for it on the Apps screen, or add one, before uploading.",
+        "This site has no drive in Swarm ID. If it just signed in, confirm its drive in the sign-in window. Otherwise choose one for it on the Apps screen, or add one, before uploading.",
         { reason: "no-stamp" },
       )
     }

@@ -741,8 +741,10 @@ export type UploadMode = z.infer<typeof UploadModeSchema>
 /**
  * Why a session cannot upload, when `uploadMode` is `"unavailable"`.
  *
- * - `no-stamp` — no stamp resolved: the account has no drive, or its pointers
- *   name one that is gone
+ * - `no-stamp`: the site has no stamp to use. The account has no drive (or
+ *   its pointers name only drives that are gone), the person set this site to
+ *   no drive, or the person has not yet confirmed the site's drive in the
+ *   connect window since the site signed in.
  * - `stamper-failed` — the stamp resolved and the stamper still did not build.
  *   `initializeStamper` logs and returns rather than throwing, so without this
  *   the symptom is indistinguishable from having no stamp at all.
@@ -848,9 +850,10 @@ export const ConnectionInfoSchema = z.object({
    * Why `uploadMode` is `"unavailable"`; absent whenever uploads work.
    *
    * The two causes look identical from the dApp side without it, and they
-   * call for opposite responses: `"no-stamp"` is the user's to fix (buy a
-   * drive), `"stamper-failed"` is ours — the stamp resolved and the write path
-   * still would not build.
+   * call for opposite responses: `"no-stamp"` is the user's to fix (confirm
+   * the site's drive in the connect window, choose one for the site on Swarm
+   * ID's Apps screen, or add one), `"stamper-failed"` is ours: the stamp
+   * resolved and the write path still would not build.
    *
    * Reporting it is what made the real-Safari run (#584) readable: an account
    * with no drive had been reported as a failed `window.opener` handover,
