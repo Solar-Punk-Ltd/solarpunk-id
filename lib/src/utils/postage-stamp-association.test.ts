@@ -136,6 +136,15 @@ describe("stampsReachableByApp", () => {
     expect(result).toEqual([])
   })
 
+  it("keeps nothing while the person has not confirmed the site's drive", () => {
+    const result = stampsReachableByApp(
+      { postageStampBatchID: appBatch, stampPending: true },
+      { defaultPostageStampBatchID: accountBatch },
+      [accountStamp, appStamp],
+    )
+    expect(result).toEqual([])
+  })
+
   it("keeps nothing when neither pointer resolves", () => {
     const result = stampsReachableByApp(
       { postageStampBatchID: undefined },

@@ -1102,6 +1102,7 @@ export class SwarmIdProxy {
       // A handover is a genuine connect — the same reasoning as the
       // `reactivateThisDevice()` below, one field over.
       Date.now(),
+      data.stampPending,
     )
 
     // A handover IS the genuine sign-in for a partition device: the user
@@ -1391,6 +1392,7 @@ export class SwarmIdProxy {
     appSecret: string,
     networkSettings: NetworkSettings | undefined,
     connectedAt: number,
+    stampPending: true | undefined,
   ): Promise<void> {
     const now = Date.now()
     const connection: ConnectedApp = {
@@ -1413,6 +1415,9 @@ export class SwarmIdProxy {
       // back off this connection, and a restore is bounded by the deadline the
       // stored record already carries (`readPartitionSession`).
       connectedUntil: now + appSessionDuration(account.settings),
+      // The handover carries it apart from the account, whose wire shape
+      // strips session material
+      stampPending,
     }
     this.partitionAccount = {
       ...account,
@@ -2921,6 +2926,7 @@ export class SwarmIdProxy {
       // session is nonsense either way, and nothing downstream can be poisoned
       // by a clock invented for an entry that does not exist.
       connectedAt ?? Date.now(),
+      data.stampPending,
     )
 
     this.showAuthButton()
@@ -3016,6 +3022,9 @@ export class SwarmIdProxy {
         return undefined
       }
       const { account, app } = connection
+      if (app.stampPending) {
+        return undefined
+      }
 
       // Resolve the stamp this app should use: its per-app override if set,
       // otherwise the account default — skipping a pointer whose stamp is

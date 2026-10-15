@@ -39,6 +39,7 @@ import {
 const BusConnectedAppSchema = ConnectedAppSchemaV1.omit({
   appSecret: true,
   connectedUntil: true,
+  stampPending: true,
   chatBinding: true,
 })
 

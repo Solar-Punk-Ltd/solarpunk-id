@@ -68,11 +68,13 @@ export function resolveStampForApp(
  * tombstone is how the session learns the stamp it was spending is deleted.
  */
 export function stampsReachableByApp(
-  app: Pick<ConnectedApp, "postageStampBatchID">,
+  app: Pick<ConnectedApp, "postageStampBatchID" | "stampPending">,
   account: Pick<SignedInAccount, "defaultPostageStampBatchID">,
   stamps: PostageStamp[],
 ): PostageStamp[] {
-  if (app.postageStampBatchID === NO_POSTAGE_STAMP) return []
+  if (app.stampPending || app.postageStampBatchID === NO_POSTAGE_STAMP) {
+    return []
+  }
   const reachable = [
     app.postageStampBatchID,
     account.defaultPostageStampBatchID,

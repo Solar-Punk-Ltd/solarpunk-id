@@ -1566,6 +1566,157 @@ describe("SwarmIdProxy partitioned write enablement", () => {
   // over, so a stamp the person picks there reaches a frame kept apart only as
   // a second handover from that same window. It rides the same checks as
   // the first one and takes nothing a fresh connect would not.
+  // Signing in gives a site no stamp. The connect window asks which drive it
+  // uses, and only the person's confirm there lets the frame stamp, on the
+  // first connect and on a reconnect alike. The account keeps the person's
+  // choice, the frame only holds back the live stamp (`stampPending`).
+  describe("a stamp withheld until the person confirms it", () => {
+    const GATEWAY_URL = "https://gateway.example.com/"
+    const lastInfo = () => messagesOfType("connectionInfoChanged").at(-1)
+
+    async function signedInPending(subsidisedGatewayUrl?: string) {
+      await dispatch(
+        {
+          type: "parentIdentify",
+          requestId: "r1",
+          metadata: { name: "dApp" },
+          subsidisedGatewayUrl,
+        },
+        PARENT_ORIGIN,
+        parentWindow,
+      )
+      await dispatch(
+        { type: "connect", requestId: "r2" },
+        PARENT_ORIGIN,
+        parentWindow,
+      )
+      const challenge = localStorageFake.getItem(STORAGE_CHALLENGE_KEY)!
+      await sendSetSecret(challenge, {
+        account: serializeSyncedAccount(makeSyncedAccount()),
+        stampPending: true,
+      })
+      return challenge
+    }
+
+    it("signs the site in with no stamp", async () => {
+      await signedInPending()
+
+      expect(messagesOfType("authSuccess")).toHaveLength(1)
+      expect(lastInfo()?.identity).toBeDefined()
+      expect(lastInfo()?.postageBatchId).toBeUndefined()
+      expect(lastInfo()?.uploadUnavailableReason).toBe("no-stamp")
+      expect(lastInfo()?.canUpload).toBe(false)
+    })
+
+    it("leaves a site with a gateway on its gateway", async () => {
+      await signedInPending(GATEWAY_URL)
+
+      expect(lastInfo()?.postageBatchId).toBeUndefined()
+      expect(lastInfo()?.uploadMode).toBe("subsidised")
+    })
+
+    it("stamps once the window hands over the confirmed drive", async () => {
+      const challenge = await signedInPending()
+
+      await sendSetSecret(challenge, {
+        account: serializeSyncedAccount(makeSyncedAccount()),
+      })
+
+      expect(lastInfo()?.postageBatchId).toBe(BATCH_ID_HEX)
+      expect(lastInfo()?.uploadMode).toBe("user-stamp")
+    })
+
+    it("stays without one across a reload when the window closed unconfirmed", async () => {
+      await signedInPending()
+
+      await reload()
+
+      await vi.waitFor(() => expect(lastInfo()?.identity).toBeDefined())
+      expect(lastInfo()?.postageBatchId).toBeUndefined()
+      expect(lastInfo()?.uploadUnavailableReason).toBe("no-stamp")
+    })
+
+    it("takes no stamp from an account delta while it waits", async () => {
+      await signedInPending()
+      await awaitBusJoin()
+      const busChannel = new BroadcastChannel(accountChannelName)
+      try {
+        const account = makeSyncedAccount()
+        busChannel.postMessage({
+          type: "account-delta",
+          snapshot: serializeAccountStateSnapshot({
+            accountId: account.id.toHex(),
+            metadata: {
+              accountName: account.name,
+              defaultPostageStampBatchID: BATCH_ID_HEX,
+              publicKey: account.publicKey,
+              settings: undefined,
+              createdAt: account.createdAt,
+              lastModified: Date.now() + 1,
+              devices: [],
+              partitionCount: 2,
+            },
+            connectedApps: [
+              {
+                appUrl: PARENT_ORIGIN,
+                appName: "dApp",
+                lastConnectedAt: Date.now(),
+              },
+            ],
+            postageStamps: account.postageStamps,
+            timestamp: Date.now(),
+          }),
+        })
+        await flushBus()
+        expect(lastInfo()?.postageBatchId).toBeUndefined()
+        const held = (
+          proxy as unknown as { partitionAccount: { postageStamps: unknown[] } }
+        ).partitionAccount.postageStamps
+        expect(held).toEqual([])
+      } finally {
+        busChannel.close()
+      }
+    })
+
+    it("signs a site reading shared storage in with no stamp until the entry is confirmed", async () => {
+      await seedConnectedAccount({
+        connectedApps: [
+          {
+            appUrl: PARENT_ORIGIN,
+            appName: "dApp",
+            appSecret: "44".repeat(32),
+            lastConnectedAt: Date.now(),
+            connectedUntil: Date.now() + 60_000,
+            stampPending: true,
+          },
+        ],
+      })
+      await dispatch(
+        { type: "parentIdentify", requestId: "r1", metadata: { name: "dApp" } },
+        PARENT_ORIGIN,
+        parentWindow,
+      )
+      await vi.waitFor(() => expect(lastInfo()?.identity).toBeDefined())
+      expect(lastInfo()?.postageBatchId).toBeUndefined()
+
+      const shell = createAccountsStorageManager()
+      const [current] = shell.load() as SignedInAccount[]
+      shell.save([
+        {
+          ...current,
+          connectedApps: current.connectedApps.map((app) => ({
+            ...app,
+            stampPending: undefined,
+          })),
+        },
+      ])
+
+      await vi.waitFor(() =>
+        expect(lastInfo()?.postageBatchId).toBe(BATCH_ID_HEX),
+      )
+    })
+  })
+
   describe("a stamp picked in the connect window after the handover", () => {
     const PICKED_BATCH_ID_HEX = "dd".repeat(32)
     const HANDED_OVER_SECRET = "33".repeat(32)

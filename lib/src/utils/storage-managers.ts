@@ -178,6 +178,7 @@ export function serializeConnectedApp(
     appSecret: app.appSecret,
     postageStampBatchID: app.postageStampBatchID?.toString(),
     postageStampBatchIDAt: app.postageStampBatchIDAt,
+    stampPending: app.stampPending,
     revokedAt: app.revokedAt,
     disconnectedAt: app.disconnectedAt,
     chatBinding: app.chatBinding,
@@ -201,6 +202,7 @@ export function portableConnectedApp(
   const {
     appSecret: _appSecret,
     connectedUntil: _connectedUntil,
+    stampPending: _stampPending,
     ...rest
   } = app
   return rest

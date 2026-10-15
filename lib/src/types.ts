@@ -2167,6 +2167,12 @@ export const AuthDataSchema = z.object({
    * this secret's address and this account.
    */
   chatBinding: ChatBindingSchema.optional(),
+  /**
+   * Set on the handover that signs the site in: the person has not yet
+   * confirmed which drive the site uses, so the frame holds no stamp. The
+   * window's second handover, sent on that confirm, leaves it out.
+   */
+  stampPending: z.literal(true).optional(),
 })
 
 export type AuthData = z.infer<typeof AuthDataSchema>

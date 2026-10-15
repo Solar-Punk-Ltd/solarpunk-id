@@ -108,6 +108,7 @@ export function restoreLocalSessionFields(
       ...app,
       appSecret: ours.appSecret ?? app.appSecret,
       connectedUntil: ours.connectedUntil ?? app.connectedUntil,
+      stampPending: ours.stampPending,
     }
   })
 }

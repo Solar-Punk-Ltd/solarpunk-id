@@ -13,6 +13,10 @@ import { mergeConnectedApps } from "../sync/merge-snapshot"
 import type { ConnectedApp } from "../schemas"
 import type { AccountStateSnapshot } from "../utils/account-state-snapshot"
 import { createChatBinding } from "../utils/chat-binding"
+import {
+  portableConnectedApp,
+  serializeConnectedApp,
+} from "../utils/storage-managers"
 
 const APP_URL = "https://app.example"
 const ACCOUNT_ID = "aa".repeat(20)
@@ -48,6 +52,31 @@ function fold(local: ConnectedApp[], incoming: ConnectedApp[]): ConnectedApp[] {
     local,
   )
 }
+
+// The wait for the person's confirm is this context's own, like the secret. A
+// peer's entry never carries it, so a fold must neither drop ours nor invent
+// one.
+describe("restoreLocalSessionFields — a stamp pending confirm", () => {
+  it("keeps this context's pending stamp through a fold", () => {
+    const local = localSession({ stampPending: true })
+    const [app] = fold([local], [onWire({ ...local, stampPending: undefined })])
+    expect(app.stampPending).toBe(true)
+  })
+
+  it("adds none to a session that is not waiting", () => {
+    const local = localSession()
+    const [app] = fold([local], [onWire(local)])
+    expect(app.stampPending).toBeUndefined()
+  })
+
+  it("is left off every channel to another context", () => {
+    const wire = portableConnectedApp(
+      serializeConnectedApp(localSession({ stampPending: true })),
+    )
+    expect(wire).not.toHaveProperty("stampPending")
+    expect(wire).not.toHaveProperty("appSecret")
+  })
+})
 
 describe("restoreLocalSessionFields — a peer's Disconnect", () => {
   it("ends this context's session when the winning entry was disconnected", () => {
