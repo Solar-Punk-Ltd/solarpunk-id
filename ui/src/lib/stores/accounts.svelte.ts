@@ -608,6 +608,12 @@ function revoked(app: ConnectedApp, tombstone: boolean): ConnectedApp {
     // true of a plain Disconnect and of a Remove alike.
     disconnectedAt: now,
     revokedAt: tombstone ? now : app.revokedAt,
+    // The drive chosen for the site goes with the connection, so a reconnect
+    // starts on the account default or on what the connect window is told.
+    // Its own clock moves too, or an older choice on another device would win
+    // the merge and bring it back.
+    postageStampBatchID: undefined,
+    postageStampBatchIDAt: now,
   }
 }
 

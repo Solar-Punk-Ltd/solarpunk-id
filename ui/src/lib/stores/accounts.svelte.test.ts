@@ -14,6 +14,7 @@
 import { BatchId, EthAddress, PrivateKey } from '@ethersphere/bee-js'
 import {
   type Account as AccountRecord,
+  type ConnectedApp,
   NO_POSTAGE_STAMP,
   STORAGE_KEY_ACCOUNTS,
   type SignedInAccount,
@@ -418,6 +419,63 @@ describe('Account.setAppStamp', () => {
     account.setAppStamp('https://other.example.com', new BatchId(BATCH_HEX))
     expect(account.connectedApps[0].postageStampBatchID).toBeUndefined()
     expect(account.connectedApps).toHaveLength(1)
+  })
+})
+
+// A site the person disconnects or removes comes back on the account default
+// or on what is picked in the connect window, never on a drive chosen before.
+// The cleared choice carries its own fresh clock, so it wins over an older
+// choice merging in from another device.
+describe('disconnecting a site forgets the drive chosen for it', () => {
+  const APP_URL = 'https://app.example.com'
+  const BATCH_HEX = 'c'.repeat(64)
+  const CHOSEN_AT = 1_000
+
+  function accountWithChoice(choice: ConnectedApp['postageStampBatchID']): Account {
+    return new Account(
+      {
+        ...signedInRecord(),
+        connectedApps: [
+          {
+            appUrl: APP_URL,
+            appName: 'Test App',
+            lastConnectedAt: 1,
+            appSecret: '55'.repeat(32),
+            connectedUntil: Date.now() + 60_000,
+            postageStampBatchID: choice,
+            postageStampBatchIDAt: CHOSEN_AT,
+          },
+        ],
+      },
+      noCommit,
+    )
+  }
+
+  const forgets = (account: Account) => {
+    const app = account.connectedApps[0]
+    expect(app.postageStampBatchID).toBeUndefined()
+    expect(app.postageStampBatchIDAt).toBeGreaterThan(CHOSEN_AT)
+    const rehydrated = new Account(account.toRecord(), noCommit)
+    expect(rehydrated.connectedApps[0].postageStampBatchID).toBeUndefined()
+    expect(rehydrated.connectedApps[0].postageStampBatchIDAt).toBe(app.postageStampBatchIDAt)
+  }
+
+  it('on Disconnect', () => {
+    const account = accountWithChoice(new BatchId(BATCH_HEX))
+    account.disconnectApp(APP_URL)
+    forgets(account)
+  })
+
+  it('on Remove', () => {
+    const account = accountWithChoice(new BatchId(BATCH_HEX))
+    account.removeApp(APP_URL)
+    forgets(account)
+  })
+
+  it('a choice of no drive as well', () => {
+    const account = accountWithChoice(NO_POSTAGE_STAMP)
+    account.disconnectApp(APP_URL)
+    forgets(account)
   })
 })
 
