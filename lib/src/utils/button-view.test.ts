@@ -76,6 +76,38 @@ describe("buttonView", () => {
     })
   })
 
+  it("draws the site's border, for a secondary style", () => {
+    const config = {
+      borderColor: "#667eea",
+      borderWidth: "2px",
+      backgroundColor: "transparent",
+    }
+    expect(buttonView("sign-in", config, false).style.border).toBe(
+      "2px solid #667eea",
+    )
+    expect(
+      buttonView("sign-in", { ...config, borderStyle: "dashed" }, false).style
+        .border,
+    ).toBe("2px dashed #667eea")
+  })
+
+  it("keeps the border while busy and while disabled", () => {
+    const config = { borderColor: "#667eea", borderWidth: "1px" }
+    expect(buttonView("sign-in", config, true).style.border).toBe(
+      "1px solid #667eea",
+    )
+    expect(
+      buttonView("sign-in", { ...config, disabled: true }, false).style.border,
+    ).toBe("1px solid #667eea")
+  })
+
+  it("draws no border unless the site names one", () => {
+    expect(buttonView("sign-in", {}, false).style.border).toBe("none")
+    expect(
+      buttonView("sign-in", { borderColor: "#000" }, false).style.border,
+    ).toBe("1px solid #000")
+  })
+
   it("keeps the built-in look, and no font-family, when unset", () => {
     const { style } = buttonView("sign-in", {}, false)
     expect(style).toMatchObject({

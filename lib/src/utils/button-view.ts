@@ -16,6 +16,19 @@ const DISABLED_OPACITY = "0.6"
 /** Keeps the focus ring inside the frame, which clips anything past its edge */
 const FOCUS_RING_OFFSET = "-3px"
 const SIDE_PADDING = "0 12px"
+const DEFAULT_BORDER_WIDTH = "1px"
+const DEFAULT_BORDER_STYLE = "solid"
+
+/** The border the site asked for, or none when it named neither width nor colour */
+function border(config: ButtonConfig): string {
+  if (config.borderColor === undefined && config.borderWidth === undefined) {
+    return "none"
+  }
+  const width = config.borderWidth ?? DEFAULT_BORDER_WIDTH
+  const style = config.borderStyle ?? DEFAULT_BORDER_STYLE
+  const color = config.borderColor ?? config.color ?? DEFAULT_COLOR
+  return `${width} ${style} ${color}`
+}
 
 /** What the button frame paints, worked out from what the site asked for */
 export interface ButtonView {
@@ -46,7 +59,7 @@ export function buttonView(
     boxSizing: "border-box",
     margin: "0",
     padding: SIDE_PADDING,
-    border: "none",
+    border: border(config),
     borderRadius: config.borderRadius ?? "0",
     backgroundColor: config.backgroundColor ?? DEFAULT_BACKGROUND,
     color: config.color ?? DEFAULT_COLOR,

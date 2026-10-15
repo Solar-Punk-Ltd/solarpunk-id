@@ -951,6 +951,9 @@ export const ButtonConfigSchema = z.object({
   backgroundColor: z.string().optional(),
   color: z.string().optional(),
   borderRadius: z.string().optional(),
+  borderColor: z.string().optional(),
+  borderWidth: z.string().optional(),
+  borderStyle: z.enum(["solid", "dashed", "dotted", "double"]).optional(),
   fontFamily: z.string().optional(),
   fontSize: z.string().optional(),
   fontWeight: z.union([z.string(), z.number()]).optional(),
@@ -979,6 +982,16 @@ export interface ButtonConfig {
   color?: string
   /** CSS border-radius of the button and its frame. Default: "0" */
   borderRadius?: string
+  /**
+   * CSS colour of a border, for a secondary style. Naming this or
+   * `borderWidth` draws one, kept in the busy and disabled looks. Default: the
+   * label's colour
+   */
+  borderColor?: string
+  /** CSS width of the border. Default: "1px" once a border is drawn */
+  borderWidth?: string
+  /** Default: "solid" */
+  borderStyle?: "solid" | "dashed" | "dotted" | "double"
   /** CSS font-family. A stack falls back to the first family the frame has, not the page. Default: the frame's own */
   fontFamily?: string
   /** CSS font-size. Default: "14px" */

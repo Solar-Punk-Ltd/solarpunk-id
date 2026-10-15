@@ -183,6 +183,16 @@ describe("ButtonConfigSchema typography (#779)", () => {
     })
   })
 
+  it("takes a border and refuses a border style it does not draw", () => {
+    const border = {
+      borderColor: "#000",
+      borderWidth: "2px",
+      borderStyle: "dashed",
+    }
+    expect(ButtonConfigSchema.parse(border)).toEqual(border)
+    expect(() => ButtonConfigSchema.parse({ borderStyle: "inset" })).toThrow()
+  })
+
   it("carries them to the button frame rather than stripping them", () => {
     const parsed = ParentToButtonMessageSchema.parse({
       type: "buttonIdentify",

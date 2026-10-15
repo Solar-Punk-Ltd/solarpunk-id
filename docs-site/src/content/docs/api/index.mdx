@@ -217,25 +217,31 @@ interface ButtonConfig {
   backgroundColor?: string
   color?: string
   borderRadius?: string
+  borderColor?: string
+  borderWidth?: string
+  borderStyle?: 'solid' | 'dashed' | 'dotted' | 'double'
   fontFamily?: string
   fontSize?: string
   fontWeight?: string | number
 }
 ```
 
-| Property          | Type               | Description                                                                                     | Default                                                |
-| ----------------- | ------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `text`            | `string`           | The label                                                                                       | "Sign in with Swarm ID", or "Change stamp in Swarm ID" |
-| `busyText`        | `string`           | The label while the connect window is open, or while `busy` is set                              | "Waiting for Swarm ID"                                 |
-| `ariaLabel`       | `string`           | The accessible name, where the label alone does not say what the button does                    | the label                                              |
-| `disabled`        | `boolean`          | Shown but not clickable, and out of the tab order                                               | `false`                                                |
-| `busy`            | `boolean`          | Shown as working and not clickable, for a step of your own such as signing out. Stays focusable | `false`                                                |
-| `backgroundColor` | `string`           | CSS colour                                                                                      | `#dd7200`                                              |
-| `color`           | `string`           | CSS colour of the label                                                                         | `white`                                                |
-| `borderRadius`    | `string`           | CSS border-radius of the button and its frame                                                   | `0`                                                    |
-| `fontFamily`      | `string`           | CSS font-family. A stack resolves against Swarm ID's frame, so name web-safe or system families | the frame's own font                                   |
-| `fontSize`        | `string`           | CSS font-size                                                                                   | `14px`                                                 |
-| `fontWeight`      | `string \| number` | CSS font-weight                                                                                 | `600`                                                  |
+| Property          | Type                                          | Description                                                                                                       | Default                                                |
+| ----------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `text`            | `string`                                      | The label                                                                                                         | "Sign in with Swarm ID", or "Change stamp in Swarm ID" |
+| `busyText`        | `string`                                      | The label while the connect window is open, or while `busy` is set                                                | "Waiting for Swarm ID"                                 |
+| `ariaLabel`       | `string`                                      | The accessible name, where the label alone does not say what the button does                                      | the label                                              |
+| `disabled`        | `boolean`                                     | Shown but not clickable, and out of the tab order                                                                 | `false`                                                |
+| `busy`            | `boolean`                                     | Shown as working and not clickable, for a step of your own such as signing out. Stays focusable                   | `false`                                                |
+| `backgroundColor` | `string`                                      | CSS colour                                                                                                        | `#dd7200`                                              |
+| `color`           | `string`                                      | CSS colour of the label                                                                                           | `white`                                                |
+| `borderRadius`    | `string`                                      | CSS border-radius of the button and its frame                                                                     | `0`                                                    |
+| `borderColor`     | `string`                                      | CSS colour of a border, for a secondary style. Naming it or `borderWidth` draws one, kept while busy and disabled | the label's colour                                     |
+| `borderWidth`     | `string`                                      | CSS width of the border                                                                                           | `1px` once a border is drawn                           |
+| `borderStyle`     | `'solid' \| 'dashed' \| 'dotted' \| 'double'` | Style of the border                                                                                               | `solid`                                                |
+| `fontFamily`      | `string`                                      | CSS font-family. A stack resolves against Swarm ID's frame, so name web-safe or system families                   | the frame's own font                                   |
+| `fontSize`        | `string`                                      | CSS font-size                                                                                                     | `14px`                                                 |
+| `fontWeight`      | `string \| number`                            | CSS font-weight                                                                                                   | `600`                                                  |
 
 The button is busy by itself while its connect window is open, and comes back when the window closes.
 
