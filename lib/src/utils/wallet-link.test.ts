@@ -252,6 +252,23 @@ describe("verifyWalletLink", () => {
     ).toBeUndefined()
   })
 
+  it("refuses a signature spelled in upper case, as the chat library does", () => {
+    const signed = link()
+    const upper = (signature: string) => `0x${signature.slice(2).toUpperCase()}`
+    expect(
+      verifyWalletLink(
+        { ...signed, walletSignature: upper(signed.walletSignature) },
+        { account: ACCOUNT },
+      ),
+    ).toBeUndefined()
+    expect(
+      verifyWalletLink(
+        { ...signed, accountSignature: upper(signed.accountSignature) },
+        { account: ACCOUNT },
+      ),
+    ).toBeUndefined()
+  })
+
   it("refuses something that is not a link at all", () => {
     expect(
       verifyWalletLink(
@@ -282,6 +299,17 @@ describe("countersignWalletLink", () => {
         personalSign(WELL_FORMED, OTHER_KEY),
       ),
     ).toThrow(/wallet/)
+  })
+
+  it("refuses a wallet signature spelled in upper case", () => {
+    const walletSignature = personalSign(WELL_FORMED, WALLET_KEY)
+    expect(() =>
+      countersignWalletLink(
+        ACCOUNT_KEY,
+        WELL_FORMED,
+        `0x${walletSignature.slice(2).toUpperCase()}`,
+      ),
+    ).toThrow(/lower-case/)
   })
 
   it("refuses to sign a message naming another account", () => {

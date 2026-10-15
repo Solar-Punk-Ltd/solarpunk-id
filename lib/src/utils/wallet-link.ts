@@ -39,6 +39,12 @@ const LINE_COUNT = 5
 
 const ADDRESS_PATTERN = /^0x[0-9a-f]{40}$/
 const ADDRESS_INPUT_PATTERN = /^(0x)?[0-9a-fA-F]{40}$/
+/**
+ * One spelling per signature, lower case as `personalSign` writes it, so this
+ * reader and the chat library's, which signs the link's bytes into each
+ * message, accept exactly the same links.
+ */
+export const WALLET_LINK_SIGNATURE_PATTERN = /^0x[0-9a-f]{130}$/
 /** `Date.prototype.toISOString` exactly: UTC, milliseconds, a `Z`. */
 const ISO_UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 
@@ -72,6 +78,17 @@ export interface ExpectedWalletLink {
 
 function normalizeAddress(value: string): string {
   return value.toLowerCase().replace(/^0x/, "")
+}
+
+function recoverLinkSigner(
+  message: string,
+  signature: string,
+  subject: string,
+): string {
+  if (!WALLET_LINK_SIGNATURE_PATTERN.test(signature)) {
+    throw new Error(`${subject} is not 0x and 130 lower-case hex characters.`)
+  }
+  return recoverPersonalSigner(message, signature, subject)
 }
 
 function canonicalDate(text: string): boolean {
@@ -165,12 +182,12 @@ export function verifyWalletLink(
 ): VerifiedWalletLink | undefined {
   try {
     const fields = parseWalletLinkMessage(link.message)
-    const wallet = recoverPersonalSigner(
+    const wallet = recoverLinkSigner(
       link.message,
       link.walletSignature,
       "Wallet link wallet signature",
     )
-    const account = recoverPersonalSigner(
+    const account = recoverLinkSigner(
       link.message,
       link.accountSignature,
       "Wallet link account signature",
@@ -203,7 +220,7 @@ export function countersignWalletLink(
   walletSignature: string,
 ): WalletLink {
   const fields = parseWalletLinkMessage(message)
-  const wallet = recoverPersonalSigner(
+  const wallet = recoverLinkSigner(
     message,
     walletSignature,
     "Wallet link wallet signature",

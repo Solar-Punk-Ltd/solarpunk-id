@@ -343,6 +343,18 @@ describe("AccountSettingsSchema wallet link", () => {
     ["no account signature", { accountSignature: undefined }],
     ["a wallet signature that is not 65 bytes", { walletSignature: "0x1234" }],
     ["a message longer than any link", { message: "x".repeat(1024) }],
+    [
+      "a wallet signature in upper case",
+      {
+        walletSignature: `0x${signedWalletLink().walletSignature.slice(2).toUpperCase()}`,
+      },
+    ],
+    [
+      "an account signature in upper case",
+      {
+        accountSignature: `0x${signedWalletLink().accountSignature.slice(2).toUpperCase()}`,
+      },
+    ],
   ])("refuses a link with %s", (_label, change) => {
     expect(
       AccountSettingsSchema.safeParse({

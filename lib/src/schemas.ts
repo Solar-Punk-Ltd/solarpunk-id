@@ -16,6 +16,7 @@ import {
   PrivateKey as BeePrivateKey,
 } from "@ethersphere/bee-js"
 import { isBeeApiUrl, isHttpUrl } from "./utils/url"
+import { WALLET_LINK_SIGNATURE_PATTERN } from "./utils/wallet-link"
 
 // ============================================================================
 // Network Settings Constants
@@ -162,8 +163,8 @@ export const WALLET_LINK_MAX_LENGTH = 320
  */
 export const WalletLinkSchema = z.object({
   message: z.string().max(WALLET_LINK_MAX_LENGTH),
-  walletSignature: z.string().regex(/^0x[0-9a-fA-F]{130}$/),
-  accountSignature: z.string().regex(/^0x[0-9a-fA-F]{130}$/),
+  walletSignature: z.string().regex(WALLET_LINK_SIGNATURE_PATTERN),
+  accountSignature: z.string().regex(WALLET_LINK_SIGNATURE_PATTERN),
 })
 
 /**
