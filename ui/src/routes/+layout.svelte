@@ -4,7 +4,7 @@
 -->
 
 <script lang="ts">
-  import { onDestroy, untrack } from 'svelte'
+  import { onDestroy, onMount, untrack } from 'svelte'
 
   import { isSignedOutAccount, markFirstPartyStorage } from '@solarpunkltd/swarm-id/internal'
   import type { SyncedAccount } from '@solarpunkltd/swarm-id/internal'
@@ -19,6 +19,7 @@
   import { foldCurrentAccount, startFoldInterval } from '$lib/dev/account-refresh'
   import { triggerSync } from '$lib/dev/sync-hooks'
   import { LAYOUT_VIEW, isFramed, layoutView } from '$lib/frame-guard'
+  import { removeLoadingScreen } from '$lib/loading-screen'
   import routes from '$lib/routes'
   import { accountBusStore } from '$lib/stores/account-bus'
   import { accountsLoaded, accountsStore, setAccountsSyncHook } from '$lib/stores/accounts.svelte'
@@ -76,6 +77,12 @@
     untrack(() => pageServices.follow(isRefused))
   })
   onDestroy(pageServices.stop)
+
+  // The page's own loader stays until the app has something to show, which
+  // is once the accounts are read, or at once if they cannot be.
+  onMount(() => {
+    void accountsLoaded.finally(removeLoadingScreen)
+  })
 
   // The bus room is the CURRENT account's: join on select/switch, leave on
   // sign-out.
