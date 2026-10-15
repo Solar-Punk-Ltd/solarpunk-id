@@ -9,7 +9,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { MockInstance } from "vitest"
 import { ENS_REGISTRY_ADDRESS, ensNamehash } from "./ens"
-import { ENS_NAME_CACHE_MS, resolveVerifiedEnsName } from "./ens-name"
+import {
+  ENS_NAME_CACHE_MS,
+  ENS_NAME_FAILURE_CACHE_MS,
+  resolveVerifiedEnsName,
+} from "./ens-name"
 import { uint8ArrayToHex } from "./hex"
 
 const WALLET = `0x${"ab".repeat(20)}`
@@ -258,11 +262,26 @@ describe("resolveVerifiedEnsName", () => {
       await expect(lookup()).resolves.toBeUndefined()
     })
 
-    it("does not keep an answer the endpoint failed to give", async () => {
+    it("keeps a failed read for 30 seconds, so a broken endpoint is not asked on every lookup", async () => {
+      expect(ENS_NAME_FAILURE_CACHE_MS).toBe(30_000)
       chain.down = true
-      await lookup()
+      await expect(lookup()).resolves.toBeUndefined()
+      const calls = fetchSpy.mock.calls.length
       chain.down = false
+      now = START + ENS_NAME_FAILURE_CACHE_MS - 1
+      await expect(lookup()).resolves.toBeUndefined()
+      expect(fetchSpy.mock.calls.length).toBe(calls)
+      now = START + ENS_NAME_FAILURE_CACHE_MS
       await expect(lookup()).resolves.toBe(NAME)
+    })
+
+    it("keeps a read that ran out of time as a failure too", async () => {
+      chain.hang = true
+      await expect(lookup(WALLET, SHORT_TIMEOUT_MS)).resolves.toBeUndefined()
+      const calls = fetchSpy.mock.calls.length
+      chain.hang = false
+      await expect(lookup()).resolves.toBeUndefined()
+      expect(fetchSpy.mock.calls.length).toBe(calls)
     })
 
     it("shares one read between lookups that arrive together", async () => {

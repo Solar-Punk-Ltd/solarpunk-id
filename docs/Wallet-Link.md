@@ -151,8 +151,10 @@ Swarm gateway. `timeoutMs` bounds the whole lookup and defaults to 10 seconds.
 Every answer is capped in size before it is decoded. Everything that goes
 wrong, no endpoint, an endpoint that is down or slow, an answer too long or that
 does not decode, answers no name, never a throw. An answer, a name or a
-definite no name, is kept in memory for ten minutes per endpoint and wallet, and
-a failed read is not kept.
+definite no name, is kept in memory for ten minutes per endpoint and wallet. A
+failed read answers no name for 30 seconds before the endpoint is asked again,
+so a page that renders many messages does not query a broken endpoint for each
+one.
 
 Only on-chain resolvers are read. A name whose resolver answers through
 CCIP-read (EIP-3668) or only through a wildcard (ENSIP-10) reads as having no

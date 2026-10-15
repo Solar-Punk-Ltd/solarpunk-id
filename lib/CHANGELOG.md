@@ -17,8 +17,9 @@
   `WALLET_LINK_TITLE` and `WALLET_LINK_STATEMENT` give the exact format.
 - **lib:** `resolveVerifiedEnsName(wallet, { rpcUrl, timeoutMs })` answers a wallet's ENS name
   when its reverse record and the name's `addr` record agree and the name is already ENSIP-15
-  normalised, read over the mainnet endpoint you name. Anything that goes wrong answers undefined,
-  and answers are kept for ten minutes. The library now depends on `@adraffy/ens-normalize`.
+  normalised, read over the mainnet endpoint you name. Anything that goes wrong answers undefined.
+  Answers are kept for ten minutes, and a failed read for 30 seconds. The library now depends on
+  `@adraffy/ens-normalize`.
 
 ## 0.9.1
 

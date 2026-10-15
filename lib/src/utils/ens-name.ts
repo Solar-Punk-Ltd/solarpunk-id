@@ -35,6 +35,13 @@ import { withTimeout } from "./promise"
 export const ENS_NAME_CACHE_MS = 10 * 60 * 1000
 
 /**
+ * How long a failed read is kept, so a page that shows many senders does not
+ * ask a broken or slow endpoint again for every message it renders, while a
+ * passing outage still clears soon.
+ */
+export const ENS_NAME_FAILURE_CACHE_MS = 30 * 1000
+
+/**
  * The longest `name` answer read, in bytes: two ABI words and a name of 255
  * bytes fit in 352, and a longer answer is no name worth showing.
  */
@@ -59,6 +66,8 @@ export interface EnsNameOptions {
 interface CachedName {
   name: string | undefined
   fetchedAt: number
+  /** How long this entry answers: `ENS_NAME_CACHE_MS` or, for a failed read, `ENS_NAME_FAILURE_CACHE_MS`. */
+  keepMs: number
 }
 
 const cache = new Map<string, CachedName>()
@@ -76,7 +85,7 @@ function isNormalised(name: string): boolean {
 /**
  * The verified name, or undefined when the chain says there is none.
  * @throws when the endpoint fails or an answer does not decode, which is not
- *   an answer and is therefore not cached.
+ *   an answer and is therefore kept only for `ENS_NAME_FAILURE_CACHE_MS`.
  */
 async function readVerifiedName(
   rpcUrl: string,
@@ -134,7 +143,8 @@ async function readVerifiedName(
  *
  * An answer, name or no name, is kept in memory for `ENS_NAME_CACHE_MS` per
  * endpoint and wallet, and lookups that arrive together share one read. A
- * failed read is not kept, so the next lookup asks again.
+ * failed read answers no name for `ENS_NAME_FAILURE_CACHE_MS`, and the first
+ * lookup after that asks again.
  *
  * @param wallet - the wallet's address, in any case, with or without `0x`,
  *   such as `verifyWalletLink(...).wallet`
@@ -151,7 +161,7 @@ export async function resolveVerifiedEnsName(
   const cached = cache.get(key)
   if (cached) {
     const age = Date.now() - cached.fetchedAt
-    if (age >= 0 && age < ENS_NAME_CACHE_MS) {
+    if (age >= 0 && age < cached.keepMs) {
       return cached.name
     }
     cache.delete(key)
@@ -167,11 +177,20 @@ export async function resolveVerifiedEnsName(
     `The ENS name of 0x${bare} was not read within ${timeoutMs}ms.`,
   )
     .then((name) => {
-      cache.set(key, { name, fetchedAt: Date.now() })
+      cache.set(key, {
+        name,
+        fetchedAt: Date.now(),
+        keepMs: ENS_NAME_CACHE_MS,
+      })
       return name
     })
     .catch((error: unknown) => {
       console.warn(`${LOG_PREFIX} Could not read the name of 0x${bare}:`, error)
+      cache.set(key, {
+        name: undefined,
+        fetchedAt: Date.now(),
+        keepMs: ENS_NAME_FAILURE_CACHE_MS,
+      })
       return undefined
     })
     .finally(() => {

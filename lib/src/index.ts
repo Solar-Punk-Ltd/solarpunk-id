@@ -127,5 +127,9 @@ export type {
   WalletLink,
   WalletLinkFields,
 } from "./utils/wallet-link"
-export { ENS_NAME_CACHE_MS, resolveVerifiedEnsName } from "./utils/ens-name"
+export {
+  ENS_NAME_CACHE_MS,
+  ENS_NAME_FAILURE_CACHE_MS,
+  resolveVerifiedEnsName,
+} from "./utils/ens-name"
 export type { EnsNameOptions } from "./utils/ens-name"
