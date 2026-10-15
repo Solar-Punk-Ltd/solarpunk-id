@@ -198,6 +198,7 @@ import {
   siteChatAddress,
 } from "./utils/chat-binding"
 import type { ChatBinding } from "./utils/chat-binding"
+import { verifyWalletLink } from "./utils/wallet-link"
 import {
   activeDeviceIds,
   KNOWN_DEVICE_MAX_AGE_MS,
@@ -3882,6 +3883,7 @@ export class SwarmIdProxy {
           const { account } = connection
           const { sharingPublicKey, postageSignerAddress } =
             this.identityKeysFor(account.derivationKey)
+          const walletLink = account.settings?.walletLink
           identity = {
             id: account.id.toHex(),
             name: account.name,
@@ -3890,6 +3892,11 @@ export class SwarmIdProxy {
             sharingPublicKey,
             postageSignerAddress,
             avatar: generatedAvatar(account.id.toHex()),
+            walletLink:
+              walletLink &&
+              verifyWalletLink(walletLink, { account: account.id.toHex() })
+                ? walletLink
+                : undefined,
           }
         }
       } catch (error) {

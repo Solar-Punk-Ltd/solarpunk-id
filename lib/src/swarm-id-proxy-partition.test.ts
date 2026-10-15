@@ -216,7 +216,12 @@ import { BatchId, EthAddress, PrivateKey } from "@ethersphere/bee-js"
 
 import { SwarmIdProxy, PUBLISH_DEBOUNCE_MS } from "./swarm-id-proxy"
 import type { ProxyConfig } from "./swarm-id-proxy"
-import { allowingSites, appSecretAddressChatBinding } from "./test-fixtures"
+import {
+  TEST_LINK_ACCOUNT_KEY_HEX,
+  allowingSites,
+  appSecretAddressChatBinding,
+  signedWalletLink,
+} from "./test-fixtures"
 import { SignalingTransport } from "./bus/signaling-transport"
 import { busChannelName } from "./bus/account-bus"
 import { BusMessageSchema } from "./bus/messages"
@@ -230,6 +235,7 @@ import {
   serializeSyncedAccount,
 } from "./utils/storage-managers"
 import { serializeAccountStateSnapshot } from "./utils/account-state-snapshot"
+import type { WalletLink } from "./utils/wallet-link"
 import {
   IframeToParentMessageSchema,
   STORAGE_CHALLENGE_KEY,
@@ -1548,6 +1554,67 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     const createCalls = vi.mocked(UtilizationAwareStamper.create).mock.calls
     expect(createCalls.length).toBeGreaterThanOrEqual(1)
     expect(String(createCalls[0][1])).toBe(BATCH_ID_HEX)
+  })
+
+  describe("wallet link", () => {
+    const linkedAccount = (walletLink?: WalletLink): SyncedAccount => ({
+      ...makeSyncedAccount(),
+      id: new EthAddress(
+        new PrivateKey(TEST_LINK_ACCOUNT_KEY_HEX).publicKey().address().toHex(),
+      ),
+      settings: { walletLink },
+    })
+
+    // The frame stores the session after the handover, through the global
+    // `localStorage`, which the next test points at its own fake. Waiting for
+    // that write here keeps this test's linked session out of the next one,
+    // whose frame would otherwise restore it.
+    afterEach(async () => {
+      await vi.waitFor(() =>
+        expect(
+          localStorageFake.getItem(partitionSessionStorageKey(PARENT_ORIGIN)),
+        ).not.toBeNull(),
+      )
+    })
+
+    const lastIdentity = () => {
+      const infos = messagesOfType("connectionInfoChanged")
+      return infos[infos.length - 1].identity
+    }
+
+    it("shares the link in the identity while the account has it on", async () => {
+      const walletLink = signedWalletLink()
+      const challenge = await startPartitionedConnect()
+      await sendSetSecret(challenge, {
+        account: serializeSyncedAccount(linkedAccount(walletLink)),
+      })
+
+      expect(lastIdentity()?.walletLink).toEqual(walletLink)
+    })
+
+    it("shares nothing while the setting is off", async () => {
+      const challenge = await startPartitionedConnect()
+      await sendSetSecret(challenge, {
+        account: serializeSyncedAccount(linkedAccount(undefined)),
+      })
+
+      expect(lastIdentity()).toBeDefined()
+      expect(lastIdentity()?.walletLink).toBeUndefined()
+    })
+
+    // A link is the account's own claim, so one that another account signed,
+    // or that names another account, never reaches a site as this one's.
+    it("shares no link that does not verify for this account", async () => {
+      const challenge = await startPartitionedConnect()
+      await sendSetSecret(challenge, {
+        account: serializeSyncedAccount(
+          linkedAccount(signedWalletLink("ef".repeat(32))),
+        ),
+      })
+
+      expect(lastIdentity()).toBeDefined()
+      expect(lastIdentity()?.walletLink).toBeUndefined()
+    })
   })
 
   // The device id is the frame's own: the lease and the roster identify this

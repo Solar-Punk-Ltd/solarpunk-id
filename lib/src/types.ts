@@ -9,6 +9,7 @@ import type {
 import {
   BeeApiUrlSchema,
   ChatBindingSchema,
+  WalletLinkSchema,
   NetworkSettingsSchemaV1,
   SyncedAccountSchemaV1,
   ReferenceSchema,
@@ -830,6 +831,14 @@ export const ConnectionIdentitySchema = z.object({
   postageSignerAddress: AddressSchema.optional(),
   /** Ready-to-render account avatar — every identity has one. */
   avatar: AvatarSchema,
+  /**
+   * The account's and its wallet's signed statement that they belong together
+   * (docs/Wallet-Link.md), present only while the person has "Show my ENS
+   * name on sites" on in Swarm ID. A reader checks it with `verifyWalletLink`
+   * against `address`, then looks up the wallet's name with
+   * `resolveVerifiedEnsName`. Absent, the site learns no wallet at all.
+   */
+  walletLink: WalletLinkSchema.optional(),
 })
 
 export type ConnectionIdentity = z.infer<typeof ConnectionIdentitySchema>
