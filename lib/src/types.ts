@@ -1072,9 +1072,9 @@ export interface MountedButton {
    * ID refuses the site or the frame does not answer in time.
    */
   ready: Promise<void>
-  /** Change what the button does or how it looks, in place */
+  /** Change what the button does or how it looks, in place. Does nothing once unmounted */
   update(options: { action?: ButtonAction; config?: ButtonConfig }): void
-  /** Remove the button. The session stays as it is */
+  /** Remove the button. The session stays as it is, and `onWindowChange` is not called again */
   unmount(): void
 }
 

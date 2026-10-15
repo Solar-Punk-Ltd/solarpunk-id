@@ -1083,8 +1083,11 @@ export class SwarmIdClient {
         rejectReady(new SwarmIdError("init-failed", message.error))
       else {
         windowOpen = message.state === "open"
-        options.onWindowChange?.(message.state)
-        if (unmounted && !windowOpen) remove()
+        if (unmounted) {
+          if (!windowOpen) remove()
+        } else {
+          options.onWindowChange?.(message.state)
+        }
       }
     }
     const remove = () => {
@@ -1103,6 +1106,7 @@ export class SwarmIdClient {
     const mounted: MountedButton = {
       ready,
       update: (next) => {
+        if (unmounted) return
         action =
           next.action === undefined ? action : checkedButtonAction(next.action)
         config =

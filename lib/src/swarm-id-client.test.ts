@@ -2050,6 +2050,22 @@ describe("SwarmIdClient mountButton()", () => {
     expect(listeners).toHaveLength(1)
   })
 
+  it("says nothing more and posts nothing once unmounted", () => {
+    const states: string[] = []
+    const { button, frame } = mount((state) => states.push(state))
+    fromFrame(frame, { type: "buttonFrameLoaded" })
+    fromFrame(frame, { type: "buttonWindowChanged", state: "open" })
+    button.unmount()
+    frame.contentWindow.postMessage.mockClear()
+
+    button.update({ config: { text: "Later" } })
+    fromFrame(frame, { type: "buttonWindowChanged", state: "closed" })
+
+    expect(frame.contentWindow.postMessage).not.toHaveBeenCalled()
+    expect(states).toEqual(["open"])
+    expect(frame.remove).toHaveBeenCalled()
+  })
+
   it("removes the frame at once on destroy(), window open or not", () => {
     const { frame } = mount()
     fromFrame(frame, { type: "buttonWindowChanged", state: "open" })
