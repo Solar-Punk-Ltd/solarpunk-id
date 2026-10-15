@@ -384,28 +384,65 @@ describe('Account.setWalletLink', () => {
     accountSignature: `0x${'22'.repeat(65)}`,
   }
 
-  it('keeps the link with the other settings and stamps the settings clock', () => {
+  it('keeps the link on its own clock and leaves the other settings and their clock alone', () => {
     const account = new Account(
-      { ...signedInRecord(), settings: { appSessionDuration: 5 } },
+      { ...signedInRecord(), settings: { appSessionDuration: 5 }, settingsAt: 3 },
       noCommit,
     )
     account.setWalletLink(LINK)
-    expect(account.settings).toEqual({ appSessionDuration: 5, walletLink: LINK })
-    expect(account.settingsAt).toEqual(expect.any(Number))
+    expect(account.walletLink).toEqual(LINK)
+    expect(account.walletLinkAt).toEqual(expect.any(Number))
+    expect(account.settings).toEqual({ appSessionDuration: 5 })
+    expect(account.settingsAt).toBe(3)
     const rehydrated = new Account(account.toRecord(), noCommit)
-    expect(rehydrated.settings?.walletLink).toEqual(LINK)
+    expect(rehydrated.walletLink).toEqual(LINK)
+    expect(rehydrated.walletLinkAt).toBe(account.walletLinkAt)
   })
 
-  // Turning the setting off must reach the other devices as a newer settings
-  // value, not as a field that is merely missing.
+  // Turning the setting off must reach the other devices as a newer value,
+  // not as a field that is merely missing.
   it('removes the link on a newer clock', () => {
     const account = new Account(
-      { ...signedInRecord(), settings: { walletLink: LINK }, settingsAt: 1 },
+      { ...signedInRecord(), walletLink: LINK, walletLinkAt: 1 },
       noCommit,
     )
     account.setWalletLink(undefined)
-    expect(account.settings?.walletLink).toBeUndefined()
-    expect(account.settingsAt).toBeGreaterThan(1)
+    expect(account.walletLink).toBeUndefined()
+    expect(account.walletLinkAt).toBeGreaterThan(1)
+  })
+
+  // Settings were one last-writer-wins value, so another device's later
+  // session-duration edit, made while it still held the link, brought it back.
+  it('stays off when another device with a later settings clock changes the session duration', () => {
+    const account = new Account(
+      {
+        ...signedInRecord(),
+        settings: { appSessionDuration: 5 },
+        settingsAt: 1,
+        walletLink: LINK,
+        walletLinkAt: 1,
+      },
+      noCommit,
+    )
+    account.setWalletLink(undefined)
+    const turnedOffAt = account.walletLinkAt ?? 0
+    account.applyRefreshed({
+      settings: { appSessionDuration: 9 },
+      settingsAt: turnedOffAt + 1000,
+      walletLink: LINK,
+      walletLinkAt: 1,
+    })
+    expect(account.walletLink).toBeUndefined()
+    expect(account.walletLinkAt).toBe(turnedOffAt)
+    expect(account.settings).toEqual({ appSessionDuration: 9 })
+    expect(account.settingsAt).toBe(turnedOffAt + 1000)
+  })
+
+  it('takes a link a peer turned on later', () => {
+    const account = new Account({ ...signedInRecord(), walletLinkAt: 1 }, noCommit)
+    account.applyRefreshed({ walletLink: LINK, walletLinkAt: 2 })
+    expect(account.walletLink).toEqual(LINK)
+    expect(account.walletLinkAt).toBe(2)
   })
 })
 

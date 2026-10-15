@@ -69,7 +69,7 @@ type DeviceAuth =
  * the persisted collection and its mutations are never dropped.
  *
  * Scalar fields each carry a per-field last-writer-wins clock
- * (`accountNameAt` / `defaultStampAt` / `settingsAt`) so concurrent edits to
+ * (`accountNameAt` / `defaultStampAt` / `settingsAt` / `walletLinkAt`) so concurrent edits to
  * different scalars on different devices converge instead of clobbering. A
  * mutator that changes a scalar MUST stamp the matching clock; the fold folds
  * them by LWW (`applyRefreshed`).
@@ -97,6 +97,7 @@ export class Account {
     vault: { access: { type: 'password', kdfSalt: '', kdfIterations: 0 }, encryptedSeed: '' },
   })
   settings = $state<AccountSettings | undefined>(undefined)
+  walletLink = $state<WalletLink | undefined>(undefined)
   defaultPostageStampBatchID = $state<BatchId | undefined>(undefined)
   devices = $state<Device[]>([])
   connectedApps = $state<ConnectedApp[]>([])
@@ -104,6 +105,7 @@ export class Account {
   accountNameAt = $state<number | undefined>(undefined)
   defaultStampAt = $state<number | undefined>(undefined)
   settingsAt = $state<number | undefined>(undefined)
+  walletLinkAt = $state<number | undefined>(undefined)
   lastModified = $state<number | undefined>(undefined)
   partitionCount = $state<number | undefined>(undefined)
   // Persist-and-publish this account's change, bound to `this` in the ctor so
@@ -149,6 +151,7 @@ export class Account {
     this.derivationKey = record.derivationKey
     this.publicKey = record.publicKey
     this.settings = record.settings
+    this.walletLink = record.walletLink
     this.defaultPostageStampBatchID = record.defaultPostageStampBatchID
     this.devices = record.devices
     this.connectedApps = record.connectedApps
@@ -156,6 +159,7 @@ export class Account {
     this.accountNameAt = record.accountNameAt
     this.defaultStampAt = record.defaultStampAt
     this.settingsAt = record.settingsAt
+    this.walletLinkAt = record.walletLinkAt
     this.lastModified = record.lastModified
     this.partitionCount = record.partitionCount
   }
@@ -169,6 +173,7 @@ export class Account {
     this.derivationKey = ''
     this.publicKey = ''
     this.settings = undefined
+    this.walletLink = undefined
     this.defaultPostageStampBatchID = undefined
     this.devices = []
     this.connectedApps = []
@@ -176,6 +181,7 @@ export class Account {
     this.accountNameAt = undefined
     this.defaultStampAt = undefined
     this.settingsAt = undefined
+    this.walletLinkAt = undefined
     this.lastModified = undefined
     this.partitionCount = undefined
   }
@@ -219,6 +225,7 @@ export class Account {
       derivationKey: this.derivationKey,
       publicKey: this.publicKey,
       settings: this.settings,
+      walletLink: this.walletLink,
       defaultPostageStampBatchID: this.defaultPostageStampBatchID,
       devices: this.devices,
       connectedApps: this.connectedApps,
@@ -226,6 +233,7 @@ export class Account {
       accountNameAt: this.accountNameAt,
       defaultStampAt: this.defaultStampAt,
       settingsAt: this.settingsAt,
+      walletLinkAt: this.walletLinkAt,
       lastModified: this.lastModified,
       partitionCount: this.partitionCount,
     }
@@ -345,13 +353,14 @@ export class Account {
 
   /**
    * Keep or remove the wallet link (docs/Wallet-Link.md) that "Show my ENS
-   * name on sites" shares. On the settings clock, so a removal reaches the
-   * other devices as a newer value rather than a missing field.
+   * name on sites" shares. On its own clock, so a removal reaches the other
+   * devices as a newer value rather than a missing field, and no other
+   * device's settings edit can bring the link back.
    */
   setWalletLink(walletLink: WalletLink | undefined) {
     const now = Date.now()
-    this.settings = { ...this.settings, walletLink }
-    this.settingsAt = now
+    this.walletLink = walletLink
+    this.walletLinkAt = now
     this.lastModified = now
     this.#commit()
   }
@@ -602,6 +611,8 @@ export class Account {
     defaultStampAt?: number
     settings?: AccountSettings | undefined
     settingsAt?: number
+    walletLink?: WalletLink | undefined
+    walletLinkAt?: number
   }) {
     if (fields.devices) this.devices = fields.devices
     if (fields.connectedApps) this.connectedApps = fields.connectedApps
@@ -627,6 +638,13 @@ export class Account {
     ) {
       this.settings = fields.settings
       this.settingsAt = fields.settingsAt
+    }
+    if (
+      fields.walletLinkAt !== undefined &&
+      fields.walletLinkAt > (this.walletLinkAt ?? this.createdAt)
+    ) {
+      this.walletLink = fields.walletLink
+      this.walletLinkAt = fields.walletLinkAt
     }
     this.#commit({ skipSync: true })
   }

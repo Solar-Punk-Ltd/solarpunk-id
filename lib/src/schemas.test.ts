@@ -4,7 +4,7 @@
 import { describe, it, expect, expectTypeOf } from "vitest"
 import { BatchId } from "@ethersphere/bee-js"
 import {
-  AccountSettingsSchema,
+  WalletLinkSchema,
   ConnectedAppSchemaV1,
   LocalAccountSchemaV1,
   NO_POSTAGE_STAMP,
@@ -333,10 +333,10 @@ describe("ConnectedAppSchemaV1 stamp choice", () => {
   })
 })
 
-describe("AccountSettingsSchema wallet link", () => {
+describe("WalletLinkSchema", () => {
   it("keeps a wallet link with both signatures", () => {
     const walletLink = signedWalletLink()
-    expect(AccountSettingsSchema.parse({ walletLink })).toEqual({ walletLink })
+    expect(WalletLinkSchema.parse(walletLink)).toEqual(walletLink)
   })
 
   it.each([
@@ -357,9 +357,7 @@ describe("AccountSettingsSchema wallet link", () => {
     ],
   ])("refuses a link with %s", (_label, change) => {
     expect(
-      AccountSettingsSchema.safeParse({
-        walletLink: { ...signedWalletLink(), ...change },
-      }).success,
+      WalletLinkSchema.safeParse({ ...signedWalletLink(), ...change }).success,
     ).toBe(false)
   })
 })

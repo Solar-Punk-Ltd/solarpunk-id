@@ -71,5 +71,7 @@ export function applyAccountDelta(snapshot: AccountStateSnapshot): void {
     defaultStampAt: snapshot.metadata.defaultStampAt,
     settings: snapshot.metadata.settings,
     settingsAt: snapshot.metadata.settingsAt,
+    walletLink: snapshot.metadata.walletLink,
+    walletLinkAt: snapshot.metadata.walletLinkAt,
   })
 }

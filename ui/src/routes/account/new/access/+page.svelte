@@ -104,6 +104,7 @@
       access,
       encryptedSeed,
       settings: carried?.settings,
+      walletLink: carried?.walletLink,
       defaultPostageStampBatchID: carried?.defaultPostageStampBatchID,
       // Preserve the carried record's per-field LWW clocks so re-importing a
       // phrase doesn't reset convergence metadata and make local scalar edits
@@ -111,6 +112,7 @@
       accountNameAt: carried?.accountNameAt,
       defaultStampAt: carried?.defaultStampAt,
       settingsAt: carried?.settingsAt,
+      walletLinkAt: carried?.walletLinkAt,
       lastModified: carried?.lastModified,
       devices: carried?.devices ?? [],
       connectedApps: carried?.connectedApps ?? [],

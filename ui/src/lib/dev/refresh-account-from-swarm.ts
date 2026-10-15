@@ -106,6 +106,8 @@ export async function refreshAccountFromSwarm(accountId: string): Promise<Refres
       defaultStampAt: state.defaultStampAt,
       settings: state.settings,
       settingsAt: state.settingsAt,
+      walletLink: state.walletLink,
+      walletLinkAt: state.walletLinkAt,
     })
 
     return { ok: true, refreshedAt: Date.now() }

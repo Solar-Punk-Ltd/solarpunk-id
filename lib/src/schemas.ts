@@ -171,11 +171,12 @@ export const WalletLinkSchema = z.object({
  * The account's synced settings, one shape for the account record, the state
  * snapshot and the device feed, so a setting one of them does not name is
  * never stripped on the way to another device. The whole object is one
- * last-writer-wins field (`settingsAt`).
+ * last-writer-wins field (`settingsAt`). The wallet link is not in it: it
+ * has a clock of its own (`walletLinkAt`), so another device's settings edit
+ * can never bring back a link that was turned off.
  */
 export const AccountSettingsSchema = z.object({
   appSessionDuration: z.number().optional(),
-  walletLink: WalletLinkSchema.optional(),
 })
 
 // ============================================================================
@@ -368,6 +369,8 @@ export const SyncedAccountSchemaV1 = z.object({
   postageStamps: z.array(PostageStampSchemaV1).default([]),
   // Per-account settings (was identity.settings).
   settings: AccountSettingsSchema.optional(),
+  // The wallet link while "Show my ENS name on sites" is on (docs/Wallet-Link.md).
+  walletLink: WalletLinkSchema.optional(),
   // Per-field LWW clocks for the scalar account fields, so a concurrent change to
   // a *different* scalar on another device is not dropped wholesale, and a peer's
   // change propagates on refresh. Absent → fall back to the account's `createdAt`,
@@ -376,6 +379,7 @@ export const SyncedAccountSchemaV1 = z.object({
   accountNameAt: z.number().optional(),
   defaultStampAt: z.number().optional(),
   settingsAt: z.number().optional(),
+  walletLinkAt: z.number().optional(),
   // Last-writer-wins clock for cross-device metadata merge (set on any change).
   lastModified: z.number().optional(),
   /**
@@ -464,10 +468,12 @@ export const AccountMetadataSchemaV1 = z.object({
   publicKey: CompressedPublicKeySchema,
   // Per-account settings (was identity.settings).
   settings: AccountSettingsSchema.optional(),
+  walletLink: WalletLinkSchema.optional(),
   // Per-field LWW clocks for the scalar fields (see `SyncedAccountSchemaV1`).
   accountNameAt: z.number().optional(),
   defaultStampAt: z.number().optional(),
   settingsAt: z.number().optional(),
+  walletLinkAt: z.number().optional(),
   createdAt: z.number(),
   lastModified: z.number(),
   devices: z.array(DeviceSchemaV1).default([]),

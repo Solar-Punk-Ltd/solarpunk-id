@@ -3,7 +3,10 @@
 
 import { describe, it, expect } from "vitest"
 import { BatchId, PrivateKey } from "@ethersphere/bee-js"
-import { serializeAccountStateSnapshot } from "./account-state-snapshot"
+import {
+  accountToStateSnapshot,
+  serializeAccountStateSnapshot,
+} from "./account-state-snapshot"
 import { AccountStateSnapshotSchemaV1 } from "../schemas"
 import type { SignedInAccount } from "../schemas"
 import {
@@ -544,16 +547,18 @@ describe("AccountStateSnapshotSchemaV1", () => {
     expect(typeof AccountStateSnapshotSchemaV1.safeParse).toBe("function")
   })
 
-  it("keeps the wallet link in the settings", () => {
+  it("keeps the wallet link and its own clock", () => {
     const walletLink = signedWalletLink()
-    const account = createAccount({ settings: { walletLink } })
+    const account = createAccount({ walletLink, walletLinkAt: 1234 })
+    const snapshot = accountToStateSnapshot(account, account.id.toHex(), 5678)
 
     const result = AccountStateSnapshotSchemaV1.safeParse(
-      JSON.parse(JSON.stringify(serializeFromAccount(account))),
+      JSON.parse(JSON.stringify(serializeAccountStateSnapshot(snapshot))),
     )
 
     expect(result.success).toBe(true)
     if (!result.success) return
-    expect(result.data.metadata.settings?.walletLink).toEqual(walletLink)
+    expect(result.data.metadata.walletLink).toEqual(walletLink)
+    expect(result.data.metadata.walletLinkAt).toBe(1234)
   })
 })

@@ -374,7 +374,7 @@
       </div>
       <!-- Shown off only where the wallet can turn it on, but shown on everywhere, so any
         device can turn it off. -->
-      {#if access.type === 'eth-wallet' || account.settings?.walletLink !== undefined}
+      {#if access.type === 'eth-wallet' || account.walletLink !== undefined}
         <div class="pl-5">
           <EnsNameSetting {account} />
         </div>

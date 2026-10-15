@@ -25,7 +25,7 @@
 
   let { account }: Props = $props()
 
-  const shown = $derived(account.settings?.walletLink !== undefined)
+  const shown = $derived(account.walletLink !== undefined)
 
   let dialog = $state<'turn-on' | 'pending' | 'turn-off' | undefined>(undefined)
   let error = $state<string | undefined>(undefined)

@@ -34,12 +34,15 @@ cannot turn it on. That is how a smart-contract wallet (ERC-1271) signs, and
 sign-in refuses those already. The person is told so in plain words, and
 nothing is stored.
 
-The link is kept in the account's synced settings, `settings.walletLink`, so
-every device of the account has it ([Account-State.md](Account-State.md)).
-Settings merge as one last-writer-wins value on `settingsAt`.
+The link is kept in the account's synced state as `walletLink`, so every
+device of the account has it ([Account-State.md](Account-State.md)). It has a
+last-writer-wins clock of its own, `walletLinkAt`, apart from the other
+settings and their `settingsAt`. Were it one of the settings, a device that
+had not yet seen the link turned off would bring it back with any later
+settings edit of its own, such as a new session length.
 
-Turning it off removes the link from the settings, on a newer `settingsAt`,
-so the removal reaches every device. From then on no site receives it. The
+Turning it off removes the link on a newer `walletLinkAt`, so the removal
+reaches every device, and only a newer turn-on can undo it. From then on no site receives it. The
 setting says plainly that messages already sent keep showing the name, since
 a chat that carries the link carries it inside each message.
 

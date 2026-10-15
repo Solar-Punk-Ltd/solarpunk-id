@@ -1562,7 +1562,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       id: new EthAddress(
         new PrivateKey(TEST_LINK_ACCOUNT_KEY_HEX).publicKey().address().toHex(),
       ),
-      settings: { walletLink },
+      walletLink,
     })
 
     // The frame stores the session after the handover, through the global

@@ -3883,7 +3883,7 @@ export class SwarmIdProxy {
           const { account } = connection
           const { sharingPublicKey, postageSignerAddress } =
             this.identityKeysFor(account.derivationKey)
-          const walletLink = account.settings?.walletLink
+          const { walletLink } = account
           identity = {
             id: account.id.toHex(),
             name: account.name,
