@@ -56,7 +56,7 @@ function fold(local: ConnectedApp[], incoming: ConnectedApp[]): ConnectedApp[] {
 // The wait for the person's confirm is this context's own, like the secret. A
 // peer's entry never carries it, so a fold must neither drop ours nor invent
 // one.
-describe("restoreLocalSessionFields — a stamp pending confirm", () => {
+describe("restoreLocalSessionFields, a stamp pending confirm", () => {
   it("keeps this context's pending stamp through a fold", () => {
     const local = localSession({ stampPending: true })
     const [app] = fold([local], [onWire({ ...local, stampPending: undefined })])
