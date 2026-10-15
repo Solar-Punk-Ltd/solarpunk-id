@@ -129,6 +129,8 @@ export {
   siteChatAddress,
 } from "./utils/chat-binding"
 
+export { countersignWalletLink } from "./utils/wallet-link"
+
 export {
   DEFAULT_SITE_ALLOW_LIST_ENS_NAME,
   DEFAULT_SITE_ALLOW_LIST_RECORD_KEY,
