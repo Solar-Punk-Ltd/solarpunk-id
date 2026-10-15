@@ -22,13 +22,7 @@
     active?: boolean
   }
 
-  let {
-    action,
-    text,
-    id,
-    class: className = 'h-[36px] w-full',
-    active = true,
-  }: Props = $props()
+  let { action, text, id, class: className = 'h-[36px] w-full', active = true }: Props = $props()
 
   let container = $state<HTMLDivElement>()
 
