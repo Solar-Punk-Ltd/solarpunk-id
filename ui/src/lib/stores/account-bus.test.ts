@@ -153,8 +153,19 @@ const deltasPublished = (transport: (typeof transports)[number]) =>
     .map(([message]) => message)
     .filter((message) => message.type !== 'presence')
 
-/** The join derives a topic (two HMACs + importKey), so it is not synchronous. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 60))
+const JOIN_POLL_MS = 5
+/**
+ * The join derives a topic (two HMACs + importKey) before it opens a room, so
+ * the room appears some time after `join()`. This waits for the `count`th room
+ * to exist rather than for a fixed time, which a slow machine outruns. Its
+ * subscription is attached in the same synchronous step as its construction.
+ * The test's own timeout is the only bound.
+ */
+async function joined(count = 1): Promise<void> {
+  while (transports.length < count) {
+    await new Promise((resolve) => setTimeout(resolve, JOIN_POLL_MS))
+  }
+}
 /** Past the publish debounce — a "did not publish" assertion that resolves
  *  before the timer would have fired proves nothing, so this is derived from
  *  the store's own constant rather than a number that can drift behind it. */
@@ -180,7 +191,7 @@ describe('accountBusStore', () => {
   it('joins the account-derived room, not one named by the account id', async () => {
     const account = makeAccount()
     accountBusStore.join(account)
-    await settle()
+    await joined()
 
     const { topic } = await deriveBusContext(DERIVATION_KEY)
     expect(transports).toHaveLength(1)
@@ -193,7 +204,7 @@ describe('accountBusStore', () => {
   it('publishes a delta with no app secret on it', async () => {
     const account = makeAccount()
     accountBusStore.join(account)
-    await settle()
+    await joined()
 
     accountBusStore.publish(account)
     await settlePublish()
@@ -211,7 +222,7 @@ describe('accountBusStore', () => {
   // another's is the cross-account leak the derived topic exists to prevent.
   it('does not publish an account it has not joined', async () => {
     accountBusStore.join(makeAccount())
-    await settle()
+    await joined()
 
     accountBusStore.publish(
       makeAccount({
@@ -231,7 +242,7 @@ describe('accountBusStore', () => {
   it('keeps the joined account pending when another account commits in the same window', async () => {
     const account = makeAccount()
     accountBusStore.join(account)
-    await settle()
+    await joined()
 
     accountBusStore.publish(account)
     accountBusStore.publish(
@@ -261,15 +272,15 @@ describe('accountBusStore', () => {
     accountBusStore.publish(account)
     await settlePublish()
     openGate()
-    await settle()
+    await joined()
+    await vi.waitFor(() => expect(deltasPublished(transports[0])).toHaveLength(1))
 
     expect(transports).toHaveLength(1)
-    expect(deltasPublished(transports[0])).toHaveLength(1)
   })
 
   it('closes the previous room when the account switches', async () => {
     accountBusStore.join(makeAccount())
-    await settle()
+    await joined()
 
     accountBusStore.join(
       makeAccount({
@@ -277,7 +288,7 @@ describe('accountBusStore', () => {
         derivationKey: OTHER_DERIVATION_KEY,
       }),
     )
-    await settle()
+    await joined(2)
 
     expect(transports).toHaveLength(2)
     expect(transports[0].close).toHaveBeenCalled()
@@ -291,7 +302,7 @@ describe('accountBusStore', () => {
   // — this is the wiring that did not exist while the store was publish-only.
   it('folds a delta a peer publishes into the room', async () => {
     accountBusStore.join(makeAccount())
-    await settle()
+    await joined()
 
     transports[0].deliver?.(makeDelta('aa'.repeat(20), 'Renamed On Another Device'))
 
@@ -309,7 +320,7 @@ describe('accountBusStore', () => {
   // device list can say who is online without a Swarm read.
   it('announces this device on join', async () => {
     accountBusStore.join(makeAccount())
-    await settle()
+    await joined()
 
     expect(transports[0].publish).toHaveBeenCalledWith({
       type: 'presence',
@@ -320,7 +331,7 @@ describe('accountBusStore', () => {
 
   it("lists a peer's beat as live, but not this device's own", async () => {
     accountBusStore.join(makeAccount())
-    await settle()
+    await joined()
 
     transports[0].deliver?.({
       type: 'presence',
@@ -349,7 +360,7 @@ describe('accountBusStore', () => {
   // it was heard on rather than waiting out PRESENCE_MAX_AGE_MS (#572).
   it('drops a peer when the room says its socket left', async () => {
     accountBusStore.join(makeAccount())
-    await settle()
+    await joined()
 
     transports[0].deliver?.(
       { type: 'presence', accountId: 'aa'.repeat(20), fromDeviceId: 'peer-device' },
@@ -365,7 +376,7 @@ describe('accountBusStore', () => {
   // must never see it, since it writes durable storage.
   it('does not fold traffic that is not a delta', async () => {
     accountBusStore.join(makeAccount())
-    await settle()
+    await joined()
 
     transports[0].deliver?.({ type: 'account-delta', snapshot: { nope: true } })
     transports[0].deliver?.({ type: 'lease-request', accountId: 'aa'.repeat(20) })
@@ -379,7 +390,7 @@ describe('accountBusStore', () => {
   // tombstone its apps or add stamps to it. The proxy drops the same mismatch.
   it('does not fold a delta that names a different account', async () => {
     accountBusStore.join(makeAccount())
-    await settle()
+    await joined()
 
     transports[0].deliver?.(makeDelta('bb'.repeat(20), 'Another Account Entirely'))
 
@@ -388,7 +399,7 @@ describe('accountBusStore', () => {
 
   it('stops folding once the room is left', async () => {
     accountBusStore.join(makeAccount())
-    await settle()
+    await joined()
     const room = transports[0]
     accountBusStore.leave()
 
@@ -402,7 +413,6 @@ describe('accountBusStore', () => {
     const account = makeAccount()
 
     accountBusStore.join(account)
-    await settle()
     expect(() => accountBusStore.publish(account)).not.toThrow()
     await settlePublish()
 
