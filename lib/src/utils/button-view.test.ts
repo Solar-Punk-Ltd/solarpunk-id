@@ -76,36 +76,55 @@ describe("buttonView", () => {
     })
   })
 
-  it("draws the site's border, for a secondary style", () => {
-    const config = {
-      borderColor: "#667eea",
+  // Set one by one, after a reset, so a value the browser does not take
+  // leaves no border rather than bringing the button's default one back.
+  const borderOf = (style: Record<string, string>) => {
+    const keys = Object.keys(style).filter(
+      (key) => key.startsWith("border") && key !== "borderRadius",
+    )
+    return Object.fromEntries(keys.map((key) => [key, style[key]]))
+  }
+
+  it("draws the site's border, for a secondary style, after a reset", () => {
+    const config = { borderColor: "#667eea", borderWidth: "2px" }
+    const { style } = buttonView("sign-in", config, false)
+    expect(borderOf(style)).toEqual({
+      border: "0 none transparent",
       borderWidth: "2px",
-      backgroundColor: "transparent",
-    }
-    expect(buttonView("sign-in", config, false).style.border).toBe(
-      "2px solid #667eea",
+      borderStyle: "solid",
+      borderColor: "#667eea",
+    })
+    expect(Object.keys(style).indexOf("border")).toBeLessThan(
+      Object.keys(style).indexOf("borderWidth"),
     )
     expect(
       buttonView("sign-in", { ...config, borderStyle: "dashed" }, false).style
-        .border,
-    ).toBe("2px dashed #667eea")
+        .borderStyle,
+    ).toBe("dashed")
   })
 
   it("keeps the border while busy and while disabled", () => {
     const config = { borderColor: "#667eea", borderWidth: "1px" }
-    expect(buttonView("sign-in", config, true).style.border).toBe(
-      "1px solid #667eea",
-    )
+    const drawn = borderOf(buttonView("sign-in", config, false).style)
+    expect(borderOf(buttonView("sign-in", config, true).style)).toEqual(drawn)
     expect(
-      buttonView("sign-in", { ...config, disabled: true }, false).style.border,
-    ).toBe("1px solid #667eea")
+      borderOf(
+        buttonView("sign-in", { ...config, disabled: true }, false).style,
+      ),
+    ).toEqual(drawn)
   })
 
   it("draws no border unless the site names one", () => {
-    expect(buttonView("sign-in", {}, false).style.border).toBe("none")
+    expect(borderOf(buttonView("sign-in", {}, false).style)).toEqual({
+      border: "0 none transparent",
+    })
     expect(
-      buttonView("sign-in", { borderColor: "#000" }, false).style.border,
-    ).toBe("1px solid #000")
+      borderOf(buttonView("sign-in", { borderColor: "#000" }, false).style),
+    ).toMatchObject({
+      borderWidth: "1px",
+      borderStyle: "solid",
+      borderColor: "#000",
+    })
   })
 
   it("keeps the built-in look, and no font-family, when unset", () => {

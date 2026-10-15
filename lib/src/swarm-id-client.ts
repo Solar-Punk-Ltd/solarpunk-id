@@ -92,6 +92,8 @@ import type {
 } from "./types"
 import {
   BUTTON_FRAME_LOADED,
+  ButtonActionSchema,
+  ButtonConfigSchema,
   ButtonToParentMessageSchema,
   IframeToParentMessageSchema,
   ParentToIframeMessageSchema,
@@ -124,6 +126,33 @@ function initDeadline(
       ? new SwarmIdError("init-failed", error.message, { cause: error })
       : error
   })
+}
+
+/**
+ * A button's look, refused here rather than by the frame, which drops a
+ * message it cannot parse, so a bad value would leave the button unshown or
+ * an update unapplied with nothing said on the site's side.
+ */
+function checkedButtonConfig(
+  config: ButtonConfig | undefined,
+): ButtonConfig | undefined {
+  if (config === undefined) return undefined
+  const parsed = ButtonConfigSchema.safeParse(config)
+  if (parsed.success) return parsed.data
+  const issue = parsed.error.issues[0]
+  throw new SwarmIdError(
+    "invalid-request",
+    `Invalid button config at ${["config", ...issue.path].join(".")}: ${issue.message}`,
+    { cause: parsed.error },
+  )
+}
+
+function checkedButtonAction(action: ButtonAction): ButtonAction {
+  if (ButtonActionSchema.safeParse(action).success) return action
+  throw new SwarmIdError(
+    "invalid-request",
+    `Invalid button action: ${JSON.stringify(action)}`,
+  )
 }
 
 /**
@@ -965,16 +994,17 @@ export class SwarmIdClient {
    * Unmounting removes only the button, at any time. The session stays, and
    * signing out stays {@link disconnect}. A button unmounted while its window
    * is open stays hidden until the window closes, because the window reads
-   * from it, as it opens, where to hand the session. Removing its container
-   * yourself in the moment between the click and the window opening loses
-   * that sign-in, and the person signs in again.
+   * from it, as it opens, where to hand the session. Unmounting it, or
+   * removing its container, in the moment between the click and the window
+   * opening loses that sign-in, and the person signs in again.
    *
    * @param container - The element the button fills. Give it the size the button should have
    * @param options.action - `sign-in`, or `change-stamp` for a person signed in
    * @param options.config - The label, its busy and disabled states, colours and typography
    * @param options.onWindowChange - Called with `open`, `closed` or `blocked` for the button's connect window
-   * @returns The button: `ready`, `update()` and `unmount()`
+   * @returns The button: `ready`, `update()` and `unmount()`, where `update()` refuses a bad value the same way
    * @throws {SwarmIdError} `invalid-state` if the client is not initialized
+   * @throws {SwarmIdError} `invalid-request` if `action` or a `config` value is not one the button takes, naming the field
    *
    * @example
    * ```typescript
@@ -994,8 +1024,8 @@ export class SwarmIdClient {
     this.ensureReady()
     const iframeOrigin = this.iframeOrigin
     const expectedOrigin = new URL(iframeOrigin).origin
-    let action: ButtonAction = options.action
-    let config: ButtonConfig | undefined = options.config
+    let action: ButtonAction = checkedButtonAction(options.action)
+    let config: ButtonConfig | undefined = checkedButtonConfig(options.config)
     let loaded = false
     let settled = false
     let windowOpen = false
@@ -1053,8 +1083,11 @@ export class SwarmIdClient {
         rejectReady(new SwarmIdError("init-failed", message.error))
       else {
         windowOpen = message.state === "open"
-        options.onWindowChange?.(message.state)
-        if (unmounted && !windowOpen) remove()
+        if (unmounted) {
+          if (!windowOpen) remove()
+        } else {
+          options.onWindowChange?.(message.state)
+        }
       }
     }
     const remove = () => {
@@ -1073,8 +1106,11 @@ export class SwarmIdClient {
     const mounted: MountedButton = {
       ready,
       update: (next) => {
-        action = next.action ?? action
-        config = next.config ?? config
+        if (unmounted) return
+        action =
+          next.action === undefined ? action : checkedButtonAction(next.action)
+        config =
+          next.config === undefined ? config : checkedButtonConfig(next.config)
         frame.style.borderRadius = config?.borderRadius ?? "0"
         if (loaded) post({ type: "buttonUpdate", action, config })
       },

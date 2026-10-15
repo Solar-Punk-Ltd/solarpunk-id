@@ -19,15 +19,25 @@ const SIDE_PADDING = "0 12px"
 const DEFAULT_BORDER_WIDTH = "1px"
 const DEFAULT_BORDER_STYLE = "solid"
 
-/** The border the site asked for, or none when it named neither width nor colour */
-function border(config: ButtonConfig): string {
+/** Clears the button's built-in border before any of the site's is set */
+const NO_BORDER = "0 none transparent"
+
+/**
+ * The border the site asked for, after the reset, one property at a time. A
+ * shorthand with one value the browser does not take is dropped whole, which
+ * brought the button's built-in border back. Set one by one, a bad value
+ * leaves that one property as the reset left it.
+ */
+function border(config: ButtonConfig): Record<string, string> {
   if (config.borderColor === undefined && config.borderWidth === undefined) {
-    return "none"
+    return { border: NO_BORDER }
   }
-  const width = config.borderWidth ?? DEFAULT_BORDER_WIDTH
-  const style = config.borderStyle ?? DEFAULT_BORDER_STYLE
-  const color = config.borderColor ?? config.color ?? DEFAULT_COLOR
-  return `${width} ${style} ${color}`
+  return {
+    border: NO_BORDER,
+    borderWidth: config.borderWidth ?? DEFAULT_BORDER_WIDTH,
+    borderStyle: config.borderStyle ?? DEFAULT_BORDER_STYLE,
+    borderColor: config.borderColor ?? config.color ?? DEFAULT_COLOR,
+  }
 }
 
 /** What the button frame paints, worked out from what the site asked for */
@@ -59,7 +69,7 @@ export function buttonView(
     boxSizing: "border-box",
     margin: "0",
     padding: SIDE_PADDING,
-    border: border(config),
+    ...border(config),
     borderRadius: config.borderRadius ?? "0",
     backgroundColor: config.backgroundColor ?? DEFAULT_BACKGROUND,
     color: config.color ?? DEFAULT_COLOR,

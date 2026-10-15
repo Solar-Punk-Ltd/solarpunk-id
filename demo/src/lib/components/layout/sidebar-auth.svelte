@@ -128,7 +128,14 @@
           <InfoButton text={buttonTooltip} />
         </div>
         <div class="mt-2">
-          <SwarmIdButton id="swarm-id-button" action="sign-in" text="Connect to Swarm" />
+          <!-- Mounted while the panel is open and unmounted when it closes, the
+               connect window included -->
+          <SwarmIdButton
+            id="swarm-id-button"
+            action="sign-in"
+            text="Connect to Swarm"
+            active={popoverOpen}
+          />
         </div>
       </div>
 

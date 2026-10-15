@@ -252,3 +252,28 @@ test("the button loads a font file from the site's origin and uses it", async ({
   )
   expect(shownIn).toContain(BRAND_FAMILY)
 })
+
+// The demo unmounts its sign-in button with client.unmount() when its panel
+// closes. Closed while the connect window is open, the button's frame stays,
+// hidden, so the window can still hand the session over, and goes once the
+// window closes.
+test('a button unmounted while its window is open signs the site in and then goes', async ({
+  page,
+}, testInfo) => {
+  await accountWithTwoDrivesOnTheDemo(page, demoOrigin!)
+  if (partitions(testInfo.project.name)) await expectProxyPartitioned(page)
+
+  const popup = await openSwarmIdButtonPopup(page)
+  await expect(popup.getByRole('button', { name: /0x[0-9a-fA-F]{4}/ })).toBeVisible({
+    timeout: 15000,
+  })
+  // Closes the panel, as a click elsewhere on the site's page does
+  await page.getByRole('heading', { name: 'Not connected' }).click()
+  const frame = page.locator('#swarm-id-button iframe')
+  await expect(frame).toHaveCount(1)
+  await expect(frame).toBeHidden()
+
+  await confirmOnDefault(page, popup)
+  await signedIn(page)
+  await expect(frame).toHaveCount(0, { timeout: 10000 })
+})

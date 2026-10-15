@@ -215,6 +215,11 @@ describe("ButtonConfigSchema typography (#779)", () => {
     ["a data URL", "data:font/woff2;base64,AAAA"],
     ["a script URL", "javascript:alert(1)"],
     ["no URL", "brand.woff2"],
+    ["a URL with a user name", "https://user@site.example.com/brand.woff2"],
+    [
+      "a URL with a password",
+      "https://user:secret@site.example.com/brand.woff2",
+    ],
   ])("refuses a font file on %s", (_case, url) => {
     expect(() =>
       ButtonConfigSchema.parse({ fontFaces: [{ family: "Brand", url }] }),

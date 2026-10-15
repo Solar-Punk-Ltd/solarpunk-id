@@ -155,7 +155,7 @@ Shows a Swarm ID button in `container`. The button is a small frame of Swarm ID'
 
 A click on it opens the connect window, and the window hands the session back to your site's Swarm ID frame. `onConnectionChange` fires as for any sign-in. This is how a person signs in, or changes the stamp your site uses, whenever your site and Swarm ID are on different sites, for example your site at its own domain and Swarm ID at `solarpunkid.bzz.link`. There the browser keeps Swarm ID's frames apart from Swarm ID's own storage, and a frame may open a window only from a click inside it, so the click has to happen in a Swarm ID frame. It works the same where the two share storage.
 
-Unmounting removes only the button, at any time: the session stays, and signing out stays [`disconnect()`](#disconnect). So a site can show the button in a panel and close the panel while the window is open or once the person is signed in. The sign-in and the stamp the person confirms in the window still reach your site, as long as your page is not reloaded or left before they confirm. A button unmounted while its window is open stays hidden until the window closes, because the window reads from it, as it opens, where to hand the session. Removing the container yourself in the moment between the click and the window opening loses that sign-in.
+Unmounting removes only the button, at any time: the session stays, and signing out stays [`disconnect()`](#disconnect). So a site can show the button in a panel and close the panel while the window is open or once the person is signed in. The sign-in and the stamp the person confirms in the window still reach your site, as long as your page is not reloaded or left before they confirm. A button unmounted while its window is open stays hidden until the window closes, because the window reads from it, as it opens, where to hand the session. Unmounting it, or removing its container, in the moment between the click and the window opening loses that sign-in. Once unmounted, `update()` does nothing and `onWindowChange` is not called again.
 
 **Parameters:**
 
@@ -177,6 +177,7 @@ Unmounting removes only the button, at any time: the session stays, and signing 
 **Throws:**
 
 - `invalid-state` if the client is not initialized
+- `invalid-request` if `action` or a `config` value is not one the button takes, a plain-http font file for example. The message names the field, and `update()` refuses such a value the same way
 
 **Example:**
 
