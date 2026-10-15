@@ -30,13 +30,23 @@ export const DRIVE_SETTLE_TIMEOUT_MS = 75_000
 export const CHAIN_TEST_TIMEOUT_MS = 150_000
 
 /**
+ * What the first page of a flow may take to show its first control. The dev
+ * server compiles a route on its first request, and on a shared machine under
+ * load that has taken past the 5 s action budget (two chromium flakes on a
+ * shared CI machine, 2026-10-15), so 5 s is a budget for a click, not a load.
+ */
+const FIRST_LOAD_TIMEOUT_MS = 30_000
+
+/**
  * Drives the account-creation wizard from /account/new to completion using the
  * Password access method (needs no WebAuthn/wallet test infra). Where the flow
  * lands afterwards depends on the entry point: the done page when standalone,
  * /connect/done inside a connect popup.
  */
 export async function completeCreateFlow(page: Page) {
-  await page.getByRole('link', { name: 'Create a new account' }).click()
+  await page
+    .getByRole('link', { name: 'Create a new account' })
+    .click({ timeout: FIRST_LOAD_TIMEOUT_MS })
   await expect(page).toHaveURL(/\/account\/new$/)
   // Name is prefilled with a generated one.
   await page.getByRole('button', { name: 'Continue' }).click()
