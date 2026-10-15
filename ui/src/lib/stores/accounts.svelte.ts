@@ -1,9 +1,11 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 import { BatchId, EthAddress } from '@ethersphere/bee-js'
+import type { WalletLink } from '@solarpunkltd/swarm-id'
 import {
   type AccessMethod,
   type Account as AccountRecord,
+  type AccountSettings,
   type ConnectedApp,
   type Device,
   type LocalVault,
@@ -21,8 +23,6 @@ import { isCleanSite, requireCleanSite } from '$lib/accepted-site'
 import { drivesNeedingAttention, soonestDriveExpiry } from '$lib/drives'
 import { daysToMs } from '$lib/duration'
 import { toastStore } from '$lib/stores/toast.svelte'
-
-type AccountSettings = { appSessionDuration?: number }
 
 /**
  * The device-local tail of the account record, mirroring the lib's `Account`
@@ -341,6 +341,19 @@ export class Account {
     }
     this.#resetSyncedFields()
     this.#commit({ skipSync: true })
+  }
+
+  /**
+   * Keep or remove the wallet link (docs/Wallet-Link.md) that "Show my ENS
+   * name on sites" shares. On the settings clock, so a removal reaches the
+   * other devices as a newer value rather than a missing field.
+   */
+  setWalletLink(walletLink: WalletLink | undefined) {
+    const now = Date.now()
+    this.settings = { ...this.settings, walletLink }
+    this.settingsAt = now
+    this.lastModified = now
+    this.#commit()
   }
 
   /** How long app connections stay valid, set in days (stored as ms). */

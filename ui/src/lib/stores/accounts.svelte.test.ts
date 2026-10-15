@@ -375,6 +375,40 @@ describe('Account.signOut storage-warning remnant', () => {
   })
 })
 
+describe('Account.setWalletLink', () => {
+  // The shape is all the store checks: the link is signed and checked where it
+  // is made, so placeholder signatures stand in for one here.
+  const LINK = {
+    message: 'Swarm ID wallet link v1',
+    walletSignature: `0x${'11'.repeat(65)}`,
+    accountSignature: `0x${'22'.repeat(65)}`,
+  }
+
+  it('keeps the link with the other settings and stamps the settings clock', () => {
+    const account = new Account(
+      { ...signedInRecord(), settings: { appSessionDuration: 5 } },
+      noCommit,
+    )
+    account.setWalletLink(LINK)
+    expect(account.settings).toEqual({ appSessionDuration: 5, walletLink: LINK })
+    expect(account.settingsAt).toEqual(expect.any(Number))
+    const rehydrated = new Account(account.toRecord(), noCommit)
+    expect(rehydrated.settings?.walletLink).toEqual(LINK)
+  })
+
+  // Turning the setting off must reach the other devices as a newer settings
+  // value, not as a field that is merely missing.
+  it('removes the link on a newer clock', () => {
+    const account = new Account(
+      { ...signedInRecord(), settings: { walletLink: LINK }, settingsAt: 1 },
+      noCommit,
+    )
+    account.setWalletLink(undefined)
+    expect(account.settings?.walletLink).toBeUndefined()
+    expect(account.settingsAt).toBeGreaterThan(1)
+  })
+})
+
 describe('Account.setAppStamp', () => {
   const APP_URL = 'https://app.example.com'
   const BATCH_HEX = 'c'.repeat(64)

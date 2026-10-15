@@ -5,7 +5,7 @@ import { type Hex, parseSignature, serializeSignature } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { enrollWalletKeySource, unlockWalletKeySource } from './eth-wallet'
+import { enrollWalletKeySource, unlockWalletForLink, unlockWalletKeySource } from './eth-wallet'
 import { connectAccessWallet } from './onboard'
 
 vi.mock('$lib/crypto/onboard', () => ({ connectAccessWallet: vi.fn() }))
@@ -121,5 +121,35 @@ describe('unlockWalletKeySource', () => {
     connect(deterministic, { address: CONTRACT_ADDRESS })
 
     await expect(unlockWalletKeySource()).rejects.toThrow(/not supported/)
+  })
+})
+
+describe('unlockWalletForLink', () => {
+  beforeEach(() => vi.mocked(connectAccessWallet).mockReset())
+
+  const LINK_MESSAGE = 'Swarm ID wallet link v1\nAccount: 0x00\nWallet: 0x00\nDate: x'
+  /** Another throwaway key, for a wallet whose link signature is someone else's. */
+  const otherAccount = privateKeyToAccount(`0x${'59'.repeat(32)}`)
+
+  it('connects once, signs the unlock message, then the link', async () => {
+    const request = connect(deterministic)
+
+    const wallet = await unlockWalletForLink()
+    const signature = await wallet.signLink(LINK_MESSAGE)
+
+    expect(connectAccessWallet).toHaveBeenCalledTimes(1)
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(wallet.source.walletAddress).toBe(account.address)
+    expect(signature).toBe(await deterministic(LINK_MESSAGE))
+  })
+
+  it('refuses a link signature that does not recover the wallet', async () => {
+    connect((message) =>
+      message === LINK_MESSAGE ? otherAccount.signMessage({ message }) : deterministic(message),
+    )
+
+    const wallet = await unlockWalletForLink()
+
+    await expect(wallet.signLink(LINK_MESSAGE)).rejects.toThrow(/smart-contract wallet/)
   })
 })

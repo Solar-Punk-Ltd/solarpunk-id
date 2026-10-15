@@ -48,6 +48,7 @@ export {
 export type {
   AccessMethod,
   Account,
+  AccountSettings,
   ConnectedApp,
   Device,
   LocalVault,
