@@ -433,7 +433,7 @@ describe('the chat binding at connect', () => {
       opener.postMessage.mockClear()
 
       pickDrive(account, APP_BATCH)
-      handOverPickedStamp(account, request)
+      expect(handOverPickedStamp(account, request)).toBe('handed-over')
 
       const again = handedOver()
       expect(again.type).toBe('setSecret')
@@ -457,15 +457,30 @@ describe('the chat binding at connect', () => {
       await completeConnect(account, ENTROPY, shared)
 
       pickDrive(account, APP_BATCH)
-      handOverPickedStamp(account, shared)
 
+      expect(handOverPickedStamp(account, shared)).toBe('not-needed')
       expect(opener.postMessage).not.toHaveBeenCalled()
     })
 
-    it('sends nothing for a site with no live connection', () => {
+    it('says the pick did not reach a site with no live connection', () => {
       const account = fakeAccount([{ appUrl: APP_ORIGIN, appName: 'dApp', lastConnectedAt: 1 }])
 
-      handOverPickedStamp(account, request)
+      expect(handOverPickedStamp(account, request)).toBe('not-reached')
+      expect(opener.postMessage).not.toHaveBeenCalled()
+    })
+
+    // The frame that opened this window is gone once the site reloaded or
+    // navigated away, so nothing can carry the pick to the open site.
+    it('says the pick did not reach a frame that is gone', async () => {
+      const account = fakeAccount()
+      await completeConnect(account, ENTROPY, request)
+      opener.postMessage.mockClear()
+      pickDrive(account, APP_BATCH)
+
+      Object.assign(opener, { closed: true })
+      expect(handOverPickedStamp(account, request)).toBe('not-reached')
+      vi.stubGlobal('window', { opener: null, location: { origin: IDENTITY_ORIGIN } })
+      expect(handOverPickedStamp(account, request)).toBe('not-reached')
 
       expect(opener.postMessage).not.toHaveBeenCalled()
     })

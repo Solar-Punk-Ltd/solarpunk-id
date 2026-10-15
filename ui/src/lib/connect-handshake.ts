@@ -146,9 +146,9 @@ function sendSecretToOpener(
   request: ConnectRequest,
   appSecret: string,
   chatBinding: ChatBinding | undefined,
-): void {
-  if (!request.partitionChallenge || !window.opener) {
-    return
+): boolean {
+  if (!request.partitionChallenge || !window.opener || window.opener.closed) {
+    return false
   }
   const message = {
     type: 'setSecret',
@@ -165,6 +165,7 @@ function sendSecretToOpener(
   // which structured clone rejects (DataCloneError). The payload is already
   // the JSON wire shape, so a JSON round-trip strips the reactivity.
   window.opener.postMessage(JSON.parse(JSON.stringify(message)), window.location.origin)
+  return true
 }
 
 /**
@@ -222,23 +223,38 @@ export function reuseConnection(account: Account, request: ConnectRequest): bool
 }
 
 /**
+ * How a drive picked on the done screen fared on its way to the open site:
+ * handed to the frame that opened this window, not needed because that frame
+ * reads the saved pick from shared storage, or not reached because the frame
+ * is gone. A frame that reloaded in place keeps no challenge and drops the
+ * message unseen, so `handed-over` says it was sent, not that it was taken.
+ */
+export type PickedStampHandover = 'handed-over' | 'not-needed' | 'not-reached'
+
+/**
  * Hand the session over again once the person picked the site's drive on the
  * done screen, which comes after the handover above. A frame kept apart from
- * this window's storage learns of the pick this way only, so an open site
- * moves to it at once. Same challenge, secret and binding as the handover
- * before it, which is what the proxy checks before taking it. A frame that
- * reads shared storage is not sent anything, the saved pick reaches it there.
+ * this window's storage learns of the pick this way only. Same challenge,
+ * secret and binding as the handover before it, which is what the proxy
+ * checks before taking it.
  */
-export function handOverPickedStamp(account: Account, request: ConnectRequest): void {
+export function handOverPickedStamp(
+  account: Account,
+  request: ConnectRequest,
+): PickedStampHandover {
   requireCleanSite(request.appOrigin)
+  if (!request.partitionChallenge) {
+    return 'not-needed'
+  }
   const connection = findReusableConnection(account, request.appOrigin)
   if (!connection?.appSecret) {
-    return
+    return 'not-reached'
   }
-  sendSecretToOpener(
+  const sent = sendSecretToOpener(
     account,
     request,
     connection.appSecret,
     keptChatBinding(account, request.appOrigin, connection.appSecret),
   )
+  return sent ? 'handed-over' : 'not-reached'
 }

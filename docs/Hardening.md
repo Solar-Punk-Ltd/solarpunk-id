@@ -56,6 +56,13 @@ parent and with the secret it already holds, and a newer window or the end
 of the session retires that challenge. It carries the same narrowed account
 view as the first handover, so the site learns the batch id and nothing more.
 
+The pick reaches the open site only while the frame that opened the window is
+still there. A site that reloaded, navigated or opened another window since
+gets nothing, and keeps its earlier stamp until it connects again. The window
+says so when it can see the frame is gone (`handOverPickedStamp` answers
+`not-reached`). A frame that reloaded in place keeps no challenge, drops the
+message, and the window cannot tell.
+
 - Code: `ui/src/routes/connect/done/+page.svelte`, `handOverPickedStamp` in
   `ui/src/lib/connect-handshake.ts`, `isStampHandover` in
   `lib/src/swarm-id-proxy.ts`.

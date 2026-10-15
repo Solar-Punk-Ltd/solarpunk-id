@@ -95,9 +95,11 @@ async function openConnectWindow(page: Page, button: string) {
   return popup
 }
 
-test('the connect window asks for the drive every time, and an open site uses the pick at once', async ({
-  page,
-}) => {
+/**
+ * An account with two drives, connected to the partitioned demo on the
+ * account default, which the picker starts on
+ */
+async function connectedOnDefault(page: Page) {
   await seedNoChain(page)
   await page.goto(`${ID_ORIGIN}/?signin`)
   await completeCreateFlow(page)
@@ -109,16 +111,22 @@ test('the connect window asks for the drive every time, and an open site uses th
   await expectProxyPartitioned(page)
   await recordStampsNamed(page)
 
-  // First connect: the picker starts on the account default.
   await page.getByRole('button', { name: 'Connect Swarm ID' }).click()
-  let popup = await openConnectWindow(page, 'Connect')
+  const popup = await openConnectWindow(page, 'Connect')
   await popup.getByRole('button', { name: /0x[0-9a-fA-F]{4}/ }).click()
   await popup.getByRole('textbox', { name: 'Account password' }).fill(PASSWORD)
   await popup.getByRole('button', { name: 'Confirm' }).click()
-  let picker = popup.getByRole('combobox', { name: 'Select drive' })
-  await expect(picker).toHaveValue(MAIN_BATCH)
+  await expect(popup.getByRole('combobox', { name: 'Select drive' })).toHaveValue(MAIN_BATCH)
   await goToApp(popup)
   await expect.poll(() => lastStampNamed(page), { timeout: 15000 }).toBe(MAIN_BATCH)
+}
+
+test('the connect window asks for the drive every time, and an open site uses the pick at once', async ({
+  page,
+}) => {
+  await connectedOnDefault(page)
+  let popup: Page
+  let picker
 
   // Signed in, the site opens the window again. The account is listed as used
   // with this site, the picker starts on the drive it uses, and a pick reaches
@@ -139,4 +147,24 @@ test('the connect window asks for the drive every time, and an open site uses th
   await picker.selectOption({ label: 'No drive' })
   await goToApp(popup)
   await expect.poll(() => lastStampNamed(page), { timeout: 15000 }).toBeNull()
+})
+
+// The window can carry a pick only to the frame that opened it. Once the site
+// reloaded, that frame is gone, and the window says the open site stays on
+// its earlier drive rather than closing as if it had moved.
+test('the connect window says so when the site it was opened from is gone', async ({ page }) => {
+  await connectedOnDefault(page)
+
+  const popup = await openConnectWindow(page, 'Change in Swarm ID')
+  await popup.getByRole('button', { name: /0x[0-9a-fA-F]{4}/ }).click()
+  const picker = popup.getByRole('combobox', { name: 'Select drive' })
+  await expect(picker).toHaveValue(MAIN_BATCH)
+  await page.reload()
+  await picker.selectOption({ label: 'Chat' })
+  await popup.getByRole('button', { name: 'Go to app' }).click()
+
+  await expect(
+    popup.getByText('Saved. The open site keeps its earlier drive until it connects again.'),
+  ).toBeVisible()
+  await goToApp(popup)
 })

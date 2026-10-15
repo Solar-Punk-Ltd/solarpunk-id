@@ -11,7 +11,9 @@
     starting on the site's current one. A pick that changes it is saved as the
     app's postageStampBatchID (the default saves "follow the default") and is
     handed to a frame kept apart from this window's storage, so the open site
-    uses it at once. Only this window's own record decides what it starts on;
+    uses it at once while that frame is the one that opened this window. When
+    that frame is gone the screen says the open site keeps its earlier drive
+    before it closes. Only the account's own record decides what it starts on;
   - no drives yet: the drive pitch, demoted to a secondary card.
 -->
 <script lang="ts">
@@ -53,6 +55,8 @@
   const currentDriveValue = $derived(account && app ? appStampValue(app, account) : '')
   let pickedDriveValue = $state<string | undefined>(undefined)
   const selectedDriveValue = $derived(pickedDriveValue ?? currentDriveValue)
+  /** The pick was saved but could not be carried to the open site */
+  let pickNotReached = $state(false)
 
   let addDriveOpen = $state(false)
 
@@ -66,6 +70,7 @@
 
   function goToApp() {
     if (
+      !pickNotReached &&
       account &&
       request &&
       showPicker &&
@@ -73,7 +78,10 @@
       pickedDriveValue !== currentDriveValue
     ) {
       account.setAppStamp(request.appOrigin, appStampChoice(pickedDriveValue, account))
-      handOverPickedStamp(account, request)
+      if (handOverPickedStamp(account, request) === 'not-reached') {
+        pickNotReached = true
+        return
+      }
     }
     connectStore.clear()
     window.close()
@@ -110,10 +118,17 @@
                 id="connect-drive"
                 options={driveOptions}
                 value={selectedDriveValue}
+                disabled={pickNotReached}
                 onchange={(value) => (pickedDriveValue = value)}
               />
               <p class="text-muted-foreground text-sm">Where this app will store data</p>
             </div>
+          {/if}
+
+          {#if pickNotReached}
+            <p class="text-sm" role="status">
+              Saved. The open site keeps its earlier drive until it connects again.
+            </p>
           {/if}
 
           <Button class="w-full" onclick={goToApp}>
