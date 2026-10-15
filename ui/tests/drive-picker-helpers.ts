@@ -10,8 +10,10 @@ import { type Page, expect } from '@playwright/test'
 import {
   ID_ORIGIN,
   PASSWORD,
+  clickSwarmIdButton,
   completeCreateFlow,
   goToApp,
+  openSwarmIdButtonPopup,
   sealInPage,
   seedNoChain,
 } from './helpers'
@@ -76,13 +78,9 @@ export async function recordStampsNamed(page: Page) {
 export const lastStampNamed = (page: Page) =>
   page.evaluate(() => (window as unknown as { stampsNamed: (string | null)[] }).stampsNamed.at(-1))
 
-/** Opens the connect window through the site's own `client.connect()` */
-export async function openConnectWindow(page: Page, button: string) {
-  const popupPromise = page.waitForEvent('popup', { timeout: 15000 })
-  await page.getByRole('button', { name: button, exact: true }).click()
-  const popup = await popupPromise
-  await popup.waitForLoadState()
-  return popup
+/** Opens the connect window again, signed in, through the demo's change-stamp button */
+export function openChangeStampWindow(page: Page) {
+  return clickSwarmIdButton(page, '#swarm-id-change-stamp', 'Change in Swarm ID')
 }
 
 /**
@@ -91,6 +89,12 @@ export async function openConnectWindow(page: Page, button: string) {
  * stamp, the confirm does.
  */
 export async function connectedOnDefault(page: Page, demoOrigin: string) {
+  await accountWithTwoDrivesOnTheDemo(page, demoOrigin)
+  await confirmOnDefault(page, await openSwarmIdButtonPopup(page))
+}
+
+/** An account with two drives made on Swarm ID, then the demo open and listened to */
+export async function accountWithTwoDrivesOnTheDemo(page: Page, demoOrigin: string) {
   await seedNoChain(page)
   await page.goto(`${ID_ORIGIN}/?signin`)
   await completeCreateFlow(page)
@@ -100,9 +104,10 @@ export async function connectedOnDefault(page: Page, demoOrigin: string) {
 
   await page.goto(`${demoOrigin}/account`)
   await recordStampsNamed(page)
+}
 
-  await page.getByRole('button', { name: 'Connect Swarm ID' }).click()
-  const popup = await openConnectWindow(page, 'Connect')
+/** Picks the account in `popup`, unlocks it and confirms the default drive */
+export async function confirmOnDefault(page: Page, popup: Page) {
   await popup.getByRole('button', { name: /0x[0-9a-fA-F]{4}/ }).click()
   await popup.getByRole('textbox', { name: 'Account password' }).fill(PASSWORD)
   await popup.getByRole('button', { name: 'Confirm' }).click()

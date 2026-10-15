@@ -10,6 +10,7 @@
   import { Separator } from '$lib/components/ui/separator'
   import { Popover } from '$lib/components/ui/popover'
   import InfoButton from '$lib/components/ui/tooltip/info-button.svelte'
+  import SwarmIdButton from '$lib/components/swarm-id-button.svelte'
   import { clientStore } from '$lib/stores/client.svelte'
 
   let popoverOpen = $state(false)
@@ -17,7 +18,7 @@
   // Derive whether custom Bee API URL is set
   const hasCustomBeeApiUrl = $derived(clientStore.hasCustomBeeApiUrl)
 
-  // Close popover when auth state changes (covers iframe button connect/disconnect)
+  // Close popover when auth state changes (covers the Swarm ID button's sign-in)
   let prevAuth = $state(clientStore.authenticated)
   $effect(() => {
     const auth = clientStore.authenticated
@@ -30,26 +31,17 @@
   const libraryDescription = $derived(
     clientStore.authenticated
       ? 'Clears your session via the library.'
-      : 'Opens a popup to authenticate with the identity provider.',
+      : 'Opens a popup from this page, where the identity frame shares storage with it.',
   )
 
   const libraryTooltip = $derived(
     clientStore.authenticated
       ? 'Calls client.disconnect() to clear your session and remove the app-specific keys from memory.'
-      : 'Calls client.connect() which opens a popup to the identity provider. The popup writes your session to localStorage, which the embedded iframe (same origin) picks up via a storage event.',
+      : "Calls client.connect(), which opens a popup to the identity provider from this page. The popup writes your session to localStorage, which the embedded frame (same origin) picks up via a storage event. Where the browser partitions the frame's storage it refuses with button-required, and the Swarm ID button below is the way in.",
   )
 
-  const iframeDescription = $derived(
-    clientStore.authenticated
-      ? 'Button rendered by the identity provider in an iframe.'
-      : 'Opens the identity popup from inside the iframe, which works even when storage is partitioned.',
-  )
-
-  const iframeTooltip = $derived(
-    clientStore.authenticated
-      ? 'This button is rendered by the identity provider inside a hidden iframe. It can also be used to disconnect your session.'
-      : "This button is rendered by the identity provider inside a hidden iframe. Because the popup is opened BY the iframe, the session can be handed straight back to it — the path that still works when the browser partitions the iframe's storage and a storage event would never arrive.",
-  )
+  const buttonTooltip =
+    "client.mountButton() puts Swarm ID's own button here, in a frame of its own beside the hidden one. Because the popup is opened from that frame's click, the session can be handed back to Swarm ID's frames, the path that still works when the browser partitions their storage and a storage event would never arrive."
 </script>
 
 <Popover bind:open={popoverOpen}>
@@ -118,25 +110,28 @@
       </Button>
     </div>
 
-    <Separator />
-
-    <!-- Iframe button section -->
-    <div>
-      <div class="flex items-start gap-1.5">
-        <div class="min-w-0 flex-1">
-          <span class="text-xs font-medium text-muted-foreground uppercase tracking-wider"
-            >Iframe button</span
-          >
-          <p class="text-xs text-muted-foreground mt-1">
-            {iframeDescription}
-          </p>
-        </div>
-        <InfoButton text={iframeTooltip} />
-      </div>
-      <div id="swarm-id-button" class="w-full h-[36px] mt-2"></div>
-    </div>
-
     {#if !clientStore.authenticated}
+      <Separator />
+
+      <!-- Swarm ID button section -->
+      <div>
+        <div class="flex items-start gap-1.5">
+          <div class="min-w-0 flex-1">
+            <span class="text-xs font-medium text-muted-foreground uppercase tracking-wider"
+              >Swarm ID button</span
+            >
+            <p class="text-xs text-muted-foreground mt-1">
+              Opens the identity popup from Swarm ID's own frame, which works even when storage is
+              partitioned.
+            </p>
+          </div>
+          <InfoButton text={buttonTooltip} />
+        </div>
+        <div class="mt-2">
+          <SwarmIdButton id="swarm-id-button" action="sign-in" text="Connect to Swarm" />
+        </div>
+      </div>
+
       <Separator />
 
       <!-- Subsidised gateway -->

@@ -10,7 +10,7 @@
  * The logic lives here, apart from the page, because it is the part worth
  * testing: a wrong verdict on a device we cannot debug is worse than no
  * verdict. The first run proved that the hard way — it reported a failed
- * `window.opener` handover, a claim about ITP, for an account that simply had
+ * popup handover, a claim about ITP, for an account that simply had
  * no drive. **The handover and the writer are separate questions**, and this
  * file keeps them separate: `storagePartitioned` is set in exactly one place in
  * the proxy (the `setSecret` handler), so a partitioned session reporting it is
@@ -74,7 +74,10 @@ function partitioning(input: CheckInput): CheckResult {
 
 /**
  * The popup handover, and ONLY the handover: did `setSecret` reach the iframe
- * through `window.opener` under ITP?
+ * under ITP? The popup is opened by the Swarm ID button frame and posts to the
+ * Swarm ID frames beside it (`ui/src/lib/handover-targets.ts`). The device run
+ * recorded in the README measured the older path, a popup the session frame
+ * opened posting to `window.opener`, and W6.1e measures this one again.
  *
  * `storagePartitioned` answers it on its own. The proxy sets that flag in one
  * place — the `setSecret` handler — so a partitioned session reporting it
@@ -86,7 +89,7 @@ function popupHandover(input: CheckInput): CheckResult {
   if (!connection) {
     return {
       id: 'handover',
-      title: 'window.opener handover survived',
+      title: 'Popup handover reached the frame',
       verdict: 'unknown',
       // A handover that genuinely failed can only ever land here: no
       // `setSecret` means never authenticated, which means no ConnectionInfo
@@ -99,17 +102,17 @@ function popupHandover(input: CheckInput): CheckResult {
   if (!connection.storagePartitioned) {
     return {
       id: 'handover',
-      title: 'window.opener handover survived',
+      title: 'Popup handover reached the frame',
       verdict: 'unknown',
       detail: 'Storage was not partitioned, so the handover was never the path under test.',
     }
   }
   return {
     id: 'handover',
-    title: 'window.opener handover survived',
+    title: 'Popup handover reached the frame',
     verdict: 'pass',
     detail:
-      'Partitioned, and the session is authenticated — only the popup’s postMessage through window.opener can do that here, so it survived ITP.',
+      'Partitioned, and the session is authenticated. Only the popup’s handover to the Swarm ID frames beside the button can do that here, so it reached the frame under ITP.',
   }
 }
 

@@ -217,69 +217,27 @@ describe("SwarmIdClient connect()", () => {
     })
   })
 
+  // A window opened from the site's page has the page as its opener, so a
+  // session frame whose storage is partitioned from it can never be handed
+  // the session, and the window would end on "Connected" with the site signed
+  // out. Only a click in Swarm ID's own button frame can open one that works.
   describe("partitioned or unproven storage", () => {
     it.each([false, undefined])(
-      "delegates to the proxy when storageShared is %s",
+      "refuses with button-required and opens nothing when storageShared is %s",
       async (storageShared) => {
         vi.spyOn(internals(client), "ensureReady").mockImplementation(() => {})
         setStorageShared(storageShared)
-        const sendRequestSpy = vi
-          .spyOn(internals(client), "sendRequest")
-          .mockResolvedValue({
-            type: "connectResponse",
-            requestId: "test",
-            success: true,
-          })
+        const sendRequestSpy = vi.spyOn(internals(client), "sendRequest")
 
-        await client.connect()
+        const error = await rejectionOf(client.connect())
 
-        expect(sendRequestSpy).toHaveBeenCalledWith(
-          expect.objectContaining({ type: "connect" }),
-        )
-        // The proxy opened it; opening a second one from here would be two
-        // popups for one click.
+        expect(error).toBeInstanceOf(SwarmIdError)
+        expect(error).toMatchObject({ code: "button-required" })
+        expect((error as Error).message).toContain("mountButton")
         expect(window.open).not.toHaveBeenCalled()
+        expect(sendRequestSpy).not.toHaveBeenCalled()
       },
     )
-
-    // A delegated popup can be blocked — the click was in the parent, and no
-    // activation crosses the postMessage. Falling back to the parent is what
-    // this branch had before the storage mode decided it, so it can never be
-    // worse than not asking at all.
-    it("falls back to opening from the parent when the proxy's popup is blocked", async () => {
-      vi.spyOn(internals(client), "ensureReady").mockImplementation(() => {})
-      setStorageShared(false)
-      vi.spyOn(internals(client), "sendRequest").mockResolvedValue({
-        type: "connectResponse",
-        requestId: "test",
-        success: false,
-      })
-
-      await client.connect()
-
-      expect(window.open).toHaveBeenCalledWith(
-        expect.stringContaining("https://swarm-id.example.com/connect#origin="),
-        "_blank",
-      )
-    })
-
-    it("throws when the fallback popup is blocked too", async () => {
-      vi.spyOn(internals(client), "ensureReady").mockImplementation(() => {})
-      setStorageShared(false)
-      vi.spyOn(internals(client), "sendRequest").mockResolvedValue({
-        type: "connectResponse",
-        requestId: "test",
-        success: false,
-      })
-      vi.mocked(window.open).mockReturnValue(null)
-
-      const error = await rejectionOf(client.connect())
-      expect(error).toBeInstanceOf(SwarmIdError)
-      expect(error).toMatchObject({
-        code: "popup-blocked",
-        message: "Failed to open authentication popup",
-      })
-    })
   })
 
   it("should throw error if client is not initialized", async () => {
@@ -990,19 +948,6 @@ describe("SwarmIdClient request seam", () => {
     })
   })
 
-  it("getAuthIframe() throws invalid-state when the iframe is gone", () => {
-    internals(client).iframe = undefined
-
-    const error = thrownBy(() => client.getAuthIframe())
-    expect(error).toBeInstanceOf(SwarmIdError)
-    expect(error).toMatchObject({
-      code: "invalid-state",
-      message: "Iframe not initialized",
-    })
-  })
-
-  // `Reference` is a plain string to TypeScript; only the message schema
-  // knows it has to be hex of a reference's length.
   it("rejects an argument the message schema refuses with invalid-request", async () => {
     const error = await rejectionOf(client.downloadData("not-a-reference"))
     expect(error).toBeInstanceOf(SwarmIdError)
@@ -1368,7 +1313,6 @@ describe("SwarmIdClient lifecycle errors", () => {
     })
     vi.stubGlobal("document", {
       createElement: vi.fn().mockReturnValue(iframe),
-      getElementById: vi.fn(),
       body: { appendChild: vi.fn(), removeChild: vi.fn() },
     })
   })
@@ -1377,12 +1321,11 @@ describe("SwarmIdClient lifecycle errors", () => {
     vi.useRealTimers()
   })
 
-  function makeClient(containerId?: string): SwarmIdClient {
+  function makeClient(): SwarmIdClient {
     return new SwarmIdClient({
       iframeOrigin: IFRAME_ORIGIN,
       metadata: { name: "Test App", description: "A test application" },
       initializationTimeout: INIT_TIMEOUT_MS,
-      containerId,
     })
   }
 
@@ -1502,26 +1445,6 @@ describe("SwarmIdClient lifecycle errors", () => {
     expect(error).toMatchObject({
       code: "invalid-state",
       message: "SwarmIdClient already initialized",
-    })
-  })
-
-  it("rejects initialize() with invalid-request when containerId names no element", async () => {
-    const error = await rejectionOf(makeClient("missing").initialize())
-    expect(error).toBeInstanceOf(SwarmIdError)
-    expect(error).toMatchObject({
-      code: "invalid-request",
-      message: 'Container element with ID "missing" not found',
-    })
-  })
-
-  it("getAuthIframe() throws invalid-state before initialize()", () => {
-    const client = makeClient()
-
-    const error = thrownBy(() => client.getAuthIframe())
-    expect(error).toBeInstanceOf(SwarmIdError)
-    expect(error).toMatchObject({
-      code: "invalid-state",
-      message: "SwarmIdClient not initialized. Call initialize() first.",
     })
   })
 
@@ -1848,5 +1771,242 @@ describe("SwarmIdClient on a server", () => {
           metadata: { name: "ssr" },
         }),
     ).toThrow(/@solarpunkltd\/swarm-id .*browser/)
+  })
+})
+
+describe("SwarmIdClient mountButton()", () => {
+  const BUTTON_TIMEOUT_MS = 1000
+
+  interface FakeFrame {
+    src: string
+    title: string
+    style: Record<string, string>
+    contentWindow: { postMessage: Mock }
+    remove: Mock
+  }
+
+  let listeners: Array<(event: MessageEvent) => void>
+  let frames: FakeFrame[]
+  let container: { appendChild: Mock }
+  let client: SwarmIdClient
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    vi.useFakeTimers()
+    listeners = []
+    frames = []
+    container = { appendChild: vi.fn() }
+    vi.stubGlobal("window", {
+      addEventListener: vi.fn(
+        (type: string, listener: (event: MessageEvent) => void) => {
+          if (type === "message") listeners.push(listener)
+        },
+      ),
+      removeEventListener: vi.fn(
+        (_type: string, listener: (event: MessageEvent) => void) => {
+          listeners = listeners.filter((entry) => entry !== listener)
+        },
+      ),
+      parent: { postMessage: vi.fn() },
+      location: { origin: "https://localhost" },
+      open: vi.fn(),
+    })
+    vi.stubGlobal("document", {
+      createElement: vi.fn(() => {
+        const frame: FakeFrame = {
+          src: "",
+          title: "",
+          style: {},
+          contentWindow: { postMessage: vi.fn() },
+          remove: vi.fn(),
+        }
+        frames.push(frame)
+        return frame
+      }),
+      body: { appendChild: vi.fn(), removeChild: vi.fn() },
+    })
+    client = new SwarmIdClient({
+      iframeOrigin: IFRAME_ORIGIN,
+      metadata: APP_METADATA,
+      popupMode: "popup",
+      initializationTimeout: BUTTON_TIMEOUT_MS,
+    })
+    internals(client).ready = true
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const fromFrame = (
+    frame: FakeFrame,
+    data: unknown,
+    origin: string = IFRAME_ORIGIN,
+  ) =>
+    [...listeners].forEach((listener) =>
+      listener({
+        data,
+        origin,
+        source: frame.contentWindow,
+      } as unknown as MessageEvent),
+    )
+
+  const mount = (onWindowChange?: (state: string) => void) => {
+    const button = client.mountButton(container as unknown as HTMLElement, {
+      action: "sign-in",
+      config: { text: "Sign in", borderRadius: "6px" },
+      onWindowChange,
+    })
+    button.ready.catch(() => {})
+    return { button, frame: frames.at(-1)! }
+  }
+
+  it("refuses before initialize()", () => {
+    internals(client).ready = false
+
+    const error = thrownBy(() =>
+      client.mountButton(container as unknown as HTMLElement, {
+        action: "sign-in",
+      }),
+    )
+    expect(error).toMatchObject({ code: "invalid-state" })
+  })
+
+  it("puts Swarm ID's button page in the container, filling it", () => {
+    const { frame } = mount()
+
+    expect(frame.src).toBe(`${IFRAME_ORIGIN}/button`)
+    expect(frame.title).toBe("Swarm ID")
+    expect(frame.style).toMatchObject({
+      width: "100%",
+      height: "100%",
+      display: "block",
+      borderRadius: "6px",
+    })
+    expect(container.appendChild).toHaveBeenCalledWith(frame)
+  })
+
+  it("finds the button page beside a proxy path with a base", () => {
+    client = new SwarmIdClient({
+      iframeOrigin: IFRAME_ORIGIN,
+      iframePath: "/id/proxy",
+      metadata: APP_METADATA,
+    })
+    internals(client).ready = true
+
+    expect(mount().frame.src).toBe(`${IFRAME_ORIGIN}/id/button`)
+  })
+
+  it("tells the loaded frame what to show", () => {
+    const { frame } = mount()
+    fromFrame(frame, { type: "buttonFrameLoaded" })
+
+    expect(frame.contentWindow.postMessage).toHaveBeenCalledWith(
+      {
+        type: "buttonIdentify",
+        action: "sign-in",
+        config: { text: "Sign in", borderRadius: "6px" },
+        metadata: APP_METADATA,
+        popupMode: "popup",
+      },
+      IFRAME_ORIGIN,
+    )
+  })
+
+  it("is ready once the frame shows the button", async () => {
+    const { button, frame } = mount()
+    fromFrame(frame, { type: "buttonReady" })
+
+    await expect(button.ready).resolves.toBeUndefined()
+  })
+
+  it("rejects ready with init-failed when Swarm ID refuses the site", async () => {
+    const { button, frame } = mount()
+    fromFrame(frame, { type: "buttonInitError", error: "not listed" })
+
+    await expect(button.ready).rejects.toMatchObject({
+      code: "init-failed",
+      message: "not listed",
+    })
+  })
+
+  it("rejects ready with init-failed when the frame never answers", async () => {
+    const { button } = mount()
+    const failure = rejectionOf(button.ready)
+    await vi.advanceTimersByTimeAsync(BUTTON_TIMEOUT_MS)
+
+    expect(await failure).toMatchObject({ code: "init-failed" })
+  })
+
+  it("reports its window, and only what its own frame says", () => {
+    const states: string[] = []
+    const { frame } = mount((state) => states.push(state))
+    const other = mount().frame
+
+    fromFrame(frame, { type: "buttonWindowChanged", state: "open" })
+    fromFrame(other, { type: "buttonWindowChanged", state: "blocked" })
+    fromFrame(
+      frame,
+      { type: "buttonWindowChanged", state: "closed" },
+      "https://evil.example.com",
+    )
+
+    expect(states).toEqual(["open"])
+  })
+
+  it("updates the frame in place", () => {
+    const { button, frame } = mount()
+    fromFrame(frame, { type: "buttonFrameLoaded" })
+    button.update({ action: "change-stamp", config: { text: "Change" } })
+
+    expect(frame.contentWindow.postMessage).toHaveBeenLastCalledWith(
+      {
+        type: "buttonUpdate",
+        action: "change-stamp",
+        config: { text: "Change" },
+      },
+      IFRAME_ORIGIN,
+    )
+  })
+
+  it("unmounts without touching the session frame", async () => {
+    const { button, frame } = mount()
+    const failure = rejectionOf(button.ready)
+    button.unmount()
+
+    expect(frame.remove).toHaveBeenCalled()
+    expect(listeners).toHaveLength(1)
+    expect(await failure).toMatchObject({ code: "invalid-state" })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  // The window reads which frames to hand the session to from the button
+  // frame, its opener, as it opens. Removing that frame first would lose it.
+  it("keeps the frame, hidden, until its open window closes", () => {
+    const { button, frame } = mount()
+    fromFrame(frame, { type: "buttonWindowChanged", state: "open" })
+    button.unmount()
+
+    expect(frame.remove).not.toHaveBeenCalled()
+    expect(frame.style.display).toBe("none")
+
+    fromFrame(frame, { type: "buttonWindowChanged", state: "closed" })
+    expect(frame.remove).toHaveBeenCalled()
+    expect(listeners).toHaveLength(1)
+  })
+
+  it("removes the frame at once on destroy(), window open or not", () => {
+    const { frame } = mount()
+    fromFrame(frame, { type: "buttonWindowChanged", state: "open" })
+    client.destroy()
+
+    expect(frame.remove).toHaveBeenCalled()
+  })
+
+  it("unmounts every button on destroy()", () => {
+    const { frame } = mount()
+    client.destroy()
+
+    expect(frame.remove).toHaveBeenCalled()
   })
 })

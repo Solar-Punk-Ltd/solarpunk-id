@@ -931,42 +931,202 @@ export const AppMetadataSchema = z.object({
 export type AppMetadata = z.infer<typeof AppMetadataSchema>
 
 // ============================================================================
-// Button Configuration
+// Button Frame
 // ============================================================================
 
-export const ButtonConfigSchema = z
-  .object({
-    connectText: z.string().optional(),
-    disconnectText: z.string().optional(),
-    loadingText: z.string().optional(),
-    backgroundColor: z.string().optional(),
-    color: z.string().optional(),
-    borderRadius: z.string().optional(),
-    fontFamily: z.string().optional(),
-    fontSize: z.string().optional(),
-    fontWeight: z.union([z.string(), z.number()]).optional(),
-  })
-  .optional()
+/**
+ * What a mounted Swarm ID button does. Both open the connect window: signed
+ * out it signs the person in, signed in it is where they change the stamp the
+ * site uses, which the window asks for on every connect.
+ */
+export const ButtonActionSchema = z.enum(["sign-in", "change-stamp"])
+export type ButtonAction = z.infer<typeof ButtonActionSchema>
 
-export interface ButtonConfig {
-  connectText?: string // Default: "🔐 Login with Swarm ID"
-  disconnectText?: string // Default: "🔓 Disconnect from Swarm ID"
-  loadingText?: string // Default: "⏳ Loading..."
-  backgroundColor?: string // Default: "#dd7200" (connect), "#666" (disconnect)
-  color?: string // Default: "white"
-  borderRadius?: string // Default: "0", applied to iframe
-  // Typography, so the button can match the embedding page: the button is
-  // painted inside the cross-origin iframe, where the page's own CSS cannot
-  // reach it. A font stack falls back the way it always does — the browser
-  // reads it left to right and takes the first family that resolves, which
-  // here means the first one available to the IFRAME, not to the parent page.
-  fontFamily?: string // CSS font-family. Default: the iframe's own font
-  fontSize?: string // CSS font-size. Default: "14px"
-  // A number too, since that is how a CSS weight is usually written. Without
-  // it a plain-JS caller's `fontWeight: 500` fails outgoing validation at
-  // `initialize()` as a bare "Invalid message format".
-  fontWeight?: string | number // CSS font-weight. Default: "600"
+/** Hosts a font file may be served from over plain http, for local work */
+const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
+
+/** More than a button's label could use, and a bound on what one frame fetches */
+const MAX_BUTTON_FONT_FACES = 8
+
+/**
+ * A font file's URL: https, or http on a loopback host for local work. The
+ * button frame takes loopback http only in a development build.
+ */
+export function isButtonFontUrl(value: string): boolean {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return false
+  }
+  return (
+    url.protocol === "https:" ||
+    (url.protocol === "http:" && LOOPBACK_HOSTS.includes(url.hostname))
+  )
 }
+
+export const ButtonFontFaceSchema = z.object({
+  family: z.string().min(1),
+  url: z.string().refine(isButtonFontUrl, {
+    message: "A font file is served over https, or over http on localhost",
+  }),
+  weight: z.union([z.string(), z.number()]).optional(),
+  style: z.enum(["normal", "italic", "oblique"]).optional(),
+})
+
+/**
+ * A font file the button frame loads itself, so the label can use a family
+ * the site serves. It is fetched cross-origin from Swarm ID's frame, so the
+ * site serves it with an `Access-Control-Allow-Origin` that names Swarm ID's
+ * origin. Name `family` in `fontFamily` too, ahead of a fallback.
+ */
+export type ButtonFontFace = z.infer<typeof ButtonFontFaceSchema>
+
+export const ButtonConfigSchema = z.object({
+  text: z.string().optional(),
+  busyText: z.string().optional(),
+  ariaLabel: z.string().optional(),
+  disabled: z.boolean().optional(),
+  busy: z.boolean().optional(),
+  backgroundColor: z.string().optional(),
+  color: z.string().optional(),
+  borderRadius: z.string().optional(),
+  borderColor: z.string().optional(),
+  borderWidth: z.string().optional(),
+  borderStyle: z.enum(["solid", "dashed", "dotted", "double"]).optional(),
+  fontFamily: z.string().optional(),
+  fontSize: z.string().optional(),
+  fontWeight: z.union([z.string(), z.number()]).optional(),
+  fontFaces: z
+    .array(ButtonFontFaceSchema)
+    .max(MAX_BUTTON_FONT_FACES)
+    .optional(),
+})
+
+/**
+ * How a mounted Swarm ID button looks and reads. It is painted inside Swarm
+ * ID's own frame, where the site's CSS cannot reach, so everything the site
+ * wants it to match is said here. The button fills the frame, which fills the
+ * site's container, and text that does not fit ends in an ellipsis.
+ */
+export interface ButtonConfig {
+  /** The label. Default: "Sign in with Swarm ID", or "Change stamp in Swarm ID" */
+  text?: string
+  /** The label while the connect window is open or `busy` is set. Default: "Waiting for Swarm ID" */
+  busyText?: string
+  /** The accessible name, where the label alone does not say what the button does. Default: the label */
+  ariaLabel?: string
+  /** Shown but not clickable */
+  disabled?: boolean
+  /** Shown as working and not clickable, for a step of the site's own, such as signing out */
+  busy?: boolean
+  /** CSS colour. Default: "#dd7200" */
+  backgroundColor?: string
+  /** CSS colour of the label. Default: "white" */
+  color?: string
+  /** CSS border-radius of the button and its frame. Default: "0" */
+  borderRadius?: string
+  /**
+   * CSS colour of a border, for a secondary style. Naming this or
+   * `borderWidth` draws one, kept in the busy and disabled looks. Default: the
+   * label's colour
+   */
+  borderColor?: string
+  /** CSS width of the border. Default: "1px" once a border is drawn */
+  borderWidth?: string
+  /** Default: "solid" */
+  borderStyle?: "solid" | "dashed" | "dotted" | "double"
+  /** CSS font-family. A stack falls back to the first family the frame has, not the page. Default: the frame's own */
+  fontFamily?: string
+  /** CSS font-size. Default: "14px" */
+  fontSize?: string
+  /** CSS font-weight, a keyword or a number. Default: "600" */
+  fontWeight?: string | number
+  /**
+   * Font files the frame loads for the label, at most 8. A file that does not
+   * load leaves the label in the next family of `fontFamily`, and the frame
+   * says so once in the console
+   */
+  fontFaces?: ButtonFontFace[]
+}
+
+/** Where a mounted button's connect window is. `blocked`: the browser refused to open it */
+export const ButtonWindowStateSchema = z.enum(["open", "closed", "blocked"])
+export type ButtonWindowState = z.infer<typeof ButtonWindowStateSchema>
+
+/** What `SwarmIdClient.mountButton` takes */
+export interface MountButtonOptions {
+  action: ButtonAction
+  config?: ButtonConfig
+  /**
+   * Called when the button's connect window opens, closes or is blocked, for
+   * example to say that the browser blocked it.
+   */
+  onWindowChange?: (state: ButtonWindowState) => void
+}
+
+/** A mounted Swarm ID button */
+export interface MountedButton {
+  /**
+   * Resolves once the button is shown. Rejects with `init-failed` when Swarm
+   * ID refuses the site or the frame does not answer in time.
+   */
+  ready: Promise<void>
+  /** Change what the button does or how it looks, in place */
+  update(options: { action?: ButtonAction; config?: ButtonConfig }): void
+  /** Remove the button. The session stays as it is */
+  unmount(): void
+}
+
+export const ButtonIdentifyMessageSchema = z.object({
+  type: z.literal("buttonIdentify"),
+  action: ButtonActionSchema,
+  config: ButtonConfigSchema.optional(),
+  metadata: AppMetadataSchema,
+  popupMode: z.enum(["popup", "window"]).optional(),
+})
+
+export const ButtonUpdateMessageSchema = z.object({
+  type: z.literal("buttonUpdate"),
+  action: ButtonActionSchema,
+  config: ButtonConfigSchema.optional(),
+})
+
+export const ParentToButtonMessageSchema = z.discriminatedUnion("type", [
+  ButtonIdentifyMessageSchema,
+  ButtonUpdateMessageSchema,
+])
+export type ParentToButtonMessage = z.infer<typeof ParentToButtonMessageSchema>
+
+export const ButtonToParentMessageSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("buttonReady") }),
+  z.object({ type: z.literal("buttonInitError"), error: z.string() }),
+  z.object({
+    type: z.literal("buttonWindowChanged"),
+    state: ButtonWindowStateSchema,
+  }),
+])
+export type ButtonToParentMessage = z.infer<typeof ButtonToParentMessageSchema>
+
+/**
+ * The button frame telling the session frames beside it that it opened a
+ * connect window under this challenge, so the handover that comes back under
+ * it is theirs to take.
+ */
+export const ConnectWindowOpenedMessageSchema = z.object({
+  type: z.literal("connectWindowOpened"),
+  challenge: z.string(),
+})
+export type ConnectWindowOpenedMessage = z.infer<
+  typeof ConnectWindowOpenedMessageSchema
+>
+
+/**
+ * Sent by the button frame on a wildcard origin the moment it loads, before
+ * the parent has identified itself, so outside the unions above, as
+ * `proxyInitialized` is.
+ */
+export const BUTTON_FRAME_LOADED = "buttonFrameLoaded"
 
 // ============================================================================
 // Message Types: Parent → Iframe
@@ -976,9 +1136,7 @@ export const ParentIdentifyMessageSchema = z.object({
   type: z.literal("parentIdentify"),
   requestId: z.string(),
   beeApiUrl: BeeApiUrlSchema.optional(),
-  popupMode: z.enum(["popup", "window"]).optional(),
   metadata: AppMetadataSchema,
-  buttonConfig: ButtonConfigSchema,
   subsidisedGatewayUrl: z.string().url().optional(),
 })
 
@@ -1391,12 +1549,6 @@ export const GetPostageBatchMessageSchema = z.object({
   requestId: z.string(),
 })
 
-export const ConnectMessageSchema = z.object({
-  type: z.literal("connect"),
-  requestId: z.string(),
-  popupMode: z.enum(["popup", "window"]).optional(),
-})
-
 export const ParentToIframeMessageSchema = z.discriminatedUnion("type", [
   ParentIdentifyMessageSchema,
   CheckAuthMessageSchema,
@@ -1439,7 +1591,6 @@ export const ParentToIframeMessageSchema = z.discriminatedUnion("type", [
   ActRevokeGranteesMessageSchema,
   ActGetGranteesMessageSchema,
   GetPostageBatchMessageSchema,
-  ConnectMessageSchema,
 ])
 
 export type ParentIdentifyMessage = z.infer<typeof ParentIdentifyMessageSchema>
@@ -1513,7 +1664,6 @@ export type ActGetGranteesMessage = z.infer<typeof ActGetGranteesMessageSchema>
 export type GetPostageBatchMessage = z.infer<
   typeof GetPostageBatchMessageSchema
 >
-export type ConnectMessage = z.infer<typeof ConnectMessageSchema>
 export type ParentToIframeMessage = z.infer<typeof ParentToIframeMessageSchema>
 
 // ============================================================================
@@ -1527,8 +1677,9 @@ export const ProxyReadyMessageSchema = z.object({
   /**
    * Whether the iframe can read the trusted domain's first-party store, which
    * decides which transport `connect()` can use (#613). Optional so an older
-   * deployed proxy stays wire-compatible; absent reads as "not proven shared",
-   * and the client delegates, which works in both modes.
+   * deployed proxy stays wire-compatible. Absent reads as "not proven shared",
+   * and `connect()` then refuses with `button-required`, since only the Swarm
+   * ID button works in both modes.
    */
   storageShared: z.boolean().optional(),
 })
@@ -1684,6 +1835,7 @@ export const SwarmIdErrorCodeSchema = z.enum([
   "invalid-state",
   "init-failed",
   "popup-blocked",
+  "button-required",
   "internal",
 ])
 export type SwarmIdErrorCode = z.infer<typeof SwarmIdErrorCodeSchema>
@@ -1735,12 +1887,6 @@ export const ConnectionInfoChangedMessageSchema = z.object({
   chatBinding: ChatBindingSchema.optional(),
   beeApiUrl: z.string().optional(),
   postageBatchId: BatchIdSchema.optional(),
-})
-
-export const ConnectResponseMessageSchema = z.object({
-  type: z.literal("connectResponse"),
-  requestId: z.string(),
-  success: z.boolean(),
 })
 
 export const IsConnectedResponseMessageSchema = z.object({
@@ -1980,7 +2126,6 @@ export const IframeToParentMessageSchema = z.discriminatedUnion("type", [
   UploadProgressMessageSchema,
   ErrorMessageSchema,
   ConnectionInfoChangedMessageSchema,
-  ConnectResponseMessageSchema,
   IsConnectedResponseMessageSchema,
   GetNodeInfoResponseMessageSchema,
   GsocMineResponseMessageSchema,
@@ -2058,9 +2203,6 @@ export type UploadProgressMessage = z.infer<typeof UploadProgressMessageSchema>
 export type ErrorMessage = z.infer<typeof ErrorMessageSchema>
 export type ConnectionInfoChangedMessage = z.infer<
   typeof ConnectionInfoChangedMessageSchema
->
-export type ConnectResponseMessage = z.infer<
-  typeof ConnectResponseMessageSchema
 >
 export type IsConnectedResponseMessage = z.infer<
   typeof IsConnectedResponseMessageSchema
@@ -2236,6 +2378,11 @@ export const SetSecretMessageSchema = z.object({
   data: AuthDataSchema,
 })
 
+/**
+ * What the connect popup posts to the session frame. The popup was opened by
+ * the button frame, and posts to the Swarm ID frames beside its opener
+ * (`ui/src/lib/handover-targets.ts`).
+ */
 export const PopupToIframeMessageSchema = z.discriminatedUnion("type", [
   SetSecretMessageSchema,
 ])
@@ -2262,8 +2409,6 @@ export interface ClientOptions {
   onConnectionChange?: (info: ConnectionInfo) => void
   popupMode?: "popup" | "window" // Default: 'window'
   metadata: AppMetadata
-  buttonConfig?: ButtonConfig
-  containerId?: string // ID of container element to place iframe in (optional)
   /** URL of a subsidised gateway for users without postage stamps. Gateway handles stamping server-side. */
   subsidisedGatewayUrl?: string
   /**

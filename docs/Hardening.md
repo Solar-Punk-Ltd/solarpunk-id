@@ -62,7 +62,8 @@ connect window starts on it, and the site uses it once the person confirms
 there. "Go to app" on the done screen is the confirm: one write saves a changed pick and ends the wait,
 and is stored before the window closes, so a frame that reads the shared store
 picks the drive up from it. A frame kept apart is handed the confirmed drive a
-second time through the same opener path as the session itself. It takes that
+second time the way the session itself was, posted to the Swarm ID frames
+beside the button frame that opened the window (`ui/src/lib/handover-targets.ts`). It takes that
 second handover only under the challenge of the window that handed the session
 over, for its own parent and with the secret it already holds, and a newer
 window or the end of the session retires that challenge. It carries the same
@@ -70,8 +71,18 @@ narrowed account view as any handover, so the site learns the batch id and
 nothing more. Closing the window without the confirm leaves the site signed in
 with no stamp, across a reload too, since the stored session keeps the wait.
 
-The confirm reaches a frame kept apart only while the frame that opened the
-window is still there. A site that reloaded, navigated or opened another window
+The handover rests on one assumption about Swarm ID's origin. The connect
+window posts `setSecret` to every frame on its opener's page and names Swarm
+ID's origin as the target, so every frame of that origin on the page receives
+the secret and the account view, and the challenge and `appOrigin` checks are
+what then pick the session frame. That is safe only while nothing but Swarm ID
+is served from that origin. `solarpunkid.bzz.link` is a host of its own. A
+path-based or preview deployment that shares an origin with other builds would
+hand the secret to whatever else that origin serves on the page.
+
+The confirm reaches a frame kept apart only while the site's Swarm ID frames
+are still there. The button frame may be gone, since the window read the frames
+beside it when it opened. A site that reloaded, navigated or opened another window
 since gets nothing and has no stamp until it connects again. The window says so
 when it can see the frame is gone (`handOverPickedStamp` answers
 `not-reached`). A frame that reloaded in place keeps no challenge, drops the

@@ -5,8 +5,8 @@
 
 <!--
   Iframe proxy endpoint. dApps embed this page in a hidden iframe via the
-  @solarpunkltd/swarm-id client; the library renders the auth button into the
-  container and handles the postMessage protocol.
+  @solarpunkltd/swarm-id client, which handles the postMessage protocol. It
+  shows nothing: the button a person clicks is the /button page.
 -->
 <script lang="ts">
   import { onMount } from 'svelte'
@@ -20,22 +20,7 @@
   // tab's publisher, so a build cannot end up with a bus on one and not the other.
   const signalingUrl = busSignalingUrl()
 
-  let container = $state<HTMLDivElement>()
-
   onMount(() => {
-    const proxy = initProxy({ signalingUrl, siteAllowList: siteAllowList() })
-    if (container) {
-      proxy.setAuthButtonContainer(container)
-    }
+    initProxy({ signalingUrl, siteAllowList: siteAllowList() })
   })
 </script>
-
-<div bind:this={container} class="h-svh w-full"></div>
-
-<style>
-  /* Embedded in the dApp's page — blend in instead of painting our theme. */
-  :global(body) {
-    background: transparent;
-    overflow: hidden;
-  }
-</style>

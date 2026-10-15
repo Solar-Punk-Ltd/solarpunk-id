@@ -42,7 +42,7 @@ describe('runChecks', () => {
 
   // The proxy sets `storagePartitioned` in exactly one place — the `setSecret`
   // handler — so a partitioned session that is authenticated at all got there
-  // through `window.opener`.
+  // through the popup's handover.
   it('credits the handover on a partitioned session, whatever it can write', () => {
     expect(verdictOf(runChecks({ connection: connected() }), 'handover')).toBe('pass')
     expect(
@@ -57,7 +57,7 @@ describe('runChecks', () => {
 
   // The run that made this split necessary: an iPhone connected an account
   // created fresh in the popup, and the harness reported the missing drive as a
-  // failed `window.opener` handover — a claim about ITP, from a run that never
+  // failed popup handover — a claim about ITP, from a run that never
   // reached the writer path at all.
   it('replays the first device report: handover passed, the writer was never exercised', () => {
     const results = runChecks({
@@ -153,7 +153,7 @@ describe('formatReport', () => {
     })
     expect(report).toContain('iPhone')
     expect(report).toContain('https://swarm-id.snaha.net')
-    expect(report).toContain('[PASS] window.opener handover survived')
+    expect(report).toContain('[PASS] Popup handover reached the frame')
     expect(report).not.toContain('Partitioned storage survives reloads')
   })
 })

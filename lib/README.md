@@ -4,10 +4,11 @@ TypeScript library for integrating Swarm ID authentication and Bee API operation
 
 ## Overview
 
-The Swarm ID library provides a secure, iframe-based authentication system for Swarm applications. It consists of two main components:
+The Swarm ID library provides a secure, iframe-based authentication system for Swarm applications. It consists of three main components:
 
 1. **SwarmIdClient** — For parent windows/dApps to interact with the authentication system
-2. **SwarmIdProxy** — Runs in the iframe, handles authentication and proxies Bee API calls
+2. **SwarmIdProxy** — Runs in the hidden iframe, handles authentication and proxies Bee API calls
+3. **SwarmIdButtonFrame**: the visible Swarm ID button a dApp mounts, whose click opens the connect window
 
 Authentication is handled by the SvelteKit identity management UI ([ui](../ui/)).
 
@@ -53,12 +54,21 @@ const client = new SwarmIdClient({
 // 2. Initialize (creates hidden iframe; populates client.connectionInfo)
 await client.initialize()
 
-// 3a. Option A: Use iframe authentication button
-// The iframe will show a connect/disconnect button automatically
+// 3. Show Swarm ID's button. It is a small frame of Swarm ID's own that fills
+//    the container, and its click opens the connect window. A site on another
+//    site than Swarm ID can sign in no other way, because the browser keeps
+//    Swarm ID's frames apart from Swarm ID's storage there and lets a frame
+//    open a window only from its own click. Unmounting it keeps the session.
+const button = client.mountButton(document.getElementById("sign-in")!, {
+  action: "sign-in", // or "change-stamp" for a person signed in
+  config: { text: "Sign in", backgroundColor: "#000", borderRadius: "6px" },
+  onWindowChange: (state) => console.log("Swarm ID window:", state),
+})
+await button.ready
 
-// 3b. Option B: Manual authentication with connect()
-// Opens the authentication page in a new window/tab (useful for custom UI)
-await client.connect()
+// connect() opens the same window from your own control, but only where your
+// site shares Swarm ID's storage. Elsewhere it refuses with button-required.
+// Sign out stays a library call with no window: await client.disconnect()
 
 // 4. Read current connection state synchronously
 const info = client.connectionInfo

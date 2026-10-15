@@ -23,12 +23,34 @@ const check = vi.hoisted(() =>
 
 vi.mock('$lib/accepted-site', () => ({ siteAllowList: () => ({ check }) }))
 
+const remember = vi.hoisted(() => vi.fn())
+vi.mock('$lib/handover-targets', () => ({ rememberHandoverTargets: remember }))
+
 const link = (origin: string) => `#origin=${encodeURIComponent(origin)}`
 
 describe('connectStore.initFromHash', () => {
   afterEach(() => {
     connectStore.clear()
     check.mockClear()
+    remember.mockClear()
+  })
+
+  // The button frame that opened this window may be removed by its site at
+  // any moment, so the frames beside it are read before anything waits.
+  it('reads where to hand the session over before it asks the allow list', async () => {
+    const empty = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+    vi.stubGlobal('localStorage', empty)
+    vi.stubGlobal('sessionStorage', empty)
+    let rememberedFirst = false
+    check.mockImplementationOnce(async () => {
+      rememberedFirst = remember.mock.calls.length > 0
+      return { allowed: true }
+    })
+
+    await connectStore.initFromHash(`${link(LISTED_SITE)}&challenge=c`)
+
+    expect(rememberedFirst).toBe(true)
+    vi.unstubAllGlobals()
   })
 
   it('takes a request for a site on the allow list', async () => {

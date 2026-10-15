@@ -16,6 +16,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
 
+  import SwarmIdButton from '$lib/components/swarm-id-button.svelte'
   import { clientStore } from '$lib/stores/client.svelte'
   import { logStore } from '$lib/stores/log.svelte'
   import { formatReport, runChecks } from '$lib/utils/safari-check'
@@ -85,10 +86,6 @@
     return { loadCount: count }
   }
 
-  async function connect() {
-    await clientStore.client?.connect()
-  }
-
   async function runUpload() {
     const client = clientStore.client
     if (!client) return
@@ -156,12 +153,7 @@
 
   <div class="flex flex-wrap gap-2">
     {#if !clientStore.authenticated}
-      <button
-        class="rounded-md bg-primary px-4 py-3 font-medium text-primary-foreground"
-        onclick={connect}
-      >
-        Connect
-      </button>
+      <SwarmIdButton action="sign-in" text="Connect" class="h-[48px] w-[140px]" />
     {/if}
     <button
       class="rounded-md border border-border px-4 py-3 font-medium text-foreground disabled:opacity-50"

@@ -34,6 +34,7 @@ import {
 } from '$lib/connect-handshake'
 import { strip0x } from '$lib/crypto/hex'
 import { walletFromEntropy } from '$lib/crypto/mnemonic'
+import { rememberHandoverTargets } from '$lib/handover-targets'
 import type { ConnectRequest } from '$lib/stores/connect.svelte'
 import type { Account } from '$lib/types'
 
@@ -177,7 +178,8 @@ describe('the chat binding at connect', () => {
   const CHALLENGE = 'challenge-1'
   const IDENTITY_ORIGIN = 'https://id.example.com'
 
-  let opener: { postMessage: ReturnType<typeof vi.fn> }
+  let sessionFrame: { postMessage: ReturnType<typeof vi.fn>; closed: boolean }
+  let buttonFrame: { closed: boolean; parent?: unknown }
 
   const request: ConnectRequest = {
     appOrigin: APP_ORIGIN,
@@ -209,7 +211,7 @@ describe('the chat binding at connect', () => {
     account.connectedApps.find((app) => app.appUrl === APP_ORIGIN)?.chatBinding
 
   const handedOver = () => {
-    const [message, targetOrigin] = opener.postMessage.mock.calls.at(-1) ?? []
+    const [message, targetOrigin] = sessionFrame.postMessage.mock.calls.at(-1) ?? []
     expect(targetOrigin).toBe(IDENTITY_ORIGIN)
     return message as { type: string; challenge: string; data: Record<string, unknown> }
   }
@@ -217,8 +219,13 @@ describe('the chat binding at connect', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-10-14T12:00:00.000Z'))
-    opener = { postMessage: vi.fn() }
-    vi.stubGlobal('window', { opener, location: { origin: IDENTITY_ORIGIN } })
+    // The window's opener is the site's button frame, and the session frame
+    // is the frame beside it on the site's page.
+    sessionFrame = { postMessage: vi.fn(), closed: false }
+    buttonFrame = { closed: false }
+    buttonFrame.parent = { frames: { 0: sessionFrame, 1: buttonFrame, length: 2 } }
+    vi.stubGlobal('window', { opener: buttonFrame, location: { origin: IDENTITY_ORIGIN } })
+    rememberHandoverTargets()
   })
 
   afterEach(() => {
@@ -286,7 +293,7 @@ describe('the chat binding at connect', () => {
       ...app,
       stampPending: undefined,
     }))
-    opener.postMessage.mockClear()
+    sessionFrame.postMessage.mockClear()
 
     expect(reuseConnection(account, request)).toBe(true)
 
@@ -341,7 +348,7 @@ describe('the chat binding at connect', () => {
         ).rejects.toThrow(/not accepted/)
 
         expect(account.connectedApps).toHaveLength(0)
-        expect(opener.postMessage).not.toHaveBeenCalled()
+        expect(sessionFrame.postMessage).not.toHaveBeenCalled()
       })
 
       it(`before reusing a stored secret for ${site}`, () => {
@@ -358,7 +365,7 @@ describe('the chat binding at connect', () => {
         expect(() => reuseConnection(account, { ...request, appOrigin: site })).toThrow(
           /not accepted/,
         )
-        expect(opener.postMessage).not.toHaveBeenCalled()
+        expect(sessionFrame.postMessage).not.toHaveBeenCalled()
       })
     }
   })
@@ -367,7 +374,7 @@ describe('the chat binding at connect', () => {
     const account = fakeAccount()
     await completeConnect(account, ENTROPY, request)
     const kept = savedBinding(account)
-    opener.postMessage.mockClear()
+    sessionFrame.postMessage.mockClear()
 
     expect(reuseConnection(account, request)).toBe(true)
 
@@ -422,7 +429,7 @@ describe('the chat binding at connect', () => {
 
     expect(reuseConnection(account, request)).toBe(false)
 
-    expect(opener.postMessage).not.toHaveBeenCalled()
+    expect(sessionFrame.postMessage).not.toHaveBeenCalled()
     expect(savedBinding(account)).toEqual(old)
   })
 
@@ -442,7 +449,7 @@ describe('the chat binding at connect', () => {
 
     expect(reuseConnection(account, request)).toBe(false)
 
-    expect(opener.postMessage).not.toHaveBeenCalled()
+    expect(sessionFrame.postMessage).not.toHaveBeenCalled()
     expect(savedBinding(account)).toBeUndefined()
   })
 
@@ -468,7 +475,7 @@ describe('the chat binding at connect', () => {
       const account = fakeAccount()
       await completeConnect(account, ENTROPY, request)
       const first = handedOver()
-      opener.postMessage.mockClear()
+      sessionFrame.postMessage.mockClear()
 
       pickDrive(account, APP_BATCH)
       expect(handOverPickedStamp(account, request)).toBe('handed-over')
@@ -498,30 +505,43 @@ describe('the chat binding at connect', () => {
       pickDrive(account, APP_BATCH)
 
       expect(handOverPickedStamp(account, shared)).toBe('not-needed')
-      expect(opener.postMessage).not.toHaveBeenCalled()
+      expect(sessionFrame.postMessage).not.toHaveBeenCalled()
     })
 
     it('says the pick did not reach a site with no live connection', () => {
       const account = fakeAccount([{ appUrl: APP_ORIGIN, appName: 'dApp', lastConnectedAt: 1 }])
 
       expect(handOverPickedStamp(account, request)).toBe('not-reached')
-      expect(opener.postMessage).not.toHaveBeenCalled()
+      expect(sessionFrame.postMessage).not.toHaveBeenCalled()
     })
 
-    // The frame that opened this window is gone once the site reloaded or
-    // navigated away, so nothing can carry the pick to the open site.
+    // The site's frames are gone once it reloaded or navigated away, so
+    // nothing can carry the pick to the open site.
     it('says the pick did not reach a frame that is gone', async () => {
       const account = fakeAccount()
       await completeConnect(account, ENTROPY, request)
-      opener.postMessage.mockClear()
+      sessionFrame.postMessage.mockClear()
       pickDrive(account, APP_BATCH)
 
-      Object.assign(opener, { closed: true })
-      expect(handOverPickedStamp(account, request)).toBe('not-reached')
-      vi.stubGlobal('window', { opener: null, location: { origin: IDENTITY_ORIGIN } })
+      sessionFrame.closed = true
       expect(handOverPickedStamp(account, request)).toBe('not-reached')
 
-      expect(opener.postMessage).not.toHaveBeenCalled()
+      expect(sessionFrame.postMessage).not.toHaveBeenCalled()
+    })
+
+    // A site may remove its button once it is signed in, which closes the
+    // window's opener, while its session frame is still there for the pick.
+    it('hands the pick to the session frame after the site removed its button', async () => {
+      const account = fakeAccount()
+      await completeConnect(account, ENTROPY, request)
+      sessionFrame.postMessage.mockClear()
+      pickDrive(account, APP_BATCH)
+
+      buttonFrame.closed = true
+      vi.stubGlobal('window', { opener: null, location: { origin: IDENTITY_ORIGIN } })
+
+      expect(handOverPickedStamp(account, request)).toBe('handed-over')
+      expect(handedOver().data.stampPending).toBeUndefined()
     })
 
     it('refuses a site that is not a clean origin', () => {
@@ -530,7 +550,7 @@ describe('the chat binding at connect', () => {
       expect(() =>
         handOverPickedStamp(account, { ...request, appOrigin: 'https://dapp.example.com/path' }),
       ).toThrow(/not accepted/)
-      expect(opener.postMessage).not.toHaveBeenCalled()
+      expect(sessionFrame.postMessage).not.toHaveBeenCalled()
     })
   })
 })

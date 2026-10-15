@@ -7,8 +7,9 @@
  * X-Frame-Options and no frame-ancestors header, and a meta CSP cannot carry
  * frame-ancestors. So the pages refuse a frame themselves: the root layout
  * renders nothing a person can click and runs no page logic unless it is the
- * top window. The hidden proxy page is the exception, being the one page that
- * exists to be framed.
+ * top window. The hidden proxy page and the button page are the exceptions,
+ * being the pages that exist to be framed. The button page's one action opens
+ * a top-level Swarm ID window, where the person acts for themselves.
  */
 import routes from './routes'
 
@@ -21,13 +22,18 @@ export interface FrameContext {
   framed: boolean
 }
 
-function isProxyPath(pathname: string, base: string): boolean {
-  const proxy = `${base}${routes.PROXY}`
-  return pathname === proxy || pathname === `${proxy}/`
+/** The pages that exist to be framed by a site: the hidden session frame and its button */
+const FRAMED_ROUTES = [routes.PROXY, routes.BUTTON]
+
+function isFramedPath(pathname: string, base: string): boolean {
+  return FRAMED_ROUTES.some((route) => {
+    const path = `${base}${route}`
+    return pathname === path || pathname === `${path}/`
+  })
 }
 
 export function refusesToRunFramed({ pathname, base, framed }: FrameContext): boolean {
-  return framed && !isProxyPath(pathname, base)
+  return framed && !isFramedPath(pathname, base)
 }
 
 /** What the root layout renders around a page. */

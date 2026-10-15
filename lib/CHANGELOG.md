@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.9.0
+
+### Breaking changes
+
+- **lib:** the Swarm ID button is its own frame now. `client.mountButton(container, { action,
+  config, onWindowChange })` shows it in your container and returns `{ ready, update, unmount }`.
+  `action` is `sign-in` or `change-stamp`. Unmounting it leaves the session as it is. The
+  constructor's `buttonConfig` and `containerId` and `getAuthIframe()` are gone, and the hidden
+  frame shows nothing.
+- **lib:** `ButtonConfig` is `text`, `busyText`, `ariaLabel`, `disabled`, `busy` and the colours,
+  radius and typography it had. `connectText`, `disconnectText` and `loadingText` are gone: the
+  button never signs out, which stays `disconnect()`.
+- **lib:** `connect()` refuses with the new code `button-required`, and opens nothing, where your
+  site's Swarm ID frame does not share Swarm ID's storage, the usual case for a site on another
+  domain. It used to open a window there that ended on "Connected" with your site still signed out
+  in Chrome. Show the button instead, it works in both cases.
+
+### Features
+
+- **lib:** a button can draw a border for a secondary style: `borderColor`, `borderWidth` and
+  `borderStyle` (`solid`, `dashed`, `dotted` or `double`). Naming a colour or a width draws one,
+  1px solid in the label's colour by default, kept in the busy and disabled looks.
+- **lib:** a button can paint its label in a font your site serves: `fontFaces`, up to 8 files
+  as `{ family, url, weight?, style? }`, which Swarm ID's frame loads itself. Serve each over
+  https with an `Access-Control-Allow-Origin` naming Swarm ID's origin, and name the family first
+  in `fontFamily`. A file that does not load leaves the fallback family and says so once in the
+  console.
+
+### Fixed
+
+- **lib:** a site on another site than Swarm ID can sign in in Chrome. The click now happens in
+  Swarm ID's own button frame, which opens the connect window, so the window can hand the session
+  to your site's Swarm ID frame.
+- **lib:** a Swarm ID frame counts as sharing Swarm ID's storage only when it can open what Swarm
+  ID's own pages sealed there. A browser that shares the storage but not the key that opens it,
+  as Playwright's WebKit does for a cross-site frame, now takes the handover path, where it used to
+  wait for a sign-in it could never read.
+- **lib:** a button unmounted while its connect window is open stays hidden until the window
+  closes, so the sign-in and the stamp confirmed there still reach your site. Only removing its
+  container yourself in the moment between the click and the window opening loses that sign-in.
+
 ## 0.8.2
 
 ### Features

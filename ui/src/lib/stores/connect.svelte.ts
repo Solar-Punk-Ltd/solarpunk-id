@@ -3,6 +3,7 @@
 import { STORAGE_CHALLENGE_KEY } from '@solarpunkltd/swarm-id/internal'
 
 import { siteAllowList } from '$lib/accepted-site'
+import { rememberHandoverTargets } from '$lib/handover-targets'
 
 /**
  * A dApp connection request, parsed from the URL hash the @solarpunkltd/swarm-id
@@ -17,8 +18,8 @@ export interface ConnectRequest {
   appIcon?: string
   /**
    * Set when the proxy iframe could not share localStorage with this popup
-   * (storage partitioning). The app secret then goes back to the iframe via
-   * a `setSecret` postMessage instead of a storage event.
+   * (storage partitioning). The app secret then goes to the iframe via a
+   * `setSecret` postMessage instead of a storage event.
    */
   partitionChallenge?: string
 }
@@ -81,6 +82,10 @@ export const connectStore = {
     if (!appOrigin) {
       return request !== undefined
     }
+    // A link with a challenge came from a Swarm ID button, which its site may
+    // remove at any moment, so the frames beside it are read before anything
+    // waits. Nothing is sent to them unless the handover is needed below.
+    if (params.get('challenge')) rememberHandoverTargets()
     const generation = ++linkGeneration
     request = undefined
     refusal = undefined
@@ -95,7 +100,7 @@ export const connectStore = {
       return false
     }
 
-    // Storage partitioning detection: the proxy iframe wrote this challenge
+    // Storage partitioning detection: the button frame wrote this challenge
     // to localStorage right before opening the popup. If we can't read it
     // (and didn't already consume it earlier in this tab), our storage is
     // partitioned from the iframe's.

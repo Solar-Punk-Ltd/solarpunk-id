@@ -439,6 +439,31 @@ describe("SwarmIdProxy partitioned write enablement", () => {
   const dispatch = (data: unknown, origin: string, source: unknown = {}) =>
     messageListener({ data, origin, source } as MessageEvent)
 
+  /** The button frame beside the proxy, a frame of the same parent page. */
+  const buttonFrame = () => ({ parent: parentWindow })
+
+  /** The connect window the button frame opened, a top-level window. */
+  const connectWindow = () => {
+    const opened: { parent?: unknown } = {}
+    opened.parent = opened
+    return opened
+  }
+
+  /**
+   * What the button frame does on a click: the challenge into the partition's
+   * storage, the window opened, and the challenge told to the session frame.
+   */
+  async function openWindowFromButton(): Promise<string> {
+    const challenge = crypto.randomUUID()
+    localStorageFake.setItem(STORAGE_CHALLENGE_KEY, challenge)
+    await dispatch(
+      { type: "connectWindowOpened", challenge },
+      ID_ORIGIN,
+      buttonFrame(),
+    )
+    return challenge
+  }
+
   const messagesOfType = (type: string) =>
     parentWindow.postMessage.mock.calls
       .map(([message]) => message)
@@ -526,7 +551,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
   const settleAccountWrites = () =>
     createAccountsStorageManager().update(() => undefined)
 
-  /** Run identify → connect → return the partition challenge the popup echoes. */
+  /** Run identify → the button's window → return the challenge the window echoes. */
   async function startPartitionedConnect(
     appOrigin: string = PARENT_ORIGIN,
   ): Promise<string> {
@@ -535,14 +560,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       appOrigin,
       parentWindow,
     )
-    await dispatch(
-      { type: "connect", requestId: "r2" },
-      appOrigin,
-      parentWindow,
-    )
-    const challenge = localStorageFake.getItem(STORAGE_CHALLENGE_KEY)
-    expect(challenge).toBeTruthy()
-    return challenge!
+    return openWindowFromButton()
   }
 
   async function sendSetSecret(
@@ -558,6 +576,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         data: { secret: "33".repeat(32), ...data },
       },
       ID_ORIGIN,
+      connectWindow(),
     )
   }
 
@@ -1393,27 +1412,17 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     ).toBeNull()
   })
 
-  // Refusing the payload is only half of it: the attempt it belongs to has to
-  // end. The proxy's own auth button sets `isConnecting` and shows a spinner
-  // until something clears it, and on this path nothing did — the spinner sat
-  // there while the popup, which has no idea it was refused, said "Connected!"
-  // (#587). The only thing that eventually cleared it was the popup closing,
-  // which the user had no reason to do.
-  it("ends the connect attempt when the handover cannot be parsed", async () => {
+  // The window cannot be told it was refused, and it is still open, so it may
+  // yet send a payload this bundle can read. Refusing one message keeps the
+  // ceremony behind it.
+  it("keeps the challenge when the handover cannot be parsed", async () => {
     const challenge = await startPartitionedConnect()
     const internals = proxy as unknown as {
-      isConnecting: boolean
       pendingChallenge: string | undefined
     }
-    // What `handleLoginClick` does when the button is the one connecting.
-    internals.isConnecting = true
 
     await sendSetSecret(challenge, {})
 
-    expect(internals.isConnecting).toBe(false)
-    // The challenge stays: the popup is still open and may yet send a payload
-    // this bundle can read. Refusing one message ends the attempt's spinner,
-    // not the ceremony behind it.
     expect(internals.pendingChallenge).toBe(challenge)
   })
 
@@ -1585,12 +1594,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         PARENT_ORIGIN,
         parentWindow,
       )
-      await dispatch(
-        { type: "connect", requestId: "r2" },
-        PARENT_ORIGIN,
-        parentWindow,
-      )
-      const challenge = localStorageFake.getItem(STORAGE_CHALLENGE_KEY)!
+      const challenge = await openWindowFromButton()
       await sendSetSecret(challenge, {
         account: serializeSyncedAccount(makeSyncedAccount()),
         stampPending: true,
@@ -1825,11 +1829,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
 
     it("refuses one from a window older than the latest connect", async () => {
       const challenge = await handedOverSession()
-      await dispatch(
-        { type: "connect", requestId: "r3" },
-        PARENT_ORIGIN,
-        parentWindow,
-      )
+      await openWindowFromButton()
 
       await sendSetSecret(challenge, {
         account: accountWithPick(new BatchId(PICKED_BATCH_ID_HEX)),
@@ -4917,17 +4917,11 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     expect(internals.gnosisRpcUrl).toBe("https://rpc.example.test/")
   })
 
-  // The same hang, one guard down (#678 review). A handover carrying OUR
-  // challenge is this attempt's popup answering, so refusing it for the origin
-  // it names has to end the attempt too — otherwise the button spins on while
-  // the popup says "Connected!", which is the whole point of the fix above.
-  // Only reachable through a popup whose origin disagrees with `parentOrigin`
-  // — an origin-normalisation drift is the realistic way.
-  it("ends the connect attempt when the handover names another origin", async () => {
+  // A handover carrying our challenge but naming another origin than our
+  // parent is refused. Only reachable through a window whose origin disagrees
+  // with `parentOrigin`, an origin-normalisation drift being the realistic way.
+  it("refuses a handover that names another origin", async () => {
     const challenge = await startPartitionedConnect()
-    const internals = proxy as unknown as { isConnecting: boolean }
-    // What `handleLoginClick` does when the button is the one connecting.
-    internals.isConnecting = true
 
     await dispatch(
       {
@@ -4940,10 +4934,46 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         },
       },
       ID_ORIGIN,
+      connectWindow(),
     )
 
     expect(messagesOfType("authSuccess")).toHaveLength(0)
-    expect(internals.isConnecting).toBe(false)
+  })
+
+  // The challenge comes from the button frame beside this one, the frame the
+  // person clicked. A top-level window, or a Swarm ID frame of another page,
+  // is not it.
+  it("takes a challenge only from a frame beside it", async () => {
+    await dispatch(
+      { type: "parentIdentify", requestId: "r1", metadata: { name: "dApp" } },
+      PARENT_ORIGIN,
+      parentWindow,
+    )
+    const challenge = crypto.randomUUID()
+    await dispatch({ type: "connectWindowOpened", challenge }, ID_ORIGIN, {
+      parent: {},
+    })
+
+    await sendSetSecret(challenge, {
+      account: serializeSyncedAccount(makeSyncedAccount()),
+    })
+
+    expect(messagesOfType("authSuccess")).toHaveLength(0)
+  })
+
+  it("opens no window when the site asks it to", async () => {
+    await dispatch(
+      { type: "parentIdentify", requestId: "r1", metadata: { name: "dApp" } },
+      PARENT_ORIGIN,
+      parentWindow,
+    )
+    await dispatch(
+      { type: "connect", requestId: "r2" },
+      PARENT_ORIGIN,
+      parentWindow,
+    )
+
+    expect(window.open).not.toHaveBeenCalled()
   })
 
   it("rejects a hydration payload with a wrong challenge", async () => {

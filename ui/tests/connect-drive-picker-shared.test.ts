@@ -13,7 +13,7 @@ import {
   MAIN_BATCH,
   connectedOnDefault,
   lastStampNamed,
-  openConnectWindow,
+  openChangeStampWindow,
 } from './drive-picker-helpers'
 import { goToApp } from './helpers'
 
@@ -22,7 +22,7 @@ const DEMO_URL = 'http://localhost:3500'
 test('a site reading shared storage stamps only after the confirm', async ({ page }) => {
   await connectedOnDefault(page, DEMO_URL)
 
-  const popup = await openConnectWindow(page, 'Change in Swarm ID')
+  const popup = await openChangeStampWindow(page)
   await popup.getByRole('button', { name: /0x[0-9a-fA-F]{4}/ }).click()
   const picker = popup.getByRole('combobox', { name: 'Select drive' })
   await expect(picker).toHaveValue(MAIN_BATCH)

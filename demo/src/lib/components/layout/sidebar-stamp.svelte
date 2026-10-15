@@ -5,6 +5,7 @@
 
 <script lang="ts">
   import { Badge } from '$lib/components/ui/badge'
+  import SwarmIdButton from '$lib/components/swarm-id-button.svelte'
   import { clientStore } from '$lib/stores/client.svelte'
 
   let expanded = $state(false)
@@ -51,14 +52,16 @@
   </button>
 
   {#if clientStore.authenticated}
-    <!-- connect() while signed in opens the connect window again, where the
-         person picks the drive this site uses -->
-    <button
-      onclick={() => clientStore.client?.connect()}
-      class="pl-6 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-    >
-      Change in Swarm ID
-    </button>
+    <!-- Opens the connect window again, where the person picks the drive this
+         site uses -->
+    <div class="pl-6">
+      <SwarmIdButton
+        id="swarm-id-change-stamp"
+        action="change-stamp"
+        text="Change in Swarm ID"
+        class="h-[28px] w-full"
+      />
+    </div>
   {/if}
 
   {#if clientStore.stamp}

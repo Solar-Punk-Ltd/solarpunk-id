@@ -36,7 +36,25 @@ const SERIAL_SPEC = '**/drive-onchain-serial.test.ts'
  * The suites that need the proxy iframe's storage genuinely partitioned, which
  * an ordinary chromium project cannot give them — see `PARTITIONING_ARGS`.
  */
-const PARTITIONED_SPECS = ['**/bus-propagation.test.ts', '**/connect-drive-picker.test.ts']
+const PARTITIONED_SPECS = [
+  '**/bus-propagation.test.ts',
+  '**/connect-drive-picker.test.ts',
+  '**/cross-site-sign-in.test.ts',
+]
+
+/**
+ * The sign-in journeys of a site on another site than Swarm ID, run in WebKit
+ * too. Playwright's WebKit gives these frames the identity site's
+ * `localStorage` but an IndexedDB of their own (measured 2026-10-15), which
+ * Swarm ID treats as partitioned, so the handover path runs there as well.
+ */
+const CROSS_SITE_SPEC = '**/cross-site-sign-in.test.ts'
+
+/**
+ * Installs the WebKit build this release pins (`install-webkit.setup.ts`). A
+ * dependency of the WebKit project, so it runs only when that project does.
+ */
+const WEBKIT_INSTALL_SPEC = '**/install-webkit.setup.ts'
 /**
  * The delegated connect() popup under a REAL popup blocker (#751). Needs
  * Google Chrome: Playwright's bundled Chromium never blocks a popup, with or
@@ -138,6 +156,16 @@ export default defineConfig({
           ],
         },
       },
+    },
+    {
+      name: 'webkit-install',
+      testMatch: WEBKIT_INSTALL_SPEC,
+    },
+    {
+      name: 'webkit-cross-site',
+      testMatch: CROSS_SITE_SPEC,
+      dependencies: ['webkit-install'],
+      use: devices['Desktop Safari'],
     },
     {
       // `dependencies` holds this back until every test above has finished, so

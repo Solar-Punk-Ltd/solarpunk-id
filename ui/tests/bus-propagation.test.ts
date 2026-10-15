@@ -31,11 +31,11 @@ import {
   busRoomJoined,
   chainReachable,
   completeCreateFlow,
+  expectDemoLogged,
   expectProxyPartitioned,
   fundPostageSigner,
   goToApp,
-  openConnectPopup,
-  openProxyConnectPopup,
+  openSwarmIdButtonPopup,
   partitionedDemoOrigin,
   resealAccounts,
   seedLocalChain,
@@ -88,8 +88,8 @@ async function createAccountWithDrive(page: Page) {
 }
 
 /**
- * Connect an existing account to the demo through the proxy's own iframe
- * button, and leave the partitioned session live.
+ * Connect an existing account to the demo through the Swarm ID button, and
+ * leave the partitioned session live.
  *
  * Since #635 the session survives a reload — it is kept in the partition's own
  * store until it is disconnected or its 7 days are up — so navigating the demo
@@ -97,7 +97,7 @@ async function createAccountWithDrive(page: Page) {
  */
 async function connectPartitioned(page: Page, path: string) {
   await page.goto(`${demoOrigin}${path}`)
-  const popup = await openProxyConnectPopup(page)
+  const popup = await openSwarmIdButtonPopup(page)
   await popup.getByRole('button', { name: /0x[0-9a-fA-F]{4}/ }).click()
   await popup.getByRole('textbox', { name: 'Account password' }).fill(PASSWORD)
   await popup.getByRole('button', { name: 'Confirm' }).click()
@@ -107,7 +107,7 @@ async function connectPartitioned(page: Page, path: string) {
 /** The same, but creating the account inside the popup — so it has no drive. */
 async function connectPartitionedNewAccount(page: Page, path: string) {
   await page.goto(`${demoOrigin}${path}`)
-  const popup = await openProxyConnectPopup(page)
+  const popup = await openSwarmIdButtonPopup(page)
   await completeCreateFlow(popup)
   await expect(popup).toHaveURL(/\/connect\/done$/)
   await goToApp(popup)
@@ -147,7 +147,7 @@ test('a partitioned session with no drive reports the handover, not a failure', 
 
   await expect(
     page.getByText(
-      'Partitioned, and the session is authenticated — only the popup’s postMessage through window.opener can do that here, so it survived ITP.',
+      'Partitioned, and the session is authenticated. Only the popup’s handover to the Swarm ID frames beside the button can do that here, so it reached the frame under ITP.',
     ),
   ).toBeVisible({ timeout: 15000 })
   await expectProxyPartitioned(page)
@@ -156,25 +156,22 @@ test('a partitioned session with no drive reports the handover, not a failure', 
   await expect(page.getByText('❌')).toHaveCount(0)
 })
 
-// #613: the transport used to be picked by user agent, so a partitioned
-// Chromium was put on the storage-event path — which cannot reach it — while
-// only WebKit got the handover. Every test above reaches the popup through the
-// PROXY's own button (`openProxyConnectPopup`), which always delegated; this one
-// goes through the demo's own Connect button, i.e. `client.connect()`, the API a
-// dApp with its own button uses. It fails on the UA gate by construction.
-test('client.connect() authenticates a partitioned session', async ({ page }) => {
+// A window the site's own page opens has the page as its opener and no Swarm
+// ID frame to hand the session to, so on a partitioned session it would end on
+// "Connected" with the site signed out. `client.connect()`, the API a dApp
+// with its own button uses, refuses there instead and names the button.
+test('client.connect() refuses a partitioned session and opens nothing', async ({ page }) => {
   await page.goto(`${demoOrigin}/account`)
   await expectProxyPartitioned(page)
+  const opened: Page[] = []
+  page.context().on('page', (created) => opened.push(created))
 
-  const popup = await openConnectPopup(page)
-  await completeCreateFlow(popup)
-  await expect(popup).toHaveURL(/\/connect\/done$/)
-  await goToApp(popup)
+  await page.getByRole('button', { name: 'Connect Swarm ID' }).click()
+  await expect(page.locator('#swarm-id-button iframe')).toBeVisible({ timeout: 10000 })
+  await page.getByRole('button', { name: 'Connect', exact: true }).click()
 
-  // The demo renders `ConnectionInfo.identity.name`, so the account card is
-  // proof the session authenticated — and `expectProxyPartitioned` above is
-  // what makes that proof about the partitioned path rather than a shared one.
-  await expect(page.getByRole('heading', { name: 'Identity' })).toBeVisible({ timeout: 15000 })
+  await expectDemoLogged(page, /Sign in through the button from client\.mountButton/)
+  expect(opened.filter((created) => created.url().includes('/connect'))).toHaveLength(0)
 })
 
 // #635: the handed-over session used to live in memory only, so every page
@@ -184,7 +181,7 @@ test('a partitioned session survives a reload', async ({ page }) => {
   await page.goto(`${demoOrigin}/account`)
   await expectProxyPartitioned(page)
 
-  const popup = await openProxyConnectPopup(page)
+  const popup = await openSwarmIdButtonPopup(page)
   await completeCreateFlow(popup)
   await expect(popup).toHaveURL(/\/connect\/done$/)
   await goToApp(popup)
@@ -212,7 +209,7 @@ test('the bus carries an app removal to a partitioned session', async ({ page })
   await connectPartitioned(page, '/account')
 
   // The demo renders `ConnectionInfo.identity.name`, so the account card is
-  // proof the popup's `window.opener` handover landed.
+  // proof the popup's handover landed.
   await expect(page.getByRole('heading', { name: 'Identity' })).toBeVisible({ timeout: 15000 })
   await expectProxyPartitioned(page)
   const shownName = page.getByText('Name', { exact: true }).locator('xpath=following-sibling::div')
@@ -267,8 +264,8 @@ test('a change on one device reaches another device’s stored account', async (
   await page.getByRole('link', { name: 'Get started' }).first().click()
   await completeCreateFlow(page)
   await page.getByRole('button', { name: 'Stay local for now' }).click()
-  // Through the proxy's own button, which reaches the popup in either storage
-  // mode — this test is about the bus, not about the transport (#613).
+  // Through the Swarm ID button, which reaches the popup in either storage
+  // mode, since this test is about the bus, not about the transport (#613).
   const demo = await page.context().newPage()
   await connectPartitioned(demo, '/')
   await demo.close()

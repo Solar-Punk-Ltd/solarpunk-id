@@ -16,6 +16,7 @@ const routes = {
   ACCOUNT_RESTORE: '/account/restore' as const,
   PRODUCT: '/product' as const,
   PROXY: '/proxy' as const,
+  BUTTON: '/button' as const,
 }
 
 export default routes
