@@ -92,6 +92,18 @@ export async function goToApp(popup: Page) {
   await expect.poll(() => popup.isClosed()).toBe(true)
 }
 
+/**
+ * Answers "Not now" whenever Swarm ID's one-time Safari backup prompt covers
+ * a page of `context`, popups included. WebKit gets it after an account is
+ * created, and it covers whatever the journey clicks next.
+ */
+export function answerSafariBackupPrompt(context: BrowserContext) {
+  const answer = (page: Page) =>
+    page.addLocatorHandler(page.getByRole('button', { name: 'Not now' }), (later) => later.click())
+  context.on('page', (page) => void answer(page))
+  return Promise.all(context.pages().map(answer))
+}
+
 /** Opens the demo's console panel and waits for a line matching `line` */
 export async function expectDemoLogged(page: Page, line: RegExp) {
   await page.getByRole('button', { name: /^Console/ }).click()
