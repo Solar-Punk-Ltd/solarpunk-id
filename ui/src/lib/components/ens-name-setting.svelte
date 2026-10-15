@@ -116,7 +116,10 @@
       site you connect to receives it, so it learns your wallet address and can show the wallet's
       ENS name, such as name.eth. If the wallet has no ENS name, sites show nothing new.
     </p>
-    <p class="text-sm">You can turn this off at any time.</p>
+    <p class="text-sm">
+      You can turn this off at any time. Turning it off stops sharing from then on. Sites and
+      messages that already have the link keep it, and it cannot be withdrawn.
+    </p>
     {#if error}
       <p class="text-destructive text-xs">{error}</p>
     {/if}
