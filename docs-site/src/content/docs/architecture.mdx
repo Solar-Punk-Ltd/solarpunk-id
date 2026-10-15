@@ -83,8 +83,8 @@ connected apps, devices, backup and restore, and the developer tools at `/dev`. 
 lists the connected apps, and for each one the drive it uses, how full it is and how long it has
 left, with a picker for another of the account's drives or none. An app still waiting for the
 person to confirm its drive in the connect window shows "Waiting for you to confirm in the sign-in
-window." in place of that line, because its frame holds no stamp until then, and its picker stays
-usable. `#apps/<encoded origin>` opens it on one app ([The stamp your site uses](../api/#the-stamp-your-site-uses)).
+window." in place of that line, because its frame holds no stamp until then. Its picker stays
+usable, and a pick there is saved for the next connect without ending the wait. `#apps/<encoded origin>` opens it on one app ([The stamp your site uses](../api/#the-stamp-your-site-uses)).
 
 ## Keys
 

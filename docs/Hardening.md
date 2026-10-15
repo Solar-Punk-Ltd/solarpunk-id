@@ -56,8 +56,10 @@ says `stampPending` and carries no stamp at all, signer key included. While it
 is set the frame resolves no stamp, whatever the entry's pointer or an account
 delta says. It is this device's session material, like the app secret: no
 channel to another context carries it, and a fold keeps this context's own.
-The person's choice in the record is never touched by it. "Go to app" on the
-done screen is the confirm: one write saves a changed pick and ends the wait,
+The person's choice in the record is never touched by it. Nothing else ends the
+wait, a drive picked on the Apps screen included: that pick is saved, the next
+connect window starts on it, and the site uses it once the person confirms
+there. "Go to app" on the done screen is the confirm: one write saves a changed pick and ends the wait,
 and is stored before the window closes, so a frame that reads the shared store
 picks the drive up from it. A frame kept apart is handed the confirmed drive a
 second time through the same opener path as the session itself. It takes that
