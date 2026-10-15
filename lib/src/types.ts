@@ -949,8 +949,9 @@ const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
 const MAX_BUTTON_FONT_FACES = 8
 
 /**
- * A font file's URL: https, or http on a loopback host for local work. The
- * button frame takes loopback http only in a development build.
+ * A font file's URL: https, or http on a loopback host for local work, with
+ * no user name or password in it. The button frame takes loopback http only
+ * in a development build.
  */
 export function isButtonFontUrl(value: string): boolean {
   let url: URL
@@ -959,6 +960,7 @@ export function isButtonFontUrl(value: string): boolean {
   } catch {
     return false
   }
+  if (url.username || url.password) return false
   return (
     url.protocol === "https:" ||
     (url.protocol === "http:" && LOOPBACK_HOSTS.includes(url.hostname))
@@ -968,7 +970,8 @@ export function isButtonFontUrl(value: string): boolean {
 export const ButtonFontFaceSchema = z.object({
   family: z.string().min(1),
   url: z.string().refine(isButtonFontUrl, {
-    message: "A font file is served over https, or over http on localhost",
+    message:
+      "A font file is served over https, or over http on localhost, with no user name or password in its URL",
   }),
   weight: z.union([z.string(), z.number()]).optional(),
   style: z.enum(["normal", "italic", "oblique"]).optional(),
