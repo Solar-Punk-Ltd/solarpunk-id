@@ -181,9 +181,9 @@ message kinds:
 
 ### Popup to iframe
 
-| Message     | Purpose                                                                                                            |
-| ----------- | ------------------------------------------------------------------------------------------------------------------ |
-| `setSecret` | the derived app secret and the account view, sent through `window.opener` when the iframe's storage is partitioned |
+| Message     | Purpose                                                                                                                                                                                            |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setSecret` | the derived app secret and the account view, sent through `window.opener` when the iframe's storage is partitioned, and sent again by the same window when the person picks the site's stamp there |
 
 The [account bus](../account-bus/) has its own message kinds: account snapshots, partition
 handover and presence. They travel between the account's live contexts rather than between a page

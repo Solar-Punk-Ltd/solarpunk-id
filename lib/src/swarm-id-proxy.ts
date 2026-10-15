@@ -424,6 +424,14 @@ export class SwarmIdProxy {
   private storagePartitioned: boolean = false
   private pendingChallenge: string | undefined
   /**
+   * The challenge of the connect window whose handover this session came
+   * from. That window asks for the site's stamp after it handed over, and a
+   * stamp picked there reaches this frame as a second handover under the same
+   * challenge (`isStampHandover`). Cleared when another window opens or the
+   * session ends, so only the newest window can do it.
+   */
+  private handedOverChallenge: string | undefined
+  /**
    * Hydrated account view for the storage-partitioning fallback: the synced
    * projection handed over by the connect popup (`AuthData.account`), held in
    * memory only — the stored-account schema requires a vault. What survives a
@@ -1008,6 +1016,10 @@ export class SwarmIdProxy {
     message: PopupToIframeMessage,
   ): Promise<void> {
     if (message.type === "setSecret") {
+      if (this.isStampHandover(message)) {
+        await this.adoptHandover(message.data)
+        return
+      }
       // Challenge FIRST, so the origin check below can tell whose handover it
       // is refusing. Both are guards before anything is read out of the
       // payload, and the message is already same-origin (the listener checks
@@ -1041,50 +1053,75 @@ export class SwarmIdProxy {
 
       // Clean up challenge
       this.pendingChallenge = undefined
+      this.handedOverChallenge = message.challenge
       localStorage.removeItem(STORAGE_CHALLENGE_KEY)
 
-      // Authenticate in storage-partitioned mode (no stamps available via postMessage)
-      this.appSecret = message.data.secret
-      this.chatBinding = this.acceptHandedOverChatBinding(message.data)
-      this.authenticated = true
-      this.restoredSessionCheck = undefined
-      this.storagePartitioned = true
-      this.authLoading = false
-      this.isConnecting = false
-      this.deviceId = getOrCreateDeviceId()
-
-      // The projection is required by `AuthDataSchema`, so by here it is
-      // present: a payload without one never parses. The identity the dApp is
-      // shown comes off the same account, which is why nothing separate is
-      // carried for it.
-      await this.hydratePartitionAccount(
-        message.data.account,
-        message.data.secret,
-        message.data.networkSettings,
-        // A handover is a genuine connect — the same reasoning as the
-        // `reactivateThisDevice()` below, one field over.
-        Date.now(),
-      )
-
-      // A handover IS the genuine sign-in for a partition device: the user
-      // clicked connect and unlocked the account in the popup. That, and not a
-      // background poll, is what lifts a tombstone (#337 via #611).
-      // Deliberately not on `restorePartitionSession` — a reload is not a
-      // sign-in, and treating it as one is how the removal stopped sticking.
-      this.reactivateThisDevice()
-
-      // Keep it, so a reload does not log the user out of the dApp (#635).
-      // On Safari the partitioned path is the ordinary one, and re-running the
-      // popup per page load is not a session — the deadline below is.
-      this.savePartitionSession(message.data)
-
-      this.showAuthButton()
-      this.sendToParent({
-        type: "authSuccess",
-        origin: this.parentOrigin!,
-      })
-      this.emitConnectionInfoIfChanged()
+      await this.adoptHandover(message.data)
     }
+  }
+
+  /**
+   * A second handover from the window this session was handed over by,
+   * carrying the stamp the person picked there after the first one. Accepted
+   * only for that window's challenge, this parent and this session's secret,
+   * so it can move the open session to the stamp the person picked and to
+   * nothing else: not another account, not another site, not a session that
+   * has ended. Which stamp it is was decided in that window, from the
+   * account's own record.
+   */
+  private isStampHandover(message: PopupToIframeMessage): boolean {
+    return (
+      this.authenticated &&
+      this.storagePartitioned &&
+      this.handedOverChallenge !== undefined &&
+      message.challenge === this.handedOverChallenge &&
+      message.appOrigin === this.parentOrigin &&
+      message.data.secret === this.appSecret
+    )
+  }
+
+  /** Authenticate in storage-partitioned mode from a checked handover */
+  private async adoptHandover(data: AuthData): Promise<void> {
+    this.appSecret = data.secret
+    this.chatBinding = this.acceptHandedOverChatBinding(data)
+    this.authenticated = true
+    this.restoredSessionCheck = undefined
+    this.storagePartitioned = true
+    this.authLoading = false
+    this.isConnecting = false
+    this.deviceId = getOrCreateDeviceId()
+
+    // The projection is required by `AuthDataSchema`, so by here it is
+    // present: a payload without one never parses. The identity the dApp is
+    // shown comes off the same account, which is why nothing separate is
+    // carried for it.
+    await this.hydratePartitionAccount(
+      data.account,
+      data.secret,
+      data.networkSettings,
+      // A handover is a genuine connect — the same reasoning as the
+      // `reactivateThisDevice()` below, one field over.
+      Date.now(),
+    )
+
+    // A handover IS the genuine sign-in for a partition device: the user
+    // clicked connect and unlocked the account in the popup. That, and not a
+    // background poll, is what lifts a tombstone (#337 via #611).
+    // Deliberately not on `restorePartitionSession` — a reload is not a
+    // sign-in, and treating it as one is how the removal stopped sticking.
+    this.reactivateThisDevice()
+
+    // Keep it, so a reload does not log the user out of the dApp (#635).
+    // On Safari the partitioned path is the ordinary one, and re-running the
+    // popup per page load is not a session — the deadline below is.
+    this.savePartitionSession(data)
+
+    this.showAuthButton()
+    this.sendToParent({
+      type: "authSuccess",
+      origin: this.parentOrigin!,
+    })
+    this.emitConnectionInfoIfChanged()
   }
 
   /**
@@ -3658,6 +3695,7 @@ export class SwarmIdProxy {
     // Retire any join still deriving its key, or it would re-attach behind us.
     this.busJoinGeneration += 1
     this.pendingChallenge = undefined
+    this.handedOverChallenge = undefined
 
     this.emitConnectionInfoIfChanged()
 
@@ -4130,6 +4168,7 @@ export class SwarmIdProxy {
     // challenge: used for storage partitioning detection — popup checks if it can read this from localStorage
     const challenge = crypto.randomUUID()
     this.pendingChallenge = challenge
+    this.handedOverChallenge = undefined
     localStorage.setItem(STORAGE_CHALLENGE_KEY, challenge)
 
     // Get base path from current location (e.g., /id/pr-140/proxy -> /id/pr-140)

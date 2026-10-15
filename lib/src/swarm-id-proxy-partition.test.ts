@@ -1520,6 +1520,148 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     }
   })
 
+  // The connect window asks for the site's stamp after the session was handed
+  // over, so a stamp the person picks there reaches a frame kept apart only as
+  // a second handover from that same window (D10). It rides the same checks as
+  // the first one and takes nothing a fresh connect would not.
+  describe("a stamp picked in the connect window after the handover", () => {
+    const PICKED_BATCH_ID_HEX = "dd".repeat(32)
+    const HANDED_OVER_SECRET = "33".repeat(32)
+
+    /** The account the window hands over once the person picked a stamp */
+    const accountWithPick = (choice: ConnectedApp["postageStampBatchID"]) => {
+      const account = makeSyncedAccount()
+      return serializeSyncedAccount({
+        ...account,
+        connectedApps: [
+          {
+            appUrl: PARENT_ORIGIN,
+            appName: "dApp",
+            lastConnectedAt: Date.now(),
+            postageStampBatchID: choice,
+            postageStampBatchIDAt: Date.now(),
+          },
+        ],
+        postageStamps:
+          choice instanceof BatchId
+            ? [
+                {
+                  ...account.postageStamps[0],
+                  batchID: choice,
+                  signerKey: new PrivateKey("ee".repeat(32)),
+                },
+              ]
+            : [],
+      })
+    }
+
+    const lastInfo = () => messagesOfType("connectionInfoChanged").at(-1)
+
+    async function handedOverSession(): Promise<string> {
+      const challenge = await startPartitionedConnect()
+      await sendSetSecret(challenge, {
+        account: serializeSyncedAccount(makeSyncedAccount()),
+      })
+      expect(lastInfo()?.postageBatchId).toBe(BATCH_ID_HEX)
+      return challenge
+    }
+
+    it("moves the open site to the stamp the person picked, at once", async () => {
+      const challenge = await handedOverSession()
+
+      await sendSetSecret(challenge, {
+        account: accountWithPick(new BatchId(PICKED_BATCH_ID_HEX)),
+      })
+
+      expect(lastInfo()?.postageBatchId).toBe(PICKED_BATCH_ID_HEX)
+      expect(lastInfo()?.uploadMode).toBe("user-stamp")
+      expect(
+        String(vi.mocked(UtilizationAwareStamper.create).mock.calls.at(-1)![1]),
+      ).toBe(PICKED_BATCH_ID_HEX)
+    })
+
+    it("leaves the open site with no stamp when the person picked none", async () => {
+      const challenge = await handedOverSession()
+
+      await sendSetSecret(challenge, {
+        account: accountWithPick(NO_POSTAGE_STAMP),
+      })
+
+      expect(lastInfo()?.postageBatchId).toBeUndefined()
+      expect(lastInfo()?.uploadUnavailableReason).toBe("no-stamp")
+    })
+
+    it("keeps the picked stamp across a reload", async () => {
+      const challenge = await handedOverSession()
+      await sendSetSecret(challenge, {
+        account: accountWithPick(new BatchId(PICKED_BATCH_ID_HEX)),
+      })
+
+      await reload()
+
+      await vi.waitFor(() =>
+        expect(lastInfo()?.postageBatchId).toBe(PICKED_BATCH_ID_HEX),
+      )
+    })
+
+    it("refuses one carrying another secret, which is another account", async () => {
+      const challenge = await handedOverSession()
+
+      await sendSetSecret(challenge, {
+        secret: "77".repeat(32),
+        account: accountWithPick(new BatchId(PICKED_BATCH_ID_HEX)),
+      })
+
+      expect(lastInfo()?.postageBatchId).toBe(BATCH_ID_HEX)
+      expect((proxy as unknown as { appSecret: string }).appSecret).toBe(
+        HANDED_OVER_SECRET,
+      )
+    })
+
+    it("refuses one naming another site", async () => {
+      const challenge = await handedOverSession()
+
+      await sendSetSecret(
+        challenge,
+        { account: accountWithPick(new BatchId(PICKED_BATCH_ID_HEX)) },
+        SIBLING_ORIGIN,
+      )
+
+      expect(lastInfo()?.postageBatchId).toBe(BATCH_ID_HEX)
+    })
+
+    it("refuses one from a window older than the latest connect", async () => {
+      const challenge = await handedOverSession()
+      await dispatch(
+        { type: "connect", requestId: "r3" },
+        PARENT_ORIGIN,
+        parentWindow,
+      )
+
+      await sendSetSecret(challenge, {
+        account: accountWithPick(new BatchId(PICKED_BATCH_ID_HEX)),
+      })
+
+      expect(lastInfo()?.postageBatchId).toBe(BATCH_ID_HEX)
+    })
+
+    it("refuses one after the site disconnected", async () => {
+      const challenge = await handedOverSession()
+      await dispatch(
+        { type: "disconnect", requestId: "r3" },
+        PARENT_ORIGIN,
+        parentWindow,
+      )
+
+      await sendSetSecret(challenge, {
+        account: accountWithPick(new BatchId(PICKED_BATCH_ID_HEX)),
+      })
+
+      expect(lastInfo()?.identity).toBeUndefined()
+      expect(messagesOfType("authSuccess")).toHaveLength(1)
+    })
+  })
+
   it("answers a bus lease-request by yielding and announcing the release", async () => {
     const account = makeSyncedAccount()
     const challenge = await startPartitionedConnect()

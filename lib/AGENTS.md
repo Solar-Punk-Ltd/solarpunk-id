@@ -28,7 +28,7 @@ knowing by name:
 Two authentication paths, decided by the storage probe (`utils/storage-probe.ts`):
 
 - **Unpartitioned**: popup writes to localStorage → storage event fires in the iframe → the iframe authenticates from shared storage.
-- **Partitioned**: popup → `window.opener.postMessage(setSecret)` with the account's synced projection → `handlePopupMessage` hydrates an in-memory account view and keeps the handover under `partitionSessionStorageKey(parentOrigin)` — one session per dApp origin, since the store is shared by every same-site dApp (#671) — so a reload restores it. The popup's first-party write never reaches the iframe as a storage event here. Events from the partition's own store still fire, and the proxy ignores them for a partitioned session rather than letting one reset it to defaults (#580, #677).
+- **Partitioned**: popup → `window.opener.postMessage(setSecret)` with the account's synced projection → `handlePopupMessage` hydrates an in-memory account view and keeps the handover under `partitionSessionStorageKey(parentOrigin)` — one session per dApp origin, since the store is shared by every same-site dApp (#671) — so a reload restores it. The popup's first-party write never reaches the iframe as a storage event here. Events from the partition's own store still fire, and the proxy ignores them for a partitioned session rather than letting one reset it to defaults (#580, #677). The same popup sends a second `setSecret` when the person picks the site's stamp after the handover. The proxy takes it only under that popup's challenge, for its own parent and with the secret it already holds (`isStampHandover`), so it moves the open session to the picked stamp and to nothing else.
 
 ## Account bus (`bus/`)
 
