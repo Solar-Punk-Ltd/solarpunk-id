@@ -263,6 +263,38 @@ describe('the chat binding at connect', () => {
     expect(parsed.chatBinding).toEqual(savedBinding(account))
   })
 
+  // Signing in gives the site no stamp. The person confirms its drive on the
+  // done screen, and only that lets the frame stamp.
+  it('signs the site in with its stamp held back until the person confirms', async () => {
+    const account = fakeAccount()
+
+    await completeConnect(account, ENTROPY, request)
+
+    const saved = account.connectedApps.find((app) => app.appUrl === APP_ORIGIN)
+    expect(saved?.stampPending).toBe(true)
+    const message = handedOver()
+    expect(message.data.stampPending).toBe(true)
+    const parsed = AuthDataSchema.parse(message.data)
+    expect(parsed.stampPending).toBe(true)
+    expect(parsed.account.postageStamps).toEqual([])
+  })
+
+  it('holds the stamp back on a reused session too', async () => {
+    const account = fakeAccount()
+    await completeConnect(account, ENTROPY, request)
+    account.connectedApps = account.connectedApps.map((app) => ({
+      ...app,
+      stampPending: undefined,
+    }))
+    opener.postMessage.mockClear()
+
+    expect(reuseConnection(account, request)).toBe(true)
+
+    expect(account.connectedApps[0].stampPending).toBe(true)
+    expect(handedOver().data.stampPending).toBe(true)
+    expect(AuthDataSchema.parse(handedOver().data).account.postageStamps).toEqual([])
+  })
+
   it('keeps the binding it already has for this site on a reconnect', async () => {
     const account = fakeAccount()
     await completeConnect(account, ENTROPY, request)
@@ -418,10 +450,16 @@ describe('the chat binding at connect', () => {
   // frame kept apart from this window's storage learns of the pick only from
   // a second handover, under the same challenge and with the same secret.
   describe('handing over the drive picked on the done screen', () => {
+    /** What the done screen's confirm writes: the pick, and the wait over */
     const pickDrive = (account: Account, batch: string) => {
       account.connectedApps = account.connectedApps.map((app) =>
         app.appUrl === APP_ORIGIN
-          ? { ...app, postageStampBatchID: new BatchId(batch), postageStampBatchIDAt: Date.now() }
+          ? {
+              ...app,
+              postageStampBatchID: new BatchId(batch),
+              postageStampBatchIDAt: Date.now(),
+              stampPending: undefined,
+            }
           : app,
       )
     }
@@ -440,6 +478,7 @@ describe('the chat binding at connect', () => {
       expect(again.challenge).toBe(CHALLENGE)
       expect(again.data.secret).toBe(first.data.secret)
       expect(again.data.chatBinding).toEqual(first.data.chatBinding)
+      expect(again.data.stampPending).toBeUndefined()
       const parsed = AuthDataSchema.parse(again.data)
       const app = parsed.account.connectedApps.find((entry) => entry.appUrl === APP_ORIGIN)
       expect((app?.postageStampBatchID as BatchId).toHex()).toBe(APP_BATCH)

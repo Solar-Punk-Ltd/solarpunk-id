@@ -72,8 +72,9 @@ The `/connect` route of the identity site. It:
 - writes the connection to the shared store, or posts it to the iframe when storage is partitioned
 - records your app under the account's connected apps, with the session length from the account's
   settings
-- asks which of the account's drives your app uses, or none, on every connect, starting on the
-  one it uses now, and posts a changed pick to a partitioned iframe as a second handover
+- signs your app in with no stamp, then asks which of the account's drives it uses, or none, on
+  every connect, starting on the one it uses now. Confirming lets the iframe stamp: the shared
+  store says so, and a partitioned iframe gets the confirmed drive as a second handover
 
 ### The identity site
 

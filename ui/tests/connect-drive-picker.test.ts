@@ -13,15 +13,13 @@
 import { type Page, expect, test } from '@playwright/test'
 
 import {
-  ID_ORIGIN,
-  PASSWORD,
-  completeCreateFlow,
-  expectProxyPartitioned,
-  goToApp,
-  partitionedDemoOrigin,
-  sealInPage,
-  seedNoChain,
-} from './helpers'
+  CHAT_BATCH,
+  MAIN_BATCH,
+  connectedOnDefault,
+  lastStampNamed,
+  openConnectWindow,
+} from './drive-picker-helpers'
+import { expectProxyPartitioned, goToApp, partitionedDemoOrigin } from './helpers'
 
 const demoOrigin = await partitionedDemoOrigin()
 test.skip(
@@ -29,119 +27,35 @@ test.skip(
   'the demo dev server answered on neither loopback literal, nothing to browse cross-site',
 )
 
-const MAIN_BATCH = 'a1'.repeat(32)
-const CHAT_BATCH = 'b2'.repeat(32)
-const DAY_SECONDS = 24 * 60 * 60
-const LIFETIME_DAYS = 12
-
-interface StoredAccounts {
-  data: { defaultPostageStampBatchID?: string; postageStamps?: Record<string, unknown>[] }[]
-}
-
-/** Two drives, Main the default, written into the account the create flow made */
-async function seedTwoDrives(page: Page) {
-  const doc = await page.evaluate(
-    () => JSON.parse(localStorage.getItem('swarm-id-accounts') ?? '{}') as StoredAccounts,
-  )
-  const drive = async (batchID: string, name: string) => ({
-    batchID,
-    signerKey: await sealInPage(page, 'c3'.repeat(32)),
-    name,
-    utilization: 0,
-    usable: true,
-    depth: 22,
-    amount: '100000000',
-    bucketDepth: 16,
-    blockNumber: 1,
-    immutableFlag: false,
-    exists: true,
-    batchTTL: LIFETIME_DAYS * DAY_SECONDS,
-    createdAt: Date.now(),
-  })
-  doc.data[0].postageStamps = [await drive(MAIN_BATCH, 'Main'), await drive(CHAT_BATCH, 'Chat')]
-  doc.data[0].defaultPostageStampBatchID = MAIN_BATCH
-  await page.evaluate(
-    (value) => localStorage.setItem('swarm-id-accounts', value),
-    JSON.stringify(doc),
-  )
-}
-
-/**
- * Every stamp the frame has named to the site, oldest first, read off the
- * wire the site's client listens on.
- */
-async function recordStampsNamed(page: Page) {
-  await page.evaluate(() => {
-    const named: (string | null)[] = []
-    Object.assign(window, { stampsNamed: named })
-    window.addEventListener('message', (event: MessageEvent) => {
-      const data = event.data as { type?: string; identity?: unknown; postageBatchId?: string }
-      if (data?.type === 'connectionInfoChanged' && data.identity) {
-        named.push(data.postageBatchId ?? null)
-      }
-    })
-  })
-}
-
-const lastStampNamed = (page: Page) =>
-  page.evaluate(() => (window as unknown as { stampsNamed: (string | null)[] }).stampsNamed.at(-1))
-
-/** Opens the connect window through the site's own `client.connect()` */
-async function openConnectWindow(page: Page, button: string) {
-  const popupPromise = page.waitForEvent('popup', { timeout: 15000 })
-  await page.getByRole('button', { name: button, exact: true }).click()
-  const popup = await popupPromise
-  await popup.waitForLoadState()
-  return popup
-}
-
-/**
- * An account with two drives, connected to the partitioned demo on the
- * account default, which the picker starts on
- */
-async function connectedOnDefault(page: Page) {
-  await seedNoChain(page)
-  await page.goto(`${ID_ORIGIN}/?signin`)
-  await completeCreateFlow(page)
-  await page.getByRole('button', { name: 'Stay local for now' }).click()
-  await expect(page).toHaveURL(/\/$/)
-  await seedTwoDrives(page)
-
-  await page.goto(`${demoOrigin}/account`)
-  await expectProxyPartitioned(page)
-  await recordStampsNamed(page)
-
-  await page.getByRole('button', { name: 'Connect Swarm ID' }).click()
-  const popup = await openConnectWindow(page, 'Connect')
+/** Opens the window again while signed in and picks the account */
+async function reopenSignedIn(page: Page) {
+  const popup = await openConnectWindow(page, 'Change in Swarm ID')
   await popup.getByRole('button', { name: /0x[0-9a-fA-F]{4}/ }).click()
-  await popup.getByRole('textbox', { name: 'Account password' }).fill(PASSWORD)
-  await popup.getByRole('button', { name: 'Confirm' }).click()
-  await expect(popup.getByRole('combobox', { name: 'Select drive' })).toHaveValue(MAIN_BATCH)
-  await goToApp(popup)
-  await expect.poll(() => lastStampNamed(page), { timeout: 15000 }).toBe(MAIN_BATCH)
+  return popup
 }
 
 test('the connect window asks for the drive every time, and an open site uses the pick at once', async ({
   page,
 }) => {
-  await connectedOnDefault(page)
+  await connectedOnDefault(page, demoOrigin!)
+  await expectProxyPartitioned(page)
   let popup: Page
   let picker
 
   // Signed in, the site opens the window again. The account is listed as used
-  // with this site, the picker starts on the drive it uses, and a pick reaches
-  // the open site without a reload.
-  popup = await openConnectWindow(page, 'Change in Swarm ID')
-  await popup.getByRole('button', { name: /0x[0-9a-fA-F]{4}/ }).click()
+  // with this site, the site holds no stamp until the confirm, the picker
+  // starts on the drive it uses, and a pick reaches the open site without a
+  // reload.
+  popup = await reopenSignedIn(page)
   picker = popup.getByRole('combobox', { name: 'Select drive' })
   await expect(picker).toHaveValue(MAIN_BATCH)
+  await expect.poll(() => lastStampNamed(page), { timeout: 15000 }).toBeNull()
   await picker.selectOption({ label: 'Chat' })
   await goToApp(popup)
   await expect.poll(() => lastStampNamed(page), { timeout: 15000 }).toBe(CHAT_BATCH)
 
   // The next time, it starts on that pick, and no drive takes the site's away.
-  popup = await openConnectWindow(page, 'Change in Swarm ID')
-  await popup.getByRole('button', { name: /0x[0-9a-fA-F]{4}/ }).click()
+  popup = await reopenSignedIn(page)
   picker = popup.getByRole('combobox', { name: 'Select drive' })
   await expect(picker).toHaveValue(CHAT_BATCH)
   await picker.selectOption({ label: 'No drive' })
@@ -149,14 +63,36 @@ test('the connect window asks for the drive every time, and an open site uses th
   await expect.poll(() => lastStampNamed(page), { timeout: 15000 }).toBeNull()
 })
 
-// The window can carry a pick only to the frame that opened it. Once the site
-// reloaded, that frame is gone, and the window says the open site stays on
-// its earlier drive rather than closing as if it had moved.
-test('the connect window says so when the site it was opened from is gone', async ({ page }) => {
-  await connectedOnDefault(page)
+// Closing the window instead of confirming leaves the site signed in with no
+// stamp, a reload included.
+test('a connect window closed without the confirm leaves the site with no stamp', async ({
+  page,
+}) => {
+  await connectedOnDefault(page, demoOrigin!)
+  await expectProxyPartitioned(page)
 
-  const popup = await openConnectWindow(page, 'Change in Swarm ID')
-  await popup.getByRole('button', { name: /0x[0-9a-fA-F]{4}/ }).click()
+  const popup = await reopenSignedIn(page)
+  await expect(popup.getByRole('combobox', { name: 'Select drive' })).toHaveValue(MAIN_BATCH)
+  await expect.poll(() => lastStampNamed(page), { timeout: 15000 }).toBeNull()
+  await popup.close()
+
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Identity' })).toBeVisible({ timeout: 15000 })
+  await expect.poll(() => lastStampNamed(page), { timeout: 15000 }).toBeNull()
+  const named = await page.evaluate(
+    () => (window as unknown as { stampsNamed: (string | null)[] }).stampsNamed,
+  )
+  expect(named.filter((batch) => batch !== null)).toEqual([])
+})
+
+// The window can carry the confirmed drive only to the frame that opened it.
+// Once the site reloaded, that frame is gone, and the window says the site
+// has no drive rather than closing as if it had one.
+test('the connect window says so when the site it was opened from is gone', async ({ page }) => {
+  await connectedOnDefault(page, demoOrigin!)
+  await expectProxyPartitioned(page)
+
+  const popup = await reopenSignedIn(page)
   const picker = popup.getByRole('combobox', { name: 'Select drive' })
   await expect(picker).toHaveValue(MAIN_BATCH)
   await page.reload()
@@ -164,7 +100,7 @@ test('the connect window says so when the site it was opened from is gone', asyn
   await popup.getByRole('button', { name: 'Go to app' }).click()
 
   await expect(
-    popup.getByText('Saved. The open site keeps its earlier drive until it connects again.'),
+    popup.getByText('Saved. The site has no drive until it connects again.'),
   ).toBeVisible()
   await goToApp(popup)
 })

@@ -48,28 +48,42 @@ or store under such a site:
 The connect window asks which drive a site uses on every connect. What it
 starts on is read from the account's own record for that site, and nothing in
 the window's link or from the site can name a drive, preselect one or skip
-the question. A pick that changes the drive is saved and, for a frame kept
-apart from the window's storage, handed over a second time through the same
-opener path as the session itself. The frame takes that second handover only
-under the challenge of the window that handed the session over, for its own
-parent and with the secret it already holds, and a newer window or the end
-of the session retires that challenge. It carries the same narrowed account
-view as the first handover, so the site learns the batch id and nothing more.
+the question.
 
-The pick reaches the open site only while the frame that opened the window is
-still there. A site that reloaded, navigated or opened another window since
-gets nothing, and keeps its earlier stamp until it connects again. The window
-says so when it can see the frame is gone (`handOverPickedStamp` answers
+Signing in gives the site no stamp. Every connect, first or not, marks the
+site's entry `stampPending`, and the handover that signs a frame kept apart in
+says `stampPending` and carries no stamp at all, signer key included. While it
+is set the frame resolves no stamp, whatever the entry's pointer or an account
+delta says. It is this device's session material, like the app secret: no
+channel to another context carries it, and a fold keeps this context's own.
+The person's choice in the record is never touched by it. "Go to app" on the
+done screen is the confirm: one write saves a changed pick and ends the wait,
+and is stored before the window closes, so a frame that reads the shared store
+picks the drive up from it. A frame kept apart is handed the confirmed drive a
+second time through the same opener path as the session itself. It takes that
+second handover only under the challenge of the window that handed the session
+over, for its own parent and with the secret it already holds, and a newer
+window or the end of the session retires that challenge. It carries the same
+narrowed account view as any handover, so the site learns the batch id and
+nothing more. Closing the window without the confirm leaves the site signed in
+with no stamp, across a reload too, since the stored session keeps the wait.
+
+The confirm reaches a frame kept apart only while the frame that opened the
+window is still there. A site that reloaded, navigated or opened another window
+since gets nothing and has no stamp until it connects again. The window says so
+when it can see the frame is gone (`handOverPickedStamp` answers
 `not-reached`). A frame that reloaded in place keeps no challenge, drops the
 message, and the window cannot tell.
 
 - Code: `ui/src/routes/connect/done/+page.svelte`, `handOverPickedStamp` in
-  `ui/src/lib/connect-handshake.ts`, `isStampHandover` in
-  `lib/src/swarm-id-proxy.ts`.
+  `ui/src/lib/connect-handshake.ts`, `Account.confirmAppStamp`,
+  `isStampHandover` and `lookupPostageStampForApp` in
+  `lib/src/swarm-id-proxy.ts`, `stampsReachableByApp`.
 - Tests: `ui/src/lib/connect-handshake.test.ts`,
-  `lib/src/swarm-id-proxy-partition.test.ts` ("a stamp picked in the connect
-  window after the handover") and the browser journey
-  `ui/tests/connect-drive-picker.test.ts`.
+  `lib/src/swarm-id-proxy-partition.test.ts` ("a stamp withheld until the
+  person confirms it", "a stamp picked in the connect window after the
+  handover") and the browser journeys `ui/tests/connect-drive-picker.test.ts`
+  and `ui/tests/connect-drive-picker-shared.test.ts`.
 
 ## Keys are sealed at rest
 

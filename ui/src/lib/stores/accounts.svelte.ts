@@ -111,11 +111,11 @@ export class Account {
   // WITHOUT a Swarm publish: the change came from a remote fold, is a volatile
   // field peers don't need, or is a device-local de-auth that must not
   // propagate (`signOut`).
-  readonly #commit: (options?: { skipSync?: boolean }) => void
+  readonly #commit: (options?: { skipSync?: boolean }) => Promise<void> | void
 
   constructor(
     record: AccountRecord,
-    commit: (account: Account, options?: { skipSync?: boolean }) => void,
+    commit: (account: Account, options?: { skipSync?: boolean }) => Promise<void> | void,
   ) {
     this.id = record.id
     this.#commit = (options) => commit(this, options)
@@ -401,6 +401,35 @@ export class Account {
     this.#commit()
   }
 
+  /**
+   * End the wait every connect starts: the person confirmed the site's drive
+   * in the connect window, so the site's frame may stamp with it. A `pick`
+   * that changes the drive is saved in the same write, as `setAppStamp`
+   * saves it. One write, resolved once it is stored, so the window can close
+   * knowing a frame reading this store will see it. Only the wait ending is
+   * local session material, so nothing is published without a pick.
+   */
+  confirmAppStamp(
+    appUrl: string,
+    pick?: { batchID: ConnectedApp['postageStampBatchID'] },
+  ): Promise<void> {
+    if (!isCleanSite(appUrl) || !this.connectedApps.some((app) => app.appUrl === appUrl)) {
+      return Promise.resolve()
+    }
+    const now = Date.now()
+    this.connectedApps = this.connectedApps.map((app) =>
+      app.appUrl === appUrl
+        ? {
+            ...app,
+            stampPending: undefined,
+            ...(pick && { postageStampBatchID: pick.batchID, postageStampBatchIDAt: now }),
+          }
+        : app,
+    )
+    if (pick) this.lastModified = now
+    return this.#commit({ skipSync: !pick }) ?? Promise.resolve()
+  }
+
   /** Disconnect and tombstone so the removal propagates to sync. */
   removeApp(appUrl: string) {
     this.connectedApps = this.connectedApps.map((app) =>
@@ -676,9 +705,9 @@ function persistRemoval(id: EthAddress): void {
  * remote fold or touches only a volatile field peers don't need. Injected into
  * each `Account` as its `#commit`.
  */
-function commitAccount(account: Account, options?: { skipSync?: boolean }): void {
+function commitAccount(account: Account, options?: { skipSync?: boolean }): Promise<void> {
   // Published once written, so a peer told of the change finds it in storage.
-  void persistAccount(account, options?.skipSync).then(() => {
+  return persistAccount(account, options?.skipSync).then(() => {
     if (!options?.skipSync) syncHook?.(account.id.toHex())
   }, tellSaveFailed)
 }

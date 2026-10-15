@@ -59,6 +59,7 @@ function saveConnection(
     lastConnectedAt: now,
     connectedUntil: now + appSessionDuration(account.settings),
     chatBinding,
+    stampPending: true,
   }
   account.connectApp(connection)
 }
@@ -89,7 +90,8 @@ function keptChatBinding(
  * The account view handed to a partitioned proxy iframe: the synced projection
  * (no vault, no app secrets) with the stamp collection narrowed to the ones
  * THIS app can spend — its own batch override and the account default it falls
- * through to (#578).
+ * through to (#578), and none while the person has not yet confirmed the
+ * site's drive (`stampPending`).
  *
  * The iframe is on the SwarmID origin and an unpartitioned proxy reads the same
  * material out of shared storage, so this is least privilege rather than a
@@ -124,7 +126,7 @@ export function partitionHandoverAccount(
     ...account,
     connectedApps: onlySiteChatBinding(account.connectedApps, appOrigin),
     postageStamps: stampsReachableByApp(
-      { postageStampBatchID: app?.postageStampBatchID },
+      { postageStampBatchID: app?.postageStampBatchID, stampPending: app?.stampPending },
       account,
       account.postageStamps,
     ),
@@ -150,6 +152,9 @@ function sendSecretToOpener(
   if (!request.partitionChallenge || !window.opener || window.opener.closed) {
     return false
   }
+  const stampPending = account.connectedApps.find(
+    (app) => app.appUrl === request.appOrigin,
+  )?.stampPending
   const message = {
     type: 'setSecret',
     appOrigin: request.appOrigin,
@@ -159,6 +164,7 @@ function sendSecretToOpener(
       account: partitionHandoverAccount(account.toSyncedRecord(), request.appOrigin),
       networkSettings: networkSettingsStore.settings,
       chatBinding,
+      stampPending,
     },
   }
   // The account collections and network settings are Svelte $state proxies,

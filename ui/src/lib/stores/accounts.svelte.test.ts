@@ -422,6 +422,63 @@ describe('Account.setAppStamp', () => {
   })
 })
 
+// Every connect holds the site's stamp back until the person confirms its
+// drive in the connect window. The confirm leaves the choice as it is.
+describe('Account.confirmAppStamp', () => {
+  const APP_URL = 'https://app.example.com'
+  const BATCH_HEX = 'c'.repeat(64)
+
+  function pendingAccount(): Account {
+    return new Account(
+      {
+        ...signedInRecord(),
+        connectedApps: [
+          {
+            appUrl: APP_URL,
+            appName: 'Test App',
+            lastConnectedAt: 1,
+            postageStampBatchID: new BatchId(BATCH_HEX),
+            postageStampBatchIDAt: 5,
+            stampPending: true,
+          },
+        ],
+      },
+      noCommit,
+    )
+  }
+
+  it('ends the wait and keeps the choice and its clock', () => {
+    const account = pendingAccount()
+    account.confirmAppStamp(APP_URL)
+    const [app] = account.connectedApps
+    expect(app.stampPending).toBeUndefined()
+    expect((app.postageStampBatchID as BatchId).toHex()).toBe(BATCH_HEX)
+    expect(app.postageStampBatchIDAt).toBe(5)
+  })
+
+  it('saves a pick that changes the drive in the same write', async () => {
+    let commits = 0
+    const account = new Account(pendingAccount().toRecord(), () => void commits++)
+    await account.confirmAppStamp(APP_URL, { batchID: NO_POSTAGE_STAMP })
+    const [app] = account.connectedApps
+    expect(app.stampPending).toBeUndefined()
+    expect(app.postageStampBatchID).toBe(NO_POSTAGE_STAMP)
+    expect(app.postageStampBatchIDAt).toBeGreaterThan(5)
+    expect(commits).toBe(1)
+  })
+
+  it('keeps the wait through a record until then', () => {
+    const rehydrated = new Account(pendingAccount().toRecord(), noCommit)
+    expect(rehydrated.connectedApps[0].stampPending).toBe(true)
+  })
+
+  it('is a no-op for another site', () => {
+    const account = pendingAccount()
+    account.confirmAppStamp('https://other.example.com')
+    expect(account.connectedApps[0].stampPending).toBe(true)
+  })
+})
+
 // A site the person disconnects or removes comes back on the account default
 // or on what is picked in the connect window, never on a drive chosen before.
 // The cleared choice carries its own fresh clock, so it wins over an older
@@ -486,7 +543,7 @@ describe('Account refuses a site that is not a clean origin', () => {
 
   it('records no connection for it', () => {
     let commits = 0
-    const account = new Account(signedInRecord(), () => commits++)
+    const account = new Account(signedInRecord(), () => void commits++)
 
     expect(() =>
       account.connectApp({ appUrl: DIRTY_SITE, appName: 'Test App', lastConnectedAt: 1 }),
@@ -503,7 +560,7 @@ describe('Account refuses a site that is not a clean origin', () => {
         ...signedInRecord(),
         connectedApps: [{ appUrl: DIRTY_SITE, appName: 'Test App', lastConnectedAt: 1 }],
       },
-      () => commits++,
+      () => void commits++,
     )
 
     account.setAppStamp(DIRTY_SITE, new BatchId('c'.repeat(64)))
