@@ -2629,6 +2629,8 @@ export class SwarmIdProxy {
     // Load existing secret if available
     await this.loadAuthData()
 
+    const storageShared = await isStorageShared()
+
     // Acknowledge receipt
     this.postMessage(event, {
       type: "proxyReady",
@@ -2638,7 +2640,7 @@ export class SwarmIdProxy {
       // than at construction because the parent is only known now, and the
       // client needs it before its first `connect()` — an await between the
       // user's click and `window.open` is what loses the gesture.
-      storageShared: isStorageShared(),
+      storageShared,
     })
 
     // Send the initial ConnectionInfo snapshot. The client awaits this before

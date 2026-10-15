@@ -7,6 +7,12 @@ import { SwarmIdButtonFrame } from "./swarm-id-button-frame"
 import { allowingSites } from "./test-fixtures"
 import { BUTTON_FRAME_LOADED, STORAGE_CHALLENGE_KEY } from "./types"
 
+/** What `isStorageShared` answers this frame, partitioned unless a test says */
+const probe = vi.hoisted(() => ({ shared: false }))
+vi.mock("./utils/storage-probe", () => ({
+  isStorageShared: () => Promise.resolve(probe.shared),
+}))
+
 const ID_ORIGIN = "https://id.example.com"
 const PARENT_ORIGIN = "https://site.example.com"
 const METADATA = { name: "Site" }
@@ -63,6 +69,7 @@ describe("SwarmIdButtonFrame", () => {
   let frame: SwarmIdButtonFrame
 
   beforeEach(() => {
+    probe.shared = false
     vi.useFakeTimers()
     sessionFrame = { postMessage: vi.fn() }
     siteFrame = { postMessage: vi.fn() }
@@ -186,7 +193,8 @@ describe("SwarmIdButtonFrame", () => {
     expect(params.get("appName")).toBe(METADATA.name)
     const challenge = params.get("challenge")
     expect(challenge).toBeTruthy()
-    expect(storage.get(STORAGE_CHALLENGE_KEY)).toBe(challenge)
+    // Partitioned: the window must not find it, so it hands the session over
+    expect(storage.has(STORAGE_CHALLENGE_KEY)).toBe(false)
 
     expect(sessionFrame.postMessage).toHaveBeenCalledWith(
       { type: "connectWindowOpened", challenge },
@@ -205,6 +213,18 @@ describe("SwarmIdButtonFrame", () => {
     expect(buttons[0].attributes["aria-busy"]).toBe("true")
   })
 
+  // Shared: the window finds the challenge in its own storage and writes the
+  // connection there, where the session frame reads it.
+  it("leaves the challenge where the window looks when it shares storage", async () => {
+    probe.shared = true
+    await identify()
+    buttons[0].click()
+
+    const [url] = open.mock.calls[0] as [string]
+    const challenge = new URLSearchParams(url.split("#")[1]).get("challenge")
+    expect(storage.get(STORAGE_CHALLENGE_KEY)).toBe(challenge)
+  })
+
   it("opens a sized popup when the site asked for one", async () => {
     await identify({ popupMode: "popup" })
     buttons[0].click()
@@ -213,6 +233,7 @@ describe("SwarmIdButtonFrame", () => {
   })
 
   it("says the window was blocked and stays clickable", async () => {
+    probe.shared = true
     opened = null
     await identify()
     buttons[0].click()

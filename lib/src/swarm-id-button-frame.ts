@@ -15,6 +15,7 @@ import {
 } from "./types"
 import { buttonView } from "./utils/button-view"
 import type { SiteAllowList } from "./utils/site-allow-list"
+import { isStorageShared } from "./utils/storage-probe"
 import { buildAuthUrl } from "./utils/url"
 
 const POPUP_FEATURES = "width=500,height=600"
@@ -53,6 +54,7 @@ export class SwarmIdButtonFrame {
   private config: ButtonConfig = {}
   private metadata: AppMetadata | undefined
   private popupMode: "popup" | "window" = "window"
+  private storageShared = false
   private connectWindow: Window | undefined
   private watchStart: ReturnType<typeof setTimeout> | undefined
   private watchInterval: ReturnType<typeof setInterval> | undefined
@@ -98,6 +100,7 @@ export class SwarmIdButtonFrame {
       )
       return
     }
+    this.storageShared = await isStorageShared()
     this.parentOrigin = event.origin
     this.action = parsed.data.action
     this.config = parsed.data.config ?? {}
@@ -148,10 +151,12 @@ export class SwarmIdButtonFrame {
 
   /**
    * Opens the connect window from the person's click, which is what lets the
-   * browser open it at all. The challenge goes into this partition's storage
-   * first, where the window looks for it to learn whether it shares storage
-   * with the session frame, and to the session frames once the window is
-   * open, so they take the handover that comes back under it.
+   * browser open it at all. The window looks for the challenge in its own
+   * storage to learn whether the session frame reads that storage, so it goes
+   * there first only when this frame can open what the first-party pages
+   * sealed (`isStorageShared`). Otherwise the window hands the session over,
+   * and the session frames are told the challenge once the window is open, so
+   * they take the handover that comes back under it.
    */
   private openConnectWindow(): void {
     const view = buttonView(
@@ -163,7 +168,8 @@ export class SwarmIdButtonFrame {
       return
     }
     const challenge = crypto.randomUUID()
-    localStorage.setItem(STORAGE_CHALLENGE_KEY, challenge)
+    if (this.storageShared)
+      localStorage.setItem(STORAGE_CHALLENGE_KEY, challenge)
     const basePath = window.location.pathname.replace(BUTTON_PATH, "")
     const url = buildAuthUrl(
       window.location.origin + basePath,
@@ -176,7 +182,7 @@ export class SwarmIdButtonFrame {
         ? window.open(url, "_blank", POPUP_FEATURES)
         : window.open(url, "_blank")
     if (!opened) {
-      localStorage.removeItem(STORAGE_CHALLENGE_KEY)
+      if (this.storageShared) localStorage.removeItem(STORAGE_CHALLENGE_KEY)
       this.tellWindowState("blocked")
       return
     }
