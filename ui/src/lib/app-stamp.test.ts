@@ -122,6 +122,16 @@ describe('appStampSummary', () => {
       'No drive',
     )
   })
+
+  it('says the site waits for the person to confirm its drive', () => {
+    expect(
+      appStampSummary(
+        { postageStampBatchID: new BatchId(OTHER_HEX), stampPending: true },
+        account,
+        NOW,
+      ),
+    ).toBe('Waiting for you to confirm in the sign-in window.')
+  })
 })
 
 describe('appSiteFromTarget', () => {

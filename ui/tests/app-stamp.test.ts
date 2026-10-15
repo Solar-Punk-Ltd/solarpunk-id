@@ -19,6 +19,7 @@ interface StoredAccounts {
       appName?: string
       lastConnectedAt?: number
       postageStampBatchID?: string
+      stampPending?: true
     }[]
   }[]
 }
@@ -36,7 +37,7 @@ const storedChoice = async (page: Page) =>
  * Two drives and one connected site, written into the account the create flow
  * made, so no chain is needed: the Apps screen reads only the record.
  */
-async function seedDrivesAndSite(page: Page) {
+async function seedDrivesAndSite(page: Page, { stampPending }: { stampPending?: true } = {}) {
   const doc = await readAccounts(page)
   const drive = async (batchID: string, name: string, utilization: number) => ({
     batchID,
@@ -58,7 +59,9 @@ async function seedDrivesAndSite(page: Page) {
     await drive(CHAT_BATCH, 'Chat', 0.5),
   ]
   doc.data[0].defaultPostageStampBatchID = MAIN_BATCH
-  doc.data[0].connectedApps = [{ appUrl: SITE, appName: 'Chat site', lastConnectedAt: Date.now() }]
+  doc.data[0].connectedApps = [
+    { appUrl: SITE, appName: 'Chat site', lastConnectedAt: Date.now(), stampPending },
+  ]
   await page.evaluate(
     (value) => localStorage.setItem('swarm-id-accounts', value),
     JSON.stringify(doc),
@@ -100,4 +103,23 @@ test('the Apps screen changes the drive a site uses, from a link to that site', 
   await expect(
     page.getByText('https://other.example.com is not connected to this account.'),
   ).toBeVisible()
+})
+
+test('the Apps screen says a site waits for the person to confirm its drive', async ({ page }) => {
+  await seedNoChain(page)
+  await page.goto('/?signin')
+  await completeCreateFlow(page)
+  await page.getByRole('button', { name: 'Stay local for now' }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await seedDrivesAndSite(page, { stampPending: true })
+
+  await page.goto(`/#apps/${encodeURIComponent(SITE)}`)
+  await page.reload()
+
+  const row = page.locator('[aria-current="true"]')
+  await expect(row.getByText('Waiting for you to confirm in the sign-in window.')).toBeVisible()
+  await expect(row.getByText(/% used/)).toHaveCount(0)
+  await expect(
+    row.getByRole('combobox', { name: 'Drive this app uses', exact: true }),
+  ).toBeEnabled()
 })

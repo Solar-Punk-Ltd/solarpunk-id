@@ -21,6 +21,10 @@ type AppStampChoice = ConnectedApp['postageStampBatchID']
 
 type AppStampPointer = Pick<ConnectedApp, 'postageStampBatchID'>
 
+type AppStampState = Pick<ConnectedApp, 'postageStampBatchID' | 'stampPending'>
+
+const AWAITING_CONFIRM_SUMMARY = 'Waiting for you to confirm in the sign-in window.'
+
 interface AccountDrives {
   /** The account's live drives, tombstones left out */
   stamps: PostageStamp[]
@@ -60,12 +64,17 @@ export function appStampOptions(account: AccountDrives, now = Date.now()): Selec
   return [...drives, { value: NO_POSTAGE_STAMP, label: 'No drive' }]
 }
 
-/** "Chat · 50% used · 12 days left", or "No drive" */
+/**
+ * "Chat · 50% used · 12 days left", or "No drive". A site still waiting for
+ * the person to confirm its drive in the connect window says so instead,
+ * because its frame holds no stamp until then, whatever drive it points at.
+ */
 export function appStampSummary(
-  app: AppStampPointer,
+  app: AppStampState,
   account: AccountDrives,
   now = Date.now(),
 ): string {
+  if (app.stampPending) return AWAITING_CONFIRM_SUMMARY
   const drive = resolvedDrive(app, account)
   if (!drive) return 'No drive'
   const display = describeDrive(drive, now)
