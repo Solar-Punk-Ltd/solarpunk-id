@@ -148,7 +148,8 @@ makes the name the wallet's.
 
 It reads over an Ethereum mainnet JSON-RPC endpoint the caller names, never a
 Swarm gateway. `timeoutMs` bounds the whole lookup and defaults to 10 seconds.
-Every answer is capped in size before it is decoded. Everything that goes
+Every response body is read only up to a byte bound, and a longer one is
+refused as it streams in, before anything parses it. Everything that goes
 wrong, no endpoint, an endpoint that is down or slow, an answer too long or that
 does not decode, answers no name, never a throw. An answer, a name or a
 definite no name, is kept in memory for ten minutes per endpoint and wallet. A

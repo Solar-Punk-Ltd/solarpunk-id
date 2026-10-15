@@ -46,11 +46,7 @@ function addressWord(address: string): string {
 }
 
 function rpcResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: () => Promise.resolve(body),
-  } as Response
+  return new Response(JSON.stringify(body), { status })
 }
 
 const reverseNode = (wallet: string) =>
@@ -61,6 +57,8 @@ interface StubChain {
   reverseName?: string
   /** What `name` answers instead of an encoded string. */
   rawName?: string
+  /** Extra bytes in the `name` answer's envelope, beside a well-formed result. */
+  namePadding?: number
   /** The address the forward record holds. Unset, the name has no resolver. */
   forwardAddress?: string
   status?: number
@@ -117,6 +115,9 @@ function stubEndpoint(): void {
       expect(node).toBe(reverseNode(WALLET))
       return rpcResponse({
         result: chain.rawName ?? abiString(chain.reverseName ?? ""),
+        ...(chain.namePadding
+          ? { padding: "x".repeat(chain.namePadding) }
+          : {}),
       })
     }
     if (to === FORWARD_RESOLVER) {
@@ -213,6 +214,11 @@ describe("resolveVerifiedEnsName", () => {
 
   it("answers no name when the name's answer is longer than any name needs", async () => {
     chain.rawName = abiString("a".repeat(4096))
+    await expect(lookup()).resolves.toBeUndefined()
+  })
+
+  it("answers no name when the endpoint's body is longer than any answer needs, however small its result", async () => {
+    chain.namePadding = 1024 * 1024
     await expect(lookup()).resolves.toBeUndefined()
   })
 

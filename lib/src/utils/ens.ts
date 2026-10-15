@@ -150,14 +150,28 @@ function decodeString(
   )
 }
 
+/**
+ * What a JSON-RPC envelope adds around an answer's hex: the `jsonrpc`, `id`
+ * and `result` members and the `0x`, with room to spare.
+ */
+const ENVELOPE_ALLOWANCE_BYTES = 256
+
+/** The response body an answer of `maxAnswerBytes` arrives in, at most. */
+function maxBodyBytesFor(maxAnswerBytes: number): number {
+  return maxAnswerBytes * 2 + ENVELOPE_ALLOWANCE_BYTES
+}
+
 async function ethCall(
   rpcUrl: string,
   to: string,
   data: string,
-  timeoutMs: number,
+  options: EnsReadOptions,
 ): Promise<unknown> {
   return jsonRpcCall(rpcUrl, "eth_call", [{ to, data }, "latest"], {
-    timeoutMs,
+    timeoutMs: options.timeoutMs,
+    maxBodyBytes: maxBodyBytesFor(
+      options.maxAnswerBytes ?? MAX_CHAIN_ANSWER_BYTES,
+    ),
   })
 }
 
@@ -175,7 +189,7 @@ export async function readEnsResolver(
       rpcUrl,
       ENS_REGISTRY_ADDRESS,
       `0x${RESOLVER_SELECTOR}${node.slice(2)}`,
-      options.timeoutMs,
+      options,
     ),
     "The registry",
     options.maxAnswerBytes ?? MAX_CHAIN_ANSWER_BYTES,
@@ -199,7 +213,7 @@ export async function callResolverForAddress(
       rpcUrl,
       resolver,
       `0x${functionSelector}${node.slice(2)}`,
-      options.timeoutMs,
+      options,
     ),
     "The resolver",
     options.maxAnswerBytes ?? MAX_CHAIN_ANSWER_BYTES,
@@ -223,7 +237,7 @@ export async function callResolverForString(
       rpcUrl,
       resolver,
       `0x${functionSelector}${node.slice(2)}`,
-      options.timeoutMs,
+      options,
     ),
     "The resolver",
     options.maxAnswerBytes ?? MAX_CHAIN_ANSWER_BYTES,
@@ -246,12 +260,7 @@ export async function readEnsText(
     throw new Error(`${name} has no resolver.`)
   }
   return decodeString(
-    await ethCall(
-      rpcUrl,
-      resolver,
-      encodeTextCall(node, key),
-      options.timeoutMs,
-    ),
+    await ethCall(rpcUrl, resolver, encodeTextCall(node, key), options),
     "The resolver",
     options.maxAnswerBytes ?? MAX_CHAIN_ANSWER_BYTES,
   )

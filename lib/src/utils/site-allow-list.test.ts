@@ -48,11 +48,7 @@ function addressWord(address: string): string {
 }
 
 function rpcResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: () => Promise.resolve(body),
-  } as Response
+  return new Response(JSON.stringify(body), { status })
 }
 
 interface StubChain {
