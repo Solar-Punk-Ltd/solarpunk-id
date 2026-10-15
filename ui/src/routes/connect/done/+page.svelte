@@ -5,18 +5,22 @@
 
 <!--
   Post-connect confirmation. The secret was already delivered by
-  completeConnect, which signed the site in with no stamp, so every variant
-  confirms and offers "Go to app"; the middle varies (SwarmID-MVP frames
-  396:17501 / 395:13966 / 395:13889):
-  - an account with drives: pick the drive this app uses, on every connect,
-    starting on the site's current one, read from the account's own record.
-    "Go to app" is the confirm. A pick that changes the drive is saved as the
-    app's postageStampBatchID (the default saves "follow the default"), the
-    wait for the confirm ends, and a frame kept apart from this window's
-    storage is handed the drive, so the open site starts stamping. When that
-    frame is gone the screen says the site has no drive until it connects
-    again. Closing the window without the confirm leaves the site without one;
-  - no drives yet: the drive pitch, demoted to a secondary card.
+  completeConnect, which signed the site in with no stamp. Every variant says
+  the account is connected and offers "Go to app", which is the confirm that
+  ends the site's wait for its drive. Closing the window without it leaves the
+  site with no drive. What sits between the two varies:
+  - the account has drives and an entry for the site: a picker for the drive
+    the site uses, starting on its current one, read from the account's own
+    record. A pick that changes the drive is saved as the site's
+    postageStampBatchID with the confirm (the default saves "follow the
+    default"), and a frame kept apart from this window's storage is handed the
+    drive, so the open site starts stamping. When that frame is gone the
+    screen says the site has no drive until it connects again, and the next
+    "Go to app" only closes the window.
+  - the account has no drives: the drive pitch, a secondary card that opens
+    the add-drive dialog.
+  - the account has drives but no entry for the site: the plain confirmation,
+    nothing in between.
 -->
 <script lang="ts">
   import { onMount } from 'svelte'
