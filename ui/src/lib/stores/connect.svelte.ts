@@ -54,18 +54,10 @@ let checkingSite = $state(false)
 // Bumped by every link that names a site, so a check that answers after a
 // newer link was read cannot overwrite what that link decided.
 let linkGeneration = 0
-// Whether the connect that just completed was the account's FIRST to this app
-// (no active connected-app entry at select time). Set by the chooser right
-// before the handshake; the done page keys the drive-picker variant off it.
-let firstConnect = $state(false)
 
 export const connectStore = {
   get request() {
     return request
-  },
-
-  get firstConnect() {
-    return firstConnect
   },
 
   get refusal() {
@@ -74,10 +66,6 @@ export const connectStore = {
 
   get checkingSite() {
     return checkingSite
-  },
-
-  setFirstConnect(value: boolean) {
-    firstConnect = value
   },
 
   /**
@@ -137,6 +125,5 @@ export const connectStore = {
     request = undefined
     refusal = undefined
     checkingSite = false
-    firstConnect = false
   },
 }

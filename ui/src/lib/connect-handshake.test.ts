@@ -26,7 +26,12 @@ import { type Hex, recoverMessageAddress } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { completeConnect, partitionHandoverAccount, reuseConnection } from '$lib/connect-handshake'
+import {
+  completeConnect,
+  handOverPickedStamp,
+  partitionHandoverAccount,
+  reuseConnection,
+} from '$lib/connect-handshake'
 import { strip0x } from '$lib/crypto/hex'
 import { walletFromEntropy } from '$lib/crypto/mnemonic'
 import type { ConnectRequest } from '$lib/stores/connect.svelte'
@@ -407,5 +412,71 @@ describe('the chat binding at connect', () => {
 
     expect(opener.postMessage).not.toHaveBeenCalled()
     expect(savedBinding(account)).toBeUndefined()
+  })
+
+  // The done screen asks for the site's drive after the handover above, so a
+  // frame kept apart from this window's storage learns of the pick only from
+  // a second handover, under the same challenge and with the same secret.
+  describe('handing over the drive picked on the done screen', () => {
+    const pickDrive = (account: Account, batch: string) => {
+      account.connectedApps = account.connectedApps.map((app) =>
+        app.appUrl === APP_ORIGIN
+          ? { ...app, postageStampBatchID: new BatchId(batch), postageStampBatchIDAt: Date.now() }
+          : app,
+      )
+    }
+
+    it('hands the session over again, carrying the picked drive', async () => {
+      const account = fakeAccount()
+      await completeConnect(account, ENTROPY, request)
+      const first = handedOver()
+      opener.postMessage.mockClear()
+
+      pickDrive(account, APP_BATCH)
+      handOverPickedStamp(account, request)
+
+      const again = handedOver()
+      expect(again.type).toBe('setSecret')
+      expect(again.challenge).toBe(CHALLENGE)
+      expect(again.data.secret).toBe(first.data.secret)
+      expect(again.data.chatBinding).toEqual(first.data.chatBinding)
+      const parsed = AuthDataSchema.parse(again.data)
+      const app = parsed.account.connectedApps.find((entry) => entry.appUrl === APP_ORIGIN)
+      expect((app?.postageStampBatchID as BatchId).toHex()).toBe(APP_BATCH)
+      expect(parsed.account.postageStamps.map((drive) => drive.batchID.toHex())).toContain(
+        APP_BATCH,
+      )
+      expect(parsed.account.postageStamps.map((drive) => drive.batchID.toHex())).not.toContain(
+        UNRELATED_BATCH,
+      )
+    })
+
+    it('sends nothing to a frame that reads shared storage', async () => {
+      const account = fakeAccount()
+      const shared = { ...request, partitionChallenge: undefined }
+      await completeConnect(account, ENTROPY, shared)
+
+      pickDrive(account, APP_BATCH)
+      handOverPickedStamp(account, shared)
+
+      expect(opener.postMessage).not.toHaveBeenCalled()
+    })
+
+    it('sends nothing for a site with no live connection', () => {
+      const account = fakeAccount([{ appUrl: APP_ORIGIN, appName: 'dApp', lastConnectedAt: 1 }])
+
+      handOverPickedStamp(account, request)
+
+      expect(opener.postMessage).not.toHaveBeenCalled()
+    })
+
+    it('refuses a site that is not a clean origin', () => {
+      const account = fakeAccount()
+
+      expect(() =>
+        handOverPickedStamp(account, { ...request, appOrigin: 'https://dapp.example.com/path' }),
+      ).toThrow(/not accepted/)
+      expect(opener.postMessage).not.toHaveBeenCalled()
+    })
   })
 })

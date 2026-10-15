@@ -5,13 +5,11 @@ import { NO_POSTAGE_STAMP, type PostageStamp } from '@solarpunkltd/swarm-id/inte
 import { describe, expect, it } from 'vitest'
 
 import {
-  appChosenDriveLine,
   appSiteFromTarget,
   appStampChoice,
   appStampOptions,
   appStampSummary,
   appStampValue,
-  appsTabHash,
 } from './app-stamp'
 
 const DAY_SECONDS = 24 * 60 * 60
@@ -137,33 +135,5 @@ describe('appSiteFromTarget', () => {
 
   it('reads nothing from a link that does not decode', () => {
     expect(appSiteFromTarget(['%E0%A4%A'])).toBeUndefined()
-  })
-})
-
-// The connect window's done screen on a reconnect: a site that was given its
-// own drive, or none, says so, since nothing else on that screen would.
-describe('appChosenDriveLine', () => {
-  it('names the drive a site was given', () => {
-    expect(appChosenDriveLine({ postageStampBatchID: new BatchId(OTHER_HEX) }, account)).toBe(
-      'This app uses the drive Chat.',
-    )
-  })
-
-  it('says a site set to no drive cannot stamp', () => {
-    expect(appChosenDriveLine({ postageStampBatchID: NO_POSTAGE_STAMP }, account)).toBe(
-      'No drive, this site cannot stamp.',
-    )
-  })
-
-  it('says nothing for a site that follows the default', () => {
-    expect(appChosenDriveLine({ postageStampBatchID: undefined }, account)).toBeUndefined()
-  })
-})
-
-describe('appsTabHash', () => {
-  it('links the Apps tab to one site, the reverse of appSiteFromTarget', () => {
-    const hash = appsTabHash(SITE)
-    expect(hash).toBe(`#apps/${encodeURIComponent(SITE)}`)
-    expect(appSiteFromTarget(hash.slice(1).split('/').slice(1))).toBe(SITE)
   })
 })

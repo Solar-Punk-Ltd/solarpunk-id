@@ -48,7 +48,7 @@ test('create flow ends on the done page with the drive pitch', async ({ page }) 
   await expect(page).toHaveURL(/\/$/)
 })
 
-test('first connect with a single drive confirms without picker or pitch', async ({ page }) => {
+test('first connect with a single drive asks for the drive, starting on it', async ({ page }) => {
   test.setTimeout(CHAIN_TEST_TIMEOUT_MS)
   // Account created standalone with exactly one drive, never connected.
   await seedLocalChain(page)
@@ -63,8 +63,8 @@ test('first connect with a single drive confirms without picker or pitch', async
     timeout: DRIVE_SETTLE_TIMEOUT_MS,
   })
 
-  // First connect + one drive → the drive question answers itself: plain
-  // confirmation, no picker, no pitch.
+  // First connect + one drive: the picker still asks, since the site can
+  // also be given no drive, and starts on the one there is. No pitch.
   await page.goto(DEMO_URL)
   const popup = await openConnectPopup(page)
   await expect(popup.getByText('Previously used with this app')).not.toBeVisible()
@@ -73,7 +73,9 @@ test('first connect with a single drive confirms without picker or pitch', async
   await popup.getByRole('button', { name: 'Confirm' }).click()
 
   await expect(popup.getByText(`Your Swarm ID is now connected to ${APP_NAME}!`)).toBeVisible()
-  await expect(popup.getByText('Select drive')).not.toBeVisible()
+  const picker = popup.getByRole('combobox', { name: 'Select drive' })
+  await expect(picker).toHaveValue(/^[0-9a-f]{64}$/)
+  await expect(picker.locator('option', { hasText: 'No drive' })).toHaveCount(1)
   await expect(popup.getByText('Want the full experience?')).not.toBeVisible()
   await goToApp(popup)
 })
@@ -111,9 +113,8 @@ test('connect flow shows the done screen variants and closes the popup', async (
 
   // Disconnect and reconnect: the lapsed connection lists the account under
   // "Previously used with this app" — with NO "Signed out" badge, since the
-  // account is still signed in (#445). Reconnecting is NOT a first connect
-  // and the drive question was settled, so the done screen is the plain
-  // confirmation: no drive picker, no pitch.
+  // account is still signed in (#445). The done screen asks for the drive on
+  // a reconnect too, starting on the one the site uses, and shows no pitch.
   await page.goto(DEMO_URL)
   await accountButton.click()
   await page.getByRole('button', { name: 'Disconnect', exact: true }).click()
@@ -126,7 +127,7 @@ test('connect flow shows the done screen variants and closes the popup', async (
   await popup.getByRole('button', { name: 'Confirm' }).click()
 
   await expect(popup.getByText(`Your Swarm ID is now connected to ${APP_NAME}!`)).toBeVisible()
-  await expect(popup.getByText('Select drive')).not.toBeVisible()
+  await expect(popup.getByRole('combobox', { name: 'Select drive' })).toHaveValue(/^[0-9a-f]{64}$/)
   await expect(popup.getByText('Want the full experience?')).not.toBeVisible()
   await goToApp(popup)
 
@@ -157,9 +158,8 @@ test('connect flow shows the done screen variants and closes the popup', async (
   await popup.getByRole('button', { name: 'Confirm' }).click()
 
   // First connect (the removal reset the association) + two drives → the
-  // drive picker, with the account default preselected.
-  await expect(popup.getByText('Select drive')).toBeVisible()
-  const drivePicker = popup.getByRole('combobox')
+  // picker on the account default.
+  const drivePicker = popup.getByRole('combobox', { name: 'Select drive' })
   await expect(drivePicker).toHaveValue(/[0-9a-f]{64}/)
   expect(await drivePicker.locator('option', { hasText: '(default)' }).count()).toBe(1)
   // Choose the non-default drive; the choice must land on the app entry.

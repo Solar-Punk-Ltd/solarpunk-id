@@ -7,30 +7,28 @@
   Post-connect confirmation. The secret was already delivered by
   completeConnect, so every variant confirms and offers "Go to app"; the
   middle varies (SwarmID-MVP frames 396:17501 / 395:13966 / 395:13889):
-  - first connect to an account with several drives: pick the drive this app
-    stores to (persisted as the app's postageStampBatchID; choosing the
-    default leaves the pointer unset so the app tracks the account default);
-  - no drives yet: the drive pitch, demoted to a secondary card;
-  - a reconnect of a site given its own drive or none: a line naming it, with
-    a link to that site on the Apps tab;
-  - anything else: plain confirmation.
+  - an account with drives: pick the drive this app uses, on every connect,
+    starting on the site's current one. A pick that changes it is saved as the
+    app's postageStampBatchID (the default saves "follow the default") and is
+    handed to a frame kept apart from this window's storage, so the open site
+    uses it at once. Only this window's own record decides what it starts on;
+  - no drives yet: the drive pitch, demoted to a secondary card.
 -->
 <script lang="ts">
   import { onMount } from 'svelte'
 
-  import { BatchId } from '@ethersphere/bee-js'
   import ArrowRight from '@lucide/svelte/icons/arrow-right'
 
   import { goto } from '$app/navigation'
   import { resolve } from '$app/paths'
 
-  import { appChosenDriveLine, appsTabHash } from '$lib/app-stamp'
+  import { appStampChoice, appStampOptions, appStampValue } from '$lib/app-stamp'
   import AccountAvatar from '$lib/components/account-avatar.svelte'
   import AppHeader from '$lib/components/app-header.svelte'
   import DriveAddDialog from '$lib/components/drive-add-dialog.svelte'
   import { Button } from '$lib/components/ui/button'
-  import { Select, type SelectOption } from '$lib/components/ui/select'
-  import { driveDisplayName } from '$lib/drives'
+  import { Select } from '$lib/components/ui/select'
+  import { handOverPickedStamp } from '$lib/connect-handshake'
   import routes from '$lib/routes'
   import { accountsStore } from '$lib/stores/accounts.svelte'
   import { connectStore } from '$lib/stores/connect.svelte'
@@ -46,26 +44,15 @@
   const request = connectStore.request
 
   const drives = $derived(account?.stamps ?? [])
-  const defaultBatchHex = $derived(
-    account?.defaultPostageStampBatchID?.toHex() ?? drives[0]?.batchID.toHex(),
-  )
-  const showPicker = $derived(connectStore.firstConnect && drives.length > 1)
+  const app = $derived(account?.activeApps.find((entry) => entry.appUrl === request?.appOrigin))
+  const showPicker = $derived(drives.length > 0 && app !== undefined)
   const showPitch = $derived(drives.length === 0)
-  const chosenDriveLine = $derived.by(() => {
-    const app = account?.activeApps.find((entry) => entry.appUrl === request?.appOrigin)
-    return account && app && !showPicker ? appChosenDriveLine(app, account) : undefined
-  })
 
-  const driveOptions = $derived<SelectOption[]>(
-    drives.map((drive) => ({
-      value: drive.batchID.toHex(),
-      label:
-        driveDisplayName(drive) + (drive.batchID.toHex() === defaultBatchHex ? ' (default)' : ''),
-    })),
-  )
-  /** The user's explicit choice; the account default until they touch it. */
-  let chosenBatchHex = $state<string | undefined>(undefined)
-  const selectedBatchHex = $derived(chosenBatchHex ?? defaultBatchHex)
+  const driveOptions = $derived(account ? appStampOptions(account) : [])
+  /** The drive the site uses as the window opened, which the picker starts on */
+  const currentDriveValue = $derived(account && app ? appStampValue(app, account) : '')
+  let pickedDriveValue = $state<string | undefined>(undefined)
+  const selectedDriveValue = $derived(pickedDriveValue ?? currentDriveValue)
 
   let addDriveOpen = $state(false)
 
@@ -77,18 +64,16 @@
     toastStore.show(`Connected to ${request.appName}!`)
   })
 
-  /** In a new window, so this popup keeps its connect request */
-  function openAppsTab() {
-    if (request) {
-      window.open(resolve(routes.ROOT) + appsTabHash(request.appOrigin), '_blank')
-    }
-  }
-
   function goToApp() {
-    // Persist the drive choice only when it deviates from the account default
-    // — an untouched or default choice keeps following the default.
-    if (account && request && showPicker && selectedBatchHex !== defaultBatchHex) {
-      account.setAppStamp(request.appOrigin, new BatchId(selectedBatchHex))
+    if (
+      account &&
+      request &&
+      showPicker &&
+      pickedDriveValue !== undefined &&
+      pickedDriveValue !== currentDriveValue
+    ) {
+      account.setAppStamp(request.appOrigin, appStampChoice(pickedDriveValue, account))
+      handOverPickedStamp(account, request)
     }
     connectStore.clear()
     window.close()
@@ -120,27 +105,15 @@
 
           {#if showPicker}
             <div class="flex w-full flex-col gap-2">
-              <p class="text-sm">Select drive</p>
+              <label for="connect-drive" class="text-sm">Select drive</label>
               <Select
+                id="connect-drive"
                 options={driveOptions}
-                value={selectedBatchHex}
-                onchange={(value) => (chosenBatchHex = value)}
+                value={selectedDriveValue}
+                onchange={(value) => (pickedDriveValue = value)}
               />
               <p class="text-muted-foreground text-sm">Where this app will store data</p>
             </div>
-          {/if}
-
-          {#if chosenDriveLine}
-            <p class="text-muted-foreground text-center text-sm">
-              {chosenDriveLine}
-              <button
-                type="button"
-                class="cursor-pointer underline underline-offset-2"
-                onclick={openAppsTab}
-              >
-                Change it
-              </button>
-            </p>
           {/if}
 
           <Button class="w-full" onclick={goToApp}>

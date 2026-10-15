@@ -220,3 +220,25 @@ export function reuseConnection(account: Account, request: ConnectRequest): bool
   sendSecretToOpener(account, request, existing.appSecret, chatBinding)
   return true
 }
+
+/**
+ * Hand the session over again once the person picked the site's drive on the
+ * done screen, which comes after the handover above. A frame kept apart from
+ * this window's storage learns of the pick this way only, so an open site
+ * moves to it at once. Same challenge, secret and binding as the handover
+ * before it, which is what the proxy checks before taking it. A frame that
+ * reads shared storage is not sent anything, the saved pick reaches it there.
+ */
+export function handOverPickedStamp(account: Account, request: ConnectRequest): void {
+  requireCleanSite(request.appOrigin)
+  const connection = findReusableConnection(account, request.appOrigin)
+  if (!connection?.appSecret) {
+    return
+  }
+  sendSecretToOpener(
+    account,
+    request,
+    connection.appSecret,
+    keptChatBinding(account, request.appOrigin, connection.appSecret),
+  )
+}

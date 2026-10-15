@@ -35,12 +35,34 @@ https origin (`siteAllowList`). Every other use now asks the same clean-origin
 question itself, so a caller that skipped the window's gate still cannot derive
 or store under such a site:
 
-- `completeConnect` and `reuseConnection` (`ui/src/lib/connect-handshake.ts`)
-  refuse before deriving the app secret or handing anything to the frame.
+- `completeConnect`, `reuseConnection` and `handOverPickedStamp`
+  (`ui/src/lib/connect-handshake.ts`) refuse before deriving the app secret or
+  handing anything to the frame.
 - `Account.connectApp` refuses to record the connection, and
   `Account.setAppStamp` does nothing for such a site
   (`ui/src/lib/stores/accounts.svelte.ts`).
 - Code: `ui/src/lib/accepted-site.ts` (`isCleanSite`, `requireCleanSite`).
+
+## A site's stamp is picked by the person, in Swarm ID's own window
+
+The connect window asks which drive a site uses on every connect. What it
+starts on is read from the account's own record for that site, and nothing in
+the window's link or from the site can name a drive, preselect one or skip
+the question. A pick that changes the drive is saved and, for a frame kept
+apart from the window's storage, handed over a second time through the same
+opener path as the session itself. The frame takes that second handover only
+under the challenge of the window that handed the session over, for its own
+parent and with the secret it already holds, and a newer window or the end
+of the session retires that challenge. It carries the same narrowed account
+view as the first handover, so the site learns the batch id and nothing more.
+
+- Code: `ui/src/routes/connect/done/+page.svelte`, `handOverPickedStamp` in
+  `ui/src/lib/connect-handshake.ts`, `isStampHandover` in
+  `lib/src/swarm-id-proxy.ts`.
+- Tests: `ui/src/lib/connect-handshake.test.ts`,
+  `lib/src/swarm-id-proxy-partition.test.ts` ("a stamp picked in the connect
+  window after the handover") and the browser journey
+  `ui/tests/connect-drive-picker.test.ts`.
 
 ## Keys are sealed at rest
 

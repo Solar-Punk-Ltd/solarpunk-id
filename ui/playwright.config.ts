@@ -33,10 +33,10 @@ const MAX_FAILURES = 5
 const SERIAL_SPEC = '**/drive-onchain-serial.test.ts'
 
 /**
- * The suite that needs the proxy iframe's storage genuinely partitioned, which
- * an ordinary chromium project cannot give it — see `PARTITIONING_ARGS`.
+ * The suites that need the proxy iframe's storage genuinely partitioned, which
+ * an ordinary chromium project cannot give them — see `PARTITIONING_ARGS`.
  */
-const PARTITIONED_SPEC = '**/bus-propagation.test.ts'
+const PARTITIONED_SPECS = ['**/bus-propagation.test.ts', '**/connect-drive-picker.test.ts']
 /**
  * The delegated connect() popup under a REAL popup blocker (#751). Needs
  * Google Chrome: Playwright's bundled Chromium never blocks a popup, with or
@@ -109,12 +109,12 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: [SERIAL_SPEC, PARTITIONED_SPEC, DEVICES_SPEC, POPUP_BLOCKER_SPEC],
+      testIgnore: [SERIAL_SPEC, ...PARTITIONED_SPECS, DEVICES_SPEC, POPUP_BLOCKER_SPEC],
       use: CHROMIUM,
     },
     {
       name: 'chromium-partitioned',
-      testMatch: PARTITIONED_SPEC,
+      testMatch: PARTITIONED_SPECS,
       use: {
         ...CHROMIUM,
         launchOptions: { args: [...CHROMIUM_ARGS, ...PARTITIONING_ARGS] },
