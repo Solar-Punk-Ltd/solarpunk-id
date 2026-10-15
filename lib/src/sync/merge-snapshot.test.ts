@@ -477,6 +477,43 @@ describe("mergeSnapshotWithRemote — apps / stamps", () => {
     ).toBe("cc".repeat(32))
   })
 
+  // Disconnecting or removing a site forgets the stamp chosen for it, with
+  // the pointer's own clock moved. That clear has to beat the older choice
+  // another device still holds, and a choice made after it has to beat it.
+  it("a site's stamp cleared on disconnect beats an older choice, and loses to a newer one", () => {
+    const cleared: ConnectedApp = {
+      ...makeConnectedApp("https://app.example"),
+      disconnectedAt: 9_000_000,
+      postageStampBatchID: undefined,
+      postageStampBatchIDAt: 9_000_000,
+    }
+    const picked = {
+      ...makeConnectedApp("https://app.example"),
+      postageStampBatchID: new BatchId("cc".repeat(32)),
+      postageStampBatchIDAt: 8_000_000,
+    }
+    for (const [local, remote] of [
+      [picked, cleared],
+      [cleared, picked],
+    ]) {
+      const merged = mergeSnapshotWithRemote(
+        makeSnapshot({ connectedApps: [local] }),
+        makeSnapshot({ connectedApps: [remote] }),
+      )
+      expect(merged.connectedApps[0].postageStampBatchID).toBeUndefined()
+    }
+
+    const pickedLater = mergeSnapshotWithRemote(
+      makeSnapshot({ connectedApps: [cleared] }),
+      makeSnapshot({
+        connectedApps: [{ ...picked, postageStampBatchIDAt: 10_000_000 }],
+      }),
+    )
+    expect(
+      (pickedLater.connectedApps[0].postageStampBatchID as BatchId).toHex(),
+    ).toBe("cc".repeat(32))
+  })
+
   // A removal is not permanent: connecting again clears both markers and sets a
   // fresh `lastConnectedAt`, which is what has to outrank the tombstone.
   it("a genuine reconnect beats an older removal", () => {

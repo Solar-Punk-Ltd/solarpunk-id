@@ -670,6 +670,48 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     expect(app.lastConnectedAt).toBeGreaterThan(0)
   })
 
+  // A Disconnect in Swarm ID forgets the stamp chosen for the site. The
+  // site's own disconnect does not, since nothing the site sends decides
+  // which of the person's stamps it uses.
+  it("keeps the person's stamp choice on a dApp-initiated disconnect", async () => {
+    const CHOSEN_AT = 1_000
+    await seedConnectedAccount({
+      connectedApps: [
+        {
+          appUrl: PARENT_ORIGIN,
+          appName: "dApp",
+          appSecret: "44".repeat(32),
+          lastConnectedAt: Date.now(),
+          connectedUntil: Date.now() + 60_000,
+          postageStampBatchID: NO_POSTAGE_STAMP,
+          postageStampBatchIDAt: CHOSEN_AT,
+        },
+      ],
+    })
+    await dispatch(
+      { type: "parentIdentify", requestId: "r1", metadata: { name: "dApp" } },
+      PARENT_ORIGIN,
+      parentWindow,
+    )
+
+    await dispatch(
+      { type: "disconnect", requestId: "r2" },
+      PARENT_ORIGIN,
+      parentWindow,
+    )
+
+    await settleAccountWrites()
+    const stored = JSON.parse(
+      localStorageFake.getItem(STORAGE_KEY_ACCOUNTS)!,
+    ) as { data: { connectedApps: Record<string, unknown>[] }[] }
+    const app = stored.data[0].connectedApps.find(
+      (entry) => entry.appUrl === PARENT_ORIGIN,
+    )!
+    expect(app.appSecret).toBeUndefined()
+    expect(app.postageStampBatchID).toBe(NO_POSTAGE_STAMP)
+    expect(app.postageStampBatchIDAt).toBe(CHOSEN_AT)
+  })
+
   // `loadAuthData` runs in the identify handler, off the reconcile queue, so a
   // storage event's `refreshStampFromStorage` runs while `initializeStamper`
   // is inside an await. It used to read the batch id again afterwards: cleared
