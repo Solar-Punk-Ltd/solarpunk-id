@@ -7,6 +7,7 @@ import {
   ButtonConfigSchema,
   DownloadOptionsSchema,
   IframeToParentMessageSchema,
+  ParentToButtonMessageSchema,
   ParentToIframeMessageSchema,
 } from "./types"
 
@@ -182,15 +183,15 @@ describe("ButtonConfigSchema typography (#779)", () => {
     })
   })
 
-  it("carries them to the iframe on parentIdentify rather than stripping them", () => {
-    const parsed = ParentToIframeMessageSchema.parse({
-      type: "parentIdentify",
-      requestId: "r1",
+  it("carries them to the button frame rather than stripping them", () => {
+    const parsed = ParentToButtonMessageSchema.parse({
+      type: "buttonIdentify",
+      action: "sign-in",
       metadata: { name: "Test App" },
-      buttonConfig: { connectText: "Connect", ...TYPOGRAPHY },
+      config: { text: "Sign in", ...TYPOGRAPHY },
     })
 
-    expect(parsed).toMatchObject({ buttonConfig: TYPOGRAPHY })
+    expect(parsed).toMatchObject({ config: TYPOGRAPHY })
   })
 })
 

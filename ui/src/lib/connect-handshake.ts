@@ -8,7 +8,8 @@
  * carrying the app secret the dApp's proxy iframe authenticates from. Writing it
  * (via `accountsStore`) fires a storage event in the iframe, which picks up the
  * session. When storage is partitioned the secret is handed to the iframe via a
- * `setSecret` postMessage instead.
+ * `setSecret` postMessage instead, to the frames beside the Swarm ID button
+ * that opened this window (`handover-targets.ts`).
  *
  * Key model (master key = the account wallet's private key): the per-app secret
  * derives straight from the master key (`deriveSecret(master, appOrigin)`).
@@ -35,6 +36,7 @@ import {
 import { requireCleanSite } from '$lib/accepted-site'
 import { strip0x } from '$lib/crypto/hex'
 import { privateKeyFromEntropy } from '$lib/crypto/mnemonic'
+import { handoverTargets } from '$lib/handover-targets'
 import type { ConnectRequest } from '$lib/stores/connect.svelte'
 import { networkSettingsStore } from '$lib/stores/network-settings.svelte'
 import type { Account } from '$lib/types'
@@ -134,8 +136,9 @@ export function partitionHandoverAccount(
 }
 
 /**
- * Storage-partitioning fallback: hand the secret straight to the proxy iframe
- * (our window.opener) since it can't see our localStorage. `account` carries
+ * Storage-partitioning fallback: hand the secret straight to the proxy iframe,
+ * a frame beside the button that opened this window, since it can't see our
+ * localStorage. `account` carries
  * the narrowed synced projection above — the identity the dApp is shown comes
  * off it, so nothing separate is sent for that (docs/Account-Bus.md, phase 3).
  *
@@ -143,13 +146,14 @@ export function partitionHandoverAccount(
  * without one is refused rather than producing a session that cannot upload
  * and cannot be told it was revoked.
  */
-function sendSecretToOpener(
+function sendSecretToSessionFrame(
   account: Account,
   request: ConnectRequest,
   appSecret: string,
   chatBinding: ChatBinding | undefined,
 ): boolean {
-  if (!request.partitionChallenge || !window.opener || window.opener.closed) {
+  const targets = handoverTargets()
+  if (!request.partitionChallenge || targets.length === 0) {
     return false
   }
   const stampPending = account.connectedApps.find(
@@ -170,7 +174,9 @@ function sendSecretToOpener(
   // The account collections and network settings are Svelte $state proxies,
   // which structured clone rejects (DataCloneError). The payload is already
   // the JSON wire shape, so a JSON round-trip strips the reactivity.
-  window.opener.postMessage(JSON.parse(JSON.stringify(message)), window.location.origin)
+  const wire: unknown = JSON.parse(JSON.stringify(message))
+  // Swarm ID's own origin only: the browser drops it for the site's frames.
+  for (const frame of targets) frame.postMessage(wire, window.location.origin)
   return true
 }
 
@@ -193,7 +199,7 @@ export async function completeConnect(
       allowLocalHttp: import.meta.env.DEV,
     })
   saveConnection(account, request, appSecret, chatBinding)
-  sendSecretToOpener(account, request, appSecret, chatBinding)
+  sendSecretToSessionFrame(account, request, appSecret, chatBinding)
 }
 
 /** The still-valid prior connection to this app, if the account has one. */
@@ -224,16 +230,16 @@ export function reuseConnection(account: Account, request: ConnectRequest): bool
     return false
   }
   saveConnection(account, request, existing.appSecret, chatBinding)
-  sendSecretToOpener(account, request, existing.appSecret, chatBinding)
+  sendSecretToSessionFrame(account, request, existing.appSecret, chatBinding)
   return true
 }
 
 /**
  * How a drive picked on the done screen fared on its way to the open site:
- * handed to the frame that opened this window, not needed because that frame
- * reads the saved pick from shared storage, or not reached because the frame
- * is gone. A frame that reloaded in place keeps no challenge and drops the
- * message unseen, so `handed-over` says it was sent, not that it was taken.
+ * handed to its session frame, not needed because that frame reads the saved
+ * pick from shared storage, or not reached because the site's frames are gone.
+ * A frame that reloaded in place keeps no challenge and drops the message
+ * unseen, so `handed-over` says it was sent, not that it was taken.
  */
 export type PickedStampHandover = 'handed-over' | 'not-needed' | 'not-reached'
 
@@ -256,7 +262,7 @@ export function handOverPickedStamp(
   if (!connection?.appSecret) {
     return 'not-reached'
   }
-  const sent = sendSecretToOpener(
+  const sent = sendSecretToSessionFrame(
     account,
     request,
     connection.appSecret,

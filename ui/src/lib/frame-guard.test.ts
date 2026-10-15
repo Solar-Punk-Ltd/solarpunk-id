@@ -4,7 +4,7 @@
  * The identity site is served from Swarm through bzz.link, which sends no
  * X-Frame-Options and no frame-ancestors header, and a meta CSP cannot carry
  * frame-ancestors. So the pages refuse a frame themselves: only
- * the hidden proxy page is meant to be framed.
+ * the hidden proxy page and the button page are meant to be framed.
  */
 import { describe, expect, it } from 'vitest'
 
@@ -44,6 +44,18 @@ describe('refusesToRunFramed', () => {
       it('runs the proxy page inside a frame, which is what it is for', () => {
         expect(refusesToRunFramed({ pathname: `${base}/proxy`, base, framed: true })).toBe(false)
         expect(refusesToRunFramed({ pathname: `${base}/proxy/`, base, framed: true })).toBe(false)
+      })
+
+      it('runs the button page inside a frame, which is what it is for', () => {
+        expect(refusesToRunFramed({ pathname: `${base}/button`, base, framed: true })).toBe(false)
+        expect(refusesToRunFramed({ pathname: `${base}/button/`, base, framed: true })).toBe(false)
+      })
+
+      it('does not let a path that merely starts with the button one through', () => {
+        expect(refusesToRunFramed({ pathname: `${base}/buttonx`, base, framed: true })).toBe(true)
+        expect(refusesToRunFramed({ pathname: `${base}/button/connect`, base, framed: true })).toBe(
+          true,
+        )
       })
 
       it('does not let a path that merely starts with the proxy one through', () => {

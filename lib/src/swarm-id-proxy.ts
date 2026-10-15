@@ -7,7 +7,6 @@ import type {
   ParentToIframeMessage,
   ParentIdentifyMessage,
   IframeToParentMessage,
-  ButtonConfig,
   UploadDataMessage,
   DownloadDataMessage,
   DeriveAppSecretMessage,
@@ -61,6 +60,7 @@ import {
   ParentToIframeMessageSchema,
   ParentIdentifyMessageSchema,
   PopupToIframeMessageSchema,
+  ConnectWindowOpenedMessageSchema,
   STORAGE_CHALLENGE_KEY,
   STORAGE_KEY_NETWORK_SETTINGS,
   partitionSessionStorageKey,
@@ -229,7 +229,6 @@ import {
   type NetworkSettings,
 } from "./schemas"
 import { appSessionDuration } from "./utils/constants"
-import { buildAuthUrl } from "./utils/url"
 import type { SiteAllowList } from "./utils/site-allow-list"
 import {
   createActForContent,
@@ -400,7 +399,6 @@ export class SwarmIdProxy {
   private parentIdentifyReceived: boolean = false
   private siteAllowList: SiteAllowList
   private authenticated: boolean = false
-  private authLoading: boolean = true // Start in loading state
   private appSecret: string | undefined
   /**
    * The chat binding the popup handed over with this session, already checked
@@ -502,9 +500,6 @@ export class SwarmIdProxy {
   private gnosisRpcUrl: string
   private postageStampContractAddress: string
   private signalingUrl: string | undefined
-  private authButtonContainer: HTMLElement | undefined
-  private buttonConfig: ButtonConfig | undefined
-  private popupMode: "popup" | "window" = "window"
   private appMetadata: AppMetadata | undefined
   /**
    * Bee clients by the URL they were asked for. Keyed on that input URL, not
@@ -514,7 +509,6 @@ export class SwarmIdProxy {
   private unsubscribeStorageListeners: Array<() => void> = []
   private storageWorkQueue: Promise<void> = Promise.resolve()
   private lastConnectionInfo: ConnectionInfo | undefined
-  private isConnecting: boolean = false
   private parentWindow: WindowProxy | undefined
   private bus: AccountBus
   /** Who else is live in the account's room, from their `presence` beats. */
@@ -983,8 +977,6 @@ export class SwarmIdProxy {
     this.restoredSessionCheck = undefined
     this.storagePartitioned = false
     this.partitionAccount = undefined
-    this.authLoading = false
-    this.isConnecting = false
     // Capture the device identity once, now, while we can read first-party
     // localStorage. Reused for every lease op so the identity never shifts
     // mid-session.
@@ -1000,7 +992,6 @@ export class SwarmIdProxy {
       await this.initializeStamper(stamp.depth)
     }
 
-    this.showAuthButton()
     this.sendToParent({
       type: "authSuccess",
       origin: this.parentOrigin!,
@@ -1009,8 +1000,9 @@ export class SwarmIdProxy {
   }
 
   /**
-   * Handle messages from the auth popup (same-origin postMessage).
-   * Used as storage partitioning fallback when storage events don't fire due to partitioning.
+   * A handover from a connect window the button frame beside this one opened.
+   * The only way into a session whose storage is partitioned from the
+   * window's, where no storage event arrives.
    */
   private async handlePopupMessage(
     message: PopupToIframeMessage,
@@ -1043,11 +1035,6 @@ export class SwarmIdProxy {
           "!==",
           this.parentOrigin,
         )
-        // Our challenge, so this IS the handover this attempt was waiting for
-        // — refused for naming an origin that is not our parent, which an
-        // origin-normalisation drift is the realistic way to reach. The
-        // spinner would hang exactly as it did on the schema gate (#587).
-        this.endRefusedConnect()
         return
       }
 
@@ -1058,6 +1045,29 @@ export class SwarmIdProxy {
 
       await this.adoptHandover(message.data)
     }
+  }
+
+  /**
+   * Whether a message came from another frame of the page this one is in,
+   * which is where the button frame sits. A top-level window is not one.
+   */
+  private isSiblingFrame(source: MessageEventSource | null): boolean {
+    if (!source || source === window) return false
+    try {
+      return (source as Window).parent === window.parent
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * The button frame beside this one opened a connect window under
+   * `challenge`, so the handover that comes back under it is this session's
+   * to take. A window opened before it can no longer hand over a stamp.
+   */
+  private awaitHandover(challenge: string): void {
+    this.pendingChallenge = challenge
+    this.handedOverChallenge = undefined
   }
 
   /**
@@ -1087,8 +1097,6 @@ export class SwarmIdProxy {
     this.authenticated = true
     this.restoredSessionCheck = undefined
     this.storagePartitioned = true
-    this.authLoading = false
-    this.isConnecting = false
     this.deviceId = getOrCreateDeviceId()
 
     // The projection is required by `AuthDataSchema`, so by here it is
@@ -1117,35 +1125,11 @@ export class SwarmIdProxy {
     // popup per page load is not a session — the deadline below is.
     this.savePartitionSession(data)
 
-    this.showAuthButton()
     this.sendToParent({
       type: "authSuccess",
       origin: this.parentOrigin!,
     })
     this.emitConnectionInfoIfChanged()
-  }
-
-  /**
-   * End the connect attempt a refused handover belonged to.
-   *
-   * The popup cannot be told it was refused — there is no channel back — so it
-   * shows "Connected!" while the button here spins on, and the only other
-   * thing that ever cleared the flag was the user closing that popup
-   * (`checkPopupClosed`), which nothing gave them a reason to do.
-   *
-   * `isConnecting` first: `showAuthButton` early-returns while it is set, so
-   * clearing the flag is what lets the button come back. `authLoading` is
-   * already false on every path that reaches here — belt-and-braces, not a
-   * second fix.
-   *
-   * The challenge is deliberately kept. The popup is still open and may yet
-   * send a payload this bundle can read; refusing one message ends the
-   * attempt's spinner, not the ceremony behind it.
-   */
-  private endRefusedConnect(): void {
-    this.isConnecting = false
-    this.authLoading = false
-    this.showAuthButton()
   }
 
   /**
@@ -2534,7 +2518,26 @@ export class SwarmIdProxy {
         return
       }
 
-      // Handle same-origin popup messages (storage partitioning postMessage fallback)
+      // The button frame beside this one says it opened a connect window, and
+      // under which challenge. Only a Swarm ID frame of the same parent page
+      // can be the one the person clicked.
+      if (
+        event.origin === window.location.origin &&
+        type === "connectWindowOpened"
+      ) {
+        if (!this.isSiblingFrame(event.source)) {
+          console.warn(
+            "[Proxy] Ignoring connectWindowOpened from a window that is not a frame beside this one",
+          )
+          return
+        }
+        const opened = ConnectWindowOpenedMessageSchema.safeParse(event.data)
+        if (opened.success) this.awaitHandover(opened.data.challenge)
+        return
+      }
+
+      // The connect window's handover, under that challenge (the storage
+      // partitioning path)
       if (event.origin === window.location.origin && type === "setSecret") {
         const popupResult = PopupToIframeMessageSchema.safeParse(event.data)
         if (!popupResult.success) {
@@ -2546,7 +2549,6 @@ export class SwarmIdProxy {
           // required, a refused handover is the ordinary way a version-skewed
           // identity deployment fails, and it must not read as an origin bug.
           console.warn("[Proxy] Invalid setSecret payload:", popupResult.error)
-          this.endRefusedConnect()
           return
         }
         await this.handlePopupMessage(popupResult.data)
@@ -2601,9 +2603,7 @@ export class SwarmIdProxy {
       throw new Error(siteCheck.message)
     }
 
-    const parentPopupMode = message.popupMode
     const parentMetadata = message.metadata
-    const parentButtonConfig = message.buttonConfig
 
     // Trust event.origin - this is browser-enforced and cannot be spoofed
     this.parentOrigin = event.origin
@@ -2613,19 +2613,9 @@ export class SwarmIdProxy {
       this.parentWindow = event.source as WindowProxy
     }
 
-    // Use parent's popup mode if provided
-    if (parentPopupMode) {
-      this.popupMode = parentPopupMode
-    }
-
     // Store metadata from parent
     if (parentMetadata) {
       this.appMetadata = parentMetadata
-    }
-
-    // Store button config from parent
-    if (parentButtonConfig) {
-      this.buttonConfig = parentButtonConfig
     }
 
     // Before `loadAuthData`, whose restored-session check is the first read
@@ -2813,10 +2803,6 @@ export class SwarmIdProxy {
         await this.handleCreateFeedManifest(message, event)
         break
 
-      case "connect":
-        this.handleConnect(message, event)
-        break
-
       default:
         // TypeScript should ensure this is never reached
         const exhaustiveCheck: never = message
@@ -2829,7 +2815,6 @@ export class SwarmIdProxy {
    */
   private async loadAuthData(): Promise<void> {
     if (!this.parentOrigin) {
-      this.authLoading = false
       return
     }
 
@@ -2850,8 +2835,6 @@ export class SwarmIdProxy {
       this.appSecret = sharedData.secret
       this.chatBinding = undefined
       this.authenticated = true
-      this.authLoading = false
-      this.showAuthButton()
       this.joinAccountBus()
 
       // Look up postage stamp from shared storage based on connected identity
@@ -2870,11 +2853,7 @@ export class SwarmIdProxy {
     const session = await this.readPartitionSession()
     if (session) {
       await this.restorePartitionSession(session)
-      return
     }
-
-    this.authLoading = false
-    this.showAuthButton()
   }
 
   /**
@@ -2915,7 +2894,6 @@ export class SwarmIdProxy {
     this.chatBinding = this.acceptHandedOverChatBinding(data)
     this.authenticated = true
     this.storagePartitioned = true
-    this.authLoading = false
     this.deviceId = getOrCreateDeviceId()
 
     await this.hydratePartitionAccount(
@@ -2929,7 +2907,6 @@ export class SwarmIdProxy {
       data.stampPending,
     )
 
-    this.showAuthButton()
     this.emitConnectionInfoIfChanged()
   }
 
@@ -3687,7 +3664,6 @@ export class SwarmIdProxy {
 
     // Reset auth state
     this.authenticated = false
-    this.authLoading = false
     this.appSecret = undefined
     this.chatBinding = undefined
     // Before dropping `deviceId` — the release announcement is sent as us.
@@ -3707,9 +3683,6 @@ export class SwarmIdProxy {
     this.handedOverChallenge = undefined
 
     this.emitConnectionInfoIfChanged()
-
-    // Show login button
-    this.showAuthButton()
   }
 
   /**
@@ -4066,222 +4039,6 @@ export class SwarmIdProxy {
       requestId: message.requestId,
       success: true,
     })
-  }
-
-  /**
-   * Show authentication button in the UI
-   */
-  private showAuthButton(): void {
-    if (!this.authButtonContainer || this.isConnecting) {
-      return
-    }
-
-    // Clear existing content
-    this.authButtonContainer.innerHTML = ""
-
-    // Create button based on authentication status
-    const button = document.createElement("button")
-    const isAuthenticated = this.authenticated
-    const isLoading = this.authLoading
-
-    // Get text from buttonConfig or use defaults
-    const config = this.buttonConfig || {}
-    const loadingText = config.loadingText || "⏳ Loading..."
-    const disconnectText =
-      config.disconnectText || "🔓 Disconnect from Swarm ID"
-    const connectText = config.connectText || "🔐 Login with Swarm ID"
-
-    if (isLoading) {
-      button.textContent = loadingText
-      button.disabled = true
-    } else if (isAuthenticated) {
-      button.textContent = disconnectText
-    } else {
-      button.textContent = connectText
-    }
-
-    // Make button fill container
-    button.style.width = "100%"
-    button.style.height = "100%"
-    button.style.display = "flex"
-    button.style.alignItems = "center"
-    button.style.justifyContent = "center"
-
-    if (isLoading) {
-      button.style.backgroundColor = "#999"
-      button.style.cursor = "default"
-    } else if (isAuthenticated) {
-      // Different color for disconnect button
-      button.style.backgroundColor = "#666"
-      button.style.cursor = "pointer"
-    } else {
-      button.style.backgroundColor = config.backgroundColor || "#dd7200"
-      button.style.cursor = "pointer"
-    }
-    button.style.color = config.color || "white"
-    button.style.border = "none"
-    button.style.borderRadius = config.borderRadius || "0"
-    button.style.padding = "0"
-    button.style.fontSize = config.fontSize || "14px"
-    button.style.fontWeight = config.fontWeight?.toString() ?? "600"
-    // No default: left unset the button keeps the font the iframe gives it.
-    // Forcing `inherit` here would inherit the IFRAME's font, not the parent
-    // page's, so it would change the look without getting any closer to the
-    // embedding page. A stack the dApp does pass falls back as usual.
-    if (config.fontFamily) {
-      button.style.fontFamily = config.fontFamily
-    }
-
-    // Click handler
-    button.addEventListener("click", () => {
-      if (isAuthenticated) {
-        // Handle disconnect
-        this.handleDisconnectClick()
-      } else {
-        // Handle login
-        this.handleLoginClick(button)
-      }
-    })
-
-    this.authButtonContainer.appendChild(button)
-  }
-
-  private handleConnect(
-    message: {
-      type: "connect"
-      requestId: string
-      popupMode?: "popup" | "window"
-    },
-    event: MessageEvent,
-  ): void {
-    const success = this.openAuthPopup({
-      popupMode: message.popupMode,
-    })
-    this.postMessage(event, {
-      type: "connectResponse",
-      requestId: message.requestId,
-      success,
-    })
-  }
-
-  /**
-   * Open the authentication popup window.
-   * Returns true if popup was opened, false if parent origin is not set.
-   */
-  private openAuthPopup(options?: { popupMode?: "popup" | "window" }): boolean {
-    if (!this.parentOrigin) {
-      console.error("[Proxy] Cannot open auth window - parent origin not set")
-      return false
-    }
-
-    // Build authentication URL using shared utility
-    // challenge: used for storage partitioning detection — popup checks if it can read this from localStorage
-    const challenge = crypto.randomUUID()
-    this.pendingChallenge = challenge
-    this.handedOverChallenge = undefined
-    localStorage.setItem(STORAGE_CHALLENGE_KEY, challenge)
-
-    // Get base path from current location (e.g., /id/pr-140/proxy -> /id/pr-140)
-    const basePath = window.location.pathname.replace(/\/proxy$/, "")
-    const authUrl = buildAuthUrl(
-      window.location.origin + basePath,
-      this.parentOrigin,
-      this.appMetadata,
-      { challenge },
-    )
-
-    // Open as popup or full window based on popupMode (per-call override takes precedence)
-    const effectivePopupMode = options?.popupMode ?? this.popupMode
-    let popup: Window | null = null
-    if (effectivePopupMode === "popup") {
-      popup = window.open(authUrl, "_blank", "width=500,height=600")
-    } else {
-      popup = window.open(authUrl, "_blank")
-    }
-
-    // Check if popup was blocked (common on mobile Safari)
-    if (!popup) {
-      console.warn("[Proxy] Popup was blocked or failed to open")
-      this.isConnecting = false
-      this.showAuthButton()
-      return false
-    }
-
-    // Monitor popup closure to handle user closing without completing auth
-    // Note: We delay the start of monitoring because on Safari, popup.closed can
-    // return true immediately for new tabs before they're fully initialized
-    const POPUP_MONITOR_START_DELAY_MS = 2000
-    const POPUP_CLOSE_CHECK_INTERVAL_MS = 500
-    const POPUP_MONITOR_TIMEOUT_MS = 300000 // 5 minutes
-
-    setTimeout(() => {
-      const checkPopupClosed = setInterval(() => {
-        if (popup?.closed) {
-          clearInterval(checkPopupClosed)
-          // Only process if we're still in connecting state (auth didn't complete via storage event)
-          if (this.isConnecting && !this.authenticated) {
-            this.isConnecting = false
-            this.showAuthButton()
-          }
-        }
-      }, POPUP_CLOSE_CHECK_INTERVAL_MS)
-
-      // Clear interval to prevent memory leak
-      setTimeout(() => {
-        clearInterval(checkPopupClosed)
-      }, POPUP_MONITOR_TIMEOUT_MS)
-    }, POPUP_MONITOR_START_DELAY_MS)
-
-    return true
-  }
-
-  /**
-   * Handle login button click
-   */
-  private handleLoginClick(button: HTMLButtonElement): void {
-    this.isConnecting = true
-    // Disable button and show spinner
-    button.disabled = true
-    button.innerHTML =
-      '<span style="display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-radius: 50%; border-top-color: white; animation: spin 1s linear infinite;"></span>'
-
-    // Add spinner animation
-    if (!document.getElementById("swarm-id-spinner-style")) {
-      const style = document.createElement("style")
-      style.id = "swarm-id-spinner-style"
-      style.textContent =
-        "@keyframes spin { to { transform: rotate(360deg); } }"
-      document.head.appendChild(style)
-    }
-
-    // Open auth popup
-    this.openAuthPopup()
-  }
-
-  /**
-   * Handle disconnect button click
-   */
-  private handleDisconnectClick(): void {
-    // Clear auth data
-    this.clearAuthData()
-
-    // Notify parent about auth status change
-    this.sendToParent({
-      type: "authStatusResponse",
-      requestId: "disconnect",
-      authenticated: false,
-      origin: undefined,
-    })
-  }
-
-  /**
-   * Set container element for auth button
-   */
-  setAuthButtonContainer(container: HTMLElement): void {
-    this.authButtonContainer = container
-    // Show button now that container is available
-    // (loadAuthData may have already run and set authenticated status)
-    this.showAuthButton()
   }
 
   private async handleUploadData(

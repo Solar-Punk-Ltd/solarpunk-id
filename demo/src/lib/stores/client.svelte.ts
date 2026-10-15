@@ -3,9 +3,11 @@
 
 import {
   SwarmIdClient,
+  SwarmIdError,
   formatTTL,
   DEFAULT_BEE_NODE_URL,
   type Avatar,
+  type ButtonConfig,
   type ConnectionInfo,
   type UploadUnavailableReason,
 } from '@solarpunkltd/swarm-id'
@@ -31,6 +33,19 @@ const SUBSIDISED_GATEWAY_STORAGE_KEY = 'swarm-id-demo-subsidised-gateway'
 // that choice survives. (`connect()` did default the flag to on when a caller
 // omitted it, but the sidebar never omitted it — it passed `false`.)
 const SUBSIDISED_GATEWAY_DEFAULT = false
+
+/**
+ * How the demo's Swarm ID buttons look. They are painted inside Swarm ID's
+ * own frame, so this is the only way they match the page (app.css).
+ */
+export const DEMO_BUTTON_CONFIG: ButtonConfig = {
+  backgroundColor: '#667eea',
+  color: 'white',
+  borderRadius: '6px',
+  fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  fontSize: '15px',
+  fontWeight: 600,
+}
 
 const BEE_ICON =
   'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNTYiIHZpZXdCb3g9IjAgMCA1NiA1NiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iNTYiIGhlaWdodD0iNTYiIGZpbGw9IndoaXRlIiByeD0iOCIvPgogIDx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjMyIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7wn5CdPC90ZXh0Pgo8L3N2Zz4='
@@ -301,20 +316,6 @@ async function runInitialize(generation: number) {
         description: 'Demo application showcasing Swarm ID authentication and Bee API operations',
         icon: BEE_ICON,
       },
-      buttonConfig: {
-        connectText: 'Connect to Swarm',
-        disconnectText: 'Disconnect',
-        loadingText: 'Loading...',
-        backgroundColor: '#667eea',
-        color: 'white',
-        borderRadius: '6px',
-        // The page's own stack (app.css): the button is painted inside the
-        // cross-origin iframe, so this is the only way it matches the page.
-        fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-        fontSize: '15px',
-        fontWeight: 600,
-      },
-      containerId: 'swarm-id-button',
     })
     client = instance
 
@@ -409,8 +410,19 @@ async function runConnect(): Promise<void> {
   const status = await instance.checkAuthStatus()
   if (status.authenticated) {
     await instance.disconnect()
-  } else {
+    return
+  }
+  try {
     await instance.connect()
+  } catch (error) {
+    // Where the browser partitions Swarm ID's frame, only the Swarm ID button
+    // can sign the demo in, and the library says so rather than opening a
+    // window that could not.
+    if (error instanceof SwarmIdError && error.code === 'button-required') {
+      logStore.log(error.message, 'warn')
+      return
+    }
+    throw error
   }
 }
 

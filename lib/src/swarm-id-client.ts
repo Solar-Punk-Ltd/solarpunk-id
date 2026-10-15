@@ -83,10 +83,16 @@ import type {
   ParentToIframeMessage,
   IframeToParentMessage,
   AppMetadata,
+  ButtonAction,
   ButtonConfig,
+  MountButtonOptions,
+  MountedButton,
+  ParentToButtonMessage,
   PostageBatch,
 } from "./types"
 import {
+  BUTTON_FRAME_LOADED,
+  ButtonToParentMessageSchema,
   IframeToParentMessageSchema,
   ParentToIframeMessageSchema,
   AppMetadataSchema,
@@ -181,8 +187,7 @@ export class SwarmIdClient {
   private iframeLoadReject?: (error: SwarmIdError) => void
   private popupMode: "popup" | "window"
   private metadata: AppMetadata
-  private buttonConfig?: ButtonConfig
-  private containerId?: string
+  private mountedButtons = new Set<MountedButton>()
   private subsidisedGatewayUrl?: string
   private beeApiUrl?: string
   private ready: boolean = false
@@ -226,22 +231,11 @@ export class SwarmIdClient {
    * @param options.iframePath - The path to the proxy iframe (defaults to "/proxy")
    * @param options.timeout - Request timeout in milliseconds (defaults to 30000). Bounds each call's whole round trip through the iframe; a call's own `requestOptions.timeout` replaces it for that call
    * @param options.onConnectionChange - Callback invoked when the dApp-visible ConnectionInfo changes (identity, stamp, account type, auth)
-   * @param options.popupMode - How to display the authentication popup: "popup" or "window" (defaults to "window")
+   * @param options.popupMode - How the connect window opens, from {@link connect} or a mounted button: "popup" or "window" (defaults to "window")
    * @param options.metadata - Application metadata shown to users during authentication
    * @param options.metadata.name - Application name (1-100 characters)
    * @param options.metadata.description - Optional application description (max 500 characters)
    * @param options.metadata.icon - Optional application icon as a data URL (SVG or PNG, max 4KB)
-   * @param options.buttonConfig - Button configuration for the authentication UI (optional)
-   * @param options.buttonConfig.connectText - Text for the connect button (optional)
-   * @param options.buttonConfig.disconnectText - Text for the disconnect button (optional)
-   * @param options.buttonConfig.loadingText - Text shown during loading (optional)
-   * @param options.buttonConfig.backgroundColor - Background color for buttons (optional)
-   * @param options.buttonConfig.color - Text color for buttons (optional)
-   * @param options.buttonConfig.borderRadius - Border radius for buttons and iframe (optional)
-   * @param options.buttonConfig.fontFamily - CSS font-family for the button, so it can match the embedding page; a font stack falls back as usual (optional)
-   * @param options.buttonConfig.fontSize - CSS font-size for the button; the default floating iframe is a fixed 300x50 px and hides its overflow, so a size that does not fit is clipped — pass `containerId` to own the box (optional)
-   * @param options.buttonConfig.fontWeight - CSS font-weight for the button, as a keyword or a number (optional)
-   * @param options.containerId - ID of container element to place iframe in (optional)
    * @param options.subsidisedGatewayUrl - A gateway that stamps uploads for a person with no drive of their own (optional)
    * @param options.beeApiUrl - The Bee node this site's content reads and stamped uploads go through, in place of the person's own setting. Their account and device coordination stay on their own node. Change it later with {@link setBeeApiUrl} (optional)
    * @throws {Error} If constructed where there is no `window` (a server render)
@@ -265,8 +259,6 @@ export class SwarmIdClient {
     this.onConnectionChange = options.onConnectionChange
     this.popupMode = options.popupMode || "window"
     this.metadata = options.metadata
-    this.buttonConfig = options.buttonConfig
-    this.containerId = options.containerId
     this.subsidisedGatewayUrl = options.subsidisedGatewayUrl
     if (options.beeApiUrl !== undefined) {
       this.beeApiUrl = parseBeeApiUrl(options.beeApiUrl)
@@ -303,7 +295,6 @@ export class SwarmIdClient {
    *
    * @returns A promise that resolves when the client is fully initialized
    * @throws {SwarmIdError} `invalid-state` if the client is already initialized, or `destroy()` runs before it resolves
-   * @throws {SwarmIdError} `invalid-request` if `containerId` names no element
    * @throws {SwarmIdError} `init-failed` if the iframe fails to load, origin validation fails on the proxy side, or the proxy does not respond within `initializationTimeout` (30 seconds by default)
    *
    * @example
@@ -380,36 +371,10 @@ export class SwarmIdClient {
     this.iframe = document.createElement("iframe")
     this.iframe.src = `${this.iframeOrigin}${this.iframePath}`
 
-    // Common iframe styles
-    this.iframe.style.border = "none"
-    this.iframe.style.backgroundColor = "transparent"
-    this.iframe.style.borderRadius = this.buttonConfig?.borderRadius || "0"
-
-    // Determine where to place the iframe
-    let containerElement: HTMLElement | undefined
-    if (this.containerId) {
-      containerElement = document.getElementById(this.containerId) || undefined
-      if (!containerElement) {
-        throw new SwarmIdError(
-          "invalid-request",
-          `Container element with ID "${this.containerId}" not found`,
-        )
-      }
-
-      // Fill the container
-      this.iframe.style.width = "100%"
-      this.iframe.style.height = "100%"
-      this.iframe.style.display = "block"
-    } else {
-      // Default: fixed position in bottom-right corner (hidden by default)
-      this.iframe.style.display = "none"
-      this.iframe.style.position = "fixed"
-      this.iframe.style.bottom = "20px"
-      this.iframe.style.right = "20px"
-      this.iframe.style.width = "300px"
-      this.iframe.style.height = "50px"
-      this.iframe.style.zIndex = "999999"
-    }
+    // The session frame shows nothing. A button the person clicks is a
+    // frame of its own (`mountButton`), so a site can remove it and keep the
+    // session.
+    this.iframe.style.display = "none"
 
     // Wait for iframe to load. The `reject` is stashed for `destroy()` while
     // the load is pending: a removed iframe never fires `load`, and nothing
@@ -422,12 +387,7 @@ export class SwarmIdClient {
           new SwarmIdError("init-failed", "Failed to load Swarm ID iframe"),
         )
 
-      // Append to container or body
-      if (containerElement) {
-        containerElement.appendChild(this.iframe!)
-      } else {
-        document.body.appendChild(this.iframe!)
-      }
+      document.body.appendChild(this.iframe!)
     })
     this.iframeLoadReject = undefined
 
@@ -438,9 +398,7 @@ export class SwarmIdClient {
     this.sendMessage({
       type: "parentIdentify",
       requestId: this.generateRequestId(),
-      popupMode: this.popupMode,
       metadata: this.metadata,
-      buttonConfig: this.buttonConfig,
       subsidisedGatewayUrl: this.subsidisedGatewayUrl,
       beeApiUrl: this.beeApiUrl,
     })
@@ -523,33 +481,6 @@ export class SwarmIdClient {
         this.storageShared = message.storageShared
         if (this.readyResolve) {
           this.readyResolve()
-        }
-        // Always show iframe - it will display login or disconnect button
-        if (this.iframe) {
-          this.iframe.style.display = "block"
-        }
-        break
-
-      case "authStatusResponse":
-        // Always show iframe - it will display login or disconnect button
-        if (this.iframe) {
-          this.iframe.style.display = "block"
-        }
-        // Handle as response if there's a matching request
-        if ("requestId" in message) {
-          const pending = this.pendingRequests.get(message.requestId)
-          if (pending) {
-            clearTimeout(pending.timeoutId)
-            this.pendingRequests.delete(message.requestId)
-            pending.resolve(message)
-          }
-        }
-        break
-
-      case "authSuccess":
-        // Keep iframe visible - it will now show disconnect button
-        if (this.iframe) {
-          this.iframe.style.display = "block"
         }
         break
 
@@ -819,34 +750,6 @@ export class SwarmIdClient {
   // ============================================================================
 
   /**
-   * Returns the authentication iframe element.
-   *
-   * The iframe displays authentication UI based on the current auth status:
-   * - If not authenticated: shows a "Connect" button
-   * - If authenticated: shows identity info and a "Disconnect" button
-   *
-   * The iframe is positioned fixed in the bottom-right corner of the viewport.
-   *
-   * @returns The iframe element displaying the authentication UI
-   * @throws {SwarmIdError} `invalid-state` if the client is not initialized, or the iframe is not available
-   *
-   * @example
-   * ```typescript
-   * const iframe = client.getAuthIframe()
-   * // The iframe is already displayed; this returns a reference to it
-   * ```
-   */
-  getAuthIframe(): HTMLIFrameElement {
-    this.ensureReady()
-
-    if (!this.iframe) {
-      throw new SwarmIdError("invalid-state", "Iframe not initialized")
-    }
-
-    return this.iframe
-  }
-
-  /**
    * Checks the current authentication status with the Swarm ID proxy.
    *
    * @returns A promise resolving to the authentication status object
@@ -1002,88 +905,46 @@ export class SwarmIdClient {
   }
 
   /**
-   * Opens the Swarm ID authentication page in a new window.
+   * Opens the Swarm ID connect window from the site's own control, where the
+   * session frame shares Swarm ID's storage: a site on the same site as Swarm
+   * ID, such as a self-hosted copy on the site's own domain. The window
+   * writes the connection to that storage and the session frame picks it up.
    *
-   * This method creates the same authentication URL as used by the iframe
-   * proxy and opens it in a new browser window. The user can authenticate
-   * with their Swarm ID, and the resulting authentication will be available
-   * to the client when they return.
-   *
-   * **Which window opens it** is decided by the iframe's STORAGE, not by the
-   * user agent (#613):
-   * - Shared storage: opened here, from the parent, so the click's activation is
-   *   still unspent. The popup writes the connection to the first-party store
-   *   the iframe reads, and a `storage` event carries it across.
-   * - Partitioned, or not proven shared: the proxy opens it, so the popup's
-   *   `window.opener` points back at the iframe and the session can be handed
-   *   over directly — the only channel into a partitioned frame. The session
-   *   is then kept in that partition's own store until it is disconnected or
-   *   its 7 days are up (#635), so a reload does not re-run this; a handover
-   *   that arrives without the account view is refused outright rather than
-   *   producing a session that cannot upload and cannot hear a revoke. A popup
-   *   blocked on this path falls back to opening from the parent.
-   *
-   * Safari private mode sessions are ephemeral (lost when the private window
-   * closes). The whole partitioned path — handover, stamper, upload — is
-   * confirmed on real Safari; see
-   * https://github.com/snaha/swarm-id/issues/584
+   * Anywhere else the browser partitions the session frame's storage, and the
+   * session can reach it only through a window a Swarm ID frame opened from a
+   * click inside it. A window opened from here would end on "Connected" with
+   * the site still signed out, so this refuses instead and the site shows
+   * {@link mountButton}'s button. `connectionInfo.storagePartitioned` and the
+   * error's code tell the two apart. The button works in both cases, so a
+   * site that always mounts it never needs this.
    *
    * @param options - Configuration options for the connect flow
    * @throws {SwarmIdError} `invalid-state` if the client is not initialized
-   * @throws {SwarmIdError} `popup-blocked` if the browser blocks the popup
+   * @throws {SwarmIdError} `button-required` if the session frame's storage is partitioned, or not proven shared
+   * @throws {SwarmIdError} `popup-blocked` if the browser blocks the window
    *
    * @example
    * ```typescript
-   * const client = new SwarmIdClient({ ... })
-   * await client.initialize()
-   *
-   * // Open authentication page
-   * await client.connect()
+   * try {
+   *   await client.connect()
+   * } catch (error) {
+   *   if (error instanceof SwarmIdError && error.code === 'button-required') {
+   *     client.mountButton(container, { action: 'sign-in' })
+   *   }
+   * }
    * ```
    */
   async connect(options: ConnectOptions = {}): Promise<void> {
     this.ensureReady()
-
-    // Storage shared: open it here, where the user's click still counts. The
-    // popup writes the connection to the first-party store the iframe reads,
-    // and a `storage` event carries it across.
-    if (this.storageShared === true) {
-      // Checked, not discarded: a blocked popup here opens nothing, and a
-      // `connect()` that resolved anyway would report a connect in progress
-      // that no window is running.
-      if (!this.openAuthWindow(options)) {
-        throw new SwarmIdError(
-          "popup-blocked",
-          "Failed to open authentication popup",
-        )
-      }
-      return
+    if (this.storageShared !== true) {
+      throw new SwarmIdError(
+        "button-required",
+        "Swarm ID's frame cannot read Swarm ID's storage here, so a window opened from this page cannot sign it in. Sign in through the button from client.mountButton().",
+      )
     }
-
-    // Otherwise the iframe has to open it, so `window.opener` points back at
-    // the iframe and the popup can hand the session over directly — the only
-    // channel into a partitioned frame. `storageShared` is undefined against a
-    // proxy too old to report it, and that takes this path too: it works in
-    // both storage modes, where the one above works in only one.
-    const requestId = this.generateRequestId()
-    const response = await this.sendRequest<{
-      type: "connectResponse"
-      requestId: string
-      success: boolean
-    }>({
-      type: "connect",
-      requestId,
-      popupMode: options.popupMode,
-    })
-    if (response.success) {
-      return
-    }
-
-    // The proxy's popup was blocked — the click happened out here, and no
-    // activation crosses a postMessage. Opening from the parent is what this
-    // browser did before the storage mode decided anything: on a session that
-    // turns out to be shared it just works, and on a partitioned one it fails
-    // no worse than not having asked.
+    // Checked, not discarded: a blocked popup opens nothing, and a
+    // `connect()` that resolved anyway would report a connect in progress
+    // that no window is running.
     if (!this.openAuthWindow(options)) {
       throw new SwarmIdError(
         "popup-blocked",
@@ -1093,11 +954,132 @@ export class SwarmIdClient {
   }
 
   /**
-   * Open the auth popup from the dApp page.
+   * Shows a Swarm ID button in `container`: a small frame of Swarm ID's own,
+   * apart from the hidden session frame, that fills the container. Its click
+   * opens the connect window, which hands the session back through it, and
+   * the site hears of it on {@link ClientOptions.onConnectionChange} as from
+   * any sign-in. This is how a person signs in, or changes the stamp the
+   * site uses, wherever the site and Swarm ID are on different sites.
    *
-   * Carries no challenge: a popup opened here has the dApp page as its
+   * Unmounting removes only the button. The session stays, and signing out
+   * stays {@link disconnect}. Keep the button mounted while its window is
+   * open (`onWindowChange`): the window hands the session over through it.
+   *
+   * @param container - The element the button fills. Give it the size the button should have
+   * @param options.action - `sign-in`, or `change-stamp` for a person signed in
+   * @param options.config - The label, its busy and disabled states, colours and typography
+   * @param options.onWindowChange - Called with `open`, `closed` or `blocked` for the button's connect window
+   * @returns The button: `ready`, `update()` and `unmount()`
+   * @throws {SwarmIdError} `invalid-state` if the client is not initialized
+   *
+   * @example
+   * ```typescript
+   * const button = client.mountButton(document.getElementById('sign-in')!, {
+   *   action: 'sign-in',
+   *   config: { text: 'Sign in', backgroundColor: '#000', borderRadius: '6px' },
+   * })
+   * await button.ready
+   * // later, closing the panel it sits in
+   * button.unmount()
+   * ```
+   */
+  mountButton(
+    container: HTMLElement,
+    options: MountButtonOptions,
+  ): MountedButton {
+    this.ensureReady()
+    const iframeOrigin = this.iframeOrigin
+    const expectedOrigin = new URL(iframeOrigin).origin
+    let action: ButtonAction = options.action
+    let config: ButtonConfig | undefined = options.config
+    let loaded = false
+    let settled = false
+
+    const frame = document.createElement("iframe")
+    frame.src = `${iframeOrigin}${this.iframePath.replace(/\/proxy$/, "")}/button`
+    frame.title = "Swarm ID"
+    Object.assign(frame.style, {
+      border: "none",
+      backgroundColor: "transparent",
+      width: "100%",
+      height: "100%",
+      display: "block",
+      borderRadius: config?.borderRadius ?? "0",
+    })
+
+    let resolveReady!: () => void
+    let rejectReady!: (error: SwarmIdError) => void
+    const ready = initDeadline(
+      new Promise<void>((resolve, reject) => {
+        resolveReady = resolve
+        rejectReady = reject
+      }),
+      this.initializationTimeout,
+      `Swarm ID button did not show within ${this.initializationTimeout}ms`,
+    )
+    ready.then(
+      () => (settled = true),
+      () => (settled = true),
+    )
+
+    const post = (message: ParentToButtonMessage) =>
+      frame.contentWindow?.postMessage(message, iframeOrigin)
+
+    const listener = (event: MessageEvent) => {
+      if (event.source !== frame.contentWindow) return
+      if (event.data?.type === BUTTON_FRAME_LOADED) {
+        loaded = true
+        post({
+          type: "buttonIdentify",
+          action,
+          config,
+          metadata: this.metadata,
+          popupMode: this.popupMode,
+        })
+        return
+      }
+      if (event.origin !== expectedOrigin) return
+      const parsed = ButtonToParentMessageSchema.safeParse(event.data)
+      if (!parsed.success) return
+      const message = parsed.data
+      if (message.type === "buttonReady") resolveReady()
+      else if (message.type === "buttonInitError")
+        rejectReady(new SwarmIdError("init-failed", message.error))
+      else options.onWindowChange?.(message.state)
+    }
+    window.addEventListener("message", listener)
+    container.appendChild(frame)
+
+    const mounted: MountedButton = {
+      ready,
+      update: (next) => {
+        action = next.action ?? action
+        config = next.config ?? config
+        frame.style.borderRadius = config?.borderRadius ?? "0"
+        if (loaded) post({ type: "buttonUpdate", action, config })
+      },
+      unmount: () => {
+        if (!this.mountedButtons.delete(mounted)) return
+        window.removeEventListener("message", listener)
+        frame.remove()
+        if (!settled) {
+          rejectReady(
+            new SwarmIdError("invalid-state", "Swarm ID button unmounted"),
+          )
+        }
+      },
+    }
+    this.mountedButtons.add(mounted)
+    return mounted
+  }
+
+  /**
+   * Open the connect window from the site's page, for a session frame that
+   * shares Swarm ID's storage.
+   *
+   * Carries no challenge: a window opened here has the site's page as its
    * `window.opener`, so there is nothing for a handover to attach to, and the
-   * popup falls back to the storage write it does anyway.
+   * window writes the connection to the storage the session frame reads.
    *
    * @returns whether the popup opened — a blocked one returns null, which the
    *   caller must not report as a connect in progress.
@@ -3670,6 +3652,8 @@ export class SwarmIdClient {
   destroy(): void {
     const destroyed = () =>
       new SwarmIdError("invalid-state", "Client destroyed")
+
+    for (const button of [...this.mountedButtons]) button.unmount()
 
     // Clear pending requests
     this.pendingRequests.forEach((pending) => {

@@ -17,7 +17,7 @@ import {
   MAIN_BATCH,
   connectedOnDefault,
   lastStampNamed,
-  openConnectWindow,
+  openChangeStampWindow,
 } from './drive-picker-helpers'
 import { expectProxyPartitioned, goToApp, partitionedDemoOrigin } from './helpers'
 
@@ -29,7 +29,7 @@ test.skip(
 
 /** Opens the window again while signed in and picks the account */
 async function reopenSignedIn(page: Page) {
-  const popup = await openConnectWindow(page, 'Change in Swarm ID')
+  const popup = await openChangeStampWindow(page)
   await popup.getByRole('button', { name: /0x[0-9a-fA-F]{4}/ }).click()
   return popup
 }

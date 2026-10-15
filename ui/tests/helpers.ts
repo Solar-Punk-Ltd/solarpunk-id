@@ -52,12 +52,17 @@ export async function completeCreateFlow(page: Page) {
   await page.getByRole('button', { name: 'Confirm' }).click()
 }
 
-/** Opens the demo's connect popup and returns the popup page. */
+/**
+ * Opens the connect popup through the demo's own Connect, `client.connect()`,
+ * and returns the popup page. Only a demo that shares the identity origin's
+ * storage gets one: elsewhere the library refuses and the Swarm ID button is
+ * the way in ({@link openSwarmIdButtonPopup}).
+ */
 export async function openConnectPopup(page: Page) {
   await page.getByRole('button', { name: 'Connect Swarm ID' }).click()
-  // The lib renders the iframe button once the client is initialized — before
-  // that, the popover's Connect click is a silent no-op (clientStore.connect
-  // bails while `client` is undefined).
+  // The demo mounts the Swarm ID button once the client is initialized, and
+  // before that the popover's Connect click is a silent no-op
+  // (clientStore.connect bails while `client` is undefined).
   await expect(page.locator('#swarm-id-button iframe')).toBeVisible({ timeout: 10000 })
   let popup: Page | undefined
   await expect(async () => {
@@ -87,28 +92,36 @@ export async function goToApp(popup: Page) {
   await expect.poll(() => popup.isClosed()).toBe(true)
 }
 
+/** Opens the demo's console panel and waits for a line matching `line` */
+export async function expectDemoLogged(page: Page, line: RegExp) {
+  await page.getByRole('button', { name: /^Console/ }).click()
+  await expect(page.getByText(line)).toBeVisible()
+}
+
 /** The identity origin, absolute because a partitioned demo is not on it. */
 export const ID_ORIGIN = 'http://localhost:5500'
 
 /**
- * Open the connect popup through the **proxy's own** button — the one rendered
- * inside `#swarm-id-button`'s iframe, beside the demo's own Connect.
+ * Open the connect popup through the **Swarm ID button**, the frame
+ * `client.mountButton()` puts in `#swarm-id-button`, beside the demo's own
+ * Connect.
  *
  * The difference is the whole partitioned path. `SwarmIdClient.connect()` opens
- * the popup from the dApp page whenever the proxy reports shared storage, and
- * `window.opener` then points at the dApp with nowhere for the handover to
- * post; the iframe's button always opens it itself, which is what sets the
- * partition challenge and makes `sendSecretToOpener` reach a proxy that cannot
- * read shared storage (#613, docs/Account-Bus.md). Both routes are covered:
- * this helper drives the iframe's button, and `bus-propagation.test.ts` drives
- * `client.connect()` under a real partition.
+ * the popup from the dApp page, and only where the session frame shares the
+ * identity origin's storage, since the popup then has no Swarm ID frame to hand
+ * the session to. The button opens it from its own click, which is what sets
+ * the partition challenge and lets the popup's handover reach a session frame
+ * that cannot read shared storage (docs/Account-Bus.md).
  */
-export async function openProxyConnectPopup(page: Page) {
+export async function openSwarmIdButtonPopup(page: Page) {
   await page.getByRole('button', { name: 'Connect Swarm ID' }).click()
-  const button = page
-    .frameLocator('#swarm-id-button iframe')
-    .getByRole('button', { name: 'Connect to Swarm' })
-  // Rendered only once the proxy is up; before that the container is empty.
+  return clickSwarmIdButton(page, '#swarm-id-button', 'Connect to Swarm')
+}
+
+/** Clicks the Swarm ID button in `container` and returns the popup it opened. */
+export async function clickSwarmIdButton(page: Page, container: string, name: string) {
+  const button = page.frameLocator(`${container} iframe`).getByRole('button', { name })
+  // Rendered only once the client is up, before that the container is empty.
   await expect(button).toBeVisible({ timeout: 15000 })
   const popupPromise = page.waitForEvent('popup', { timeout: 15000 })
   await button.click()
@@ -130,8 +143,8 @@ const PARTITION_PROBE_KEY = '__swarm-id-partition-probe'
  * unpartitioned path and passes while proving nothing.
  */
 export async function expectProxyPartitioned(page: Page) {
-  // Attached, not visible: the client's proxy iframe is hidden by design, and
-  // the button's lives inside a closed popover. Either will do — they share a
+  // Attached, not visible: the client's session frame is hidden by design, and
+  // the button's lives inside a closed popover. Either will do, they share a
   // partition.
   await expect
     .poll(() => page.frames().some((frame) => frame.url().startsWith(ID_ORIGIN)), {

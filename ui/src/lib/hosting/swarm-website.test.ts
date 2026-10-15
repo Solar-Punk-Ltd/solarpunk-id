@@ -24,7 +24,7 @@ const BUILT = existsSync(`${BUILD_DIR}/index.html`)
 const BUILD_REQUIRED = Boolean(process.env.CI)
 
 /** The paths the frame and the client open by name, which must stay routes. */
-const FRAME_PATHS = ['/proxy', routes.CONNECT, routes.CONNECT_DONE]
+const FRAME_PATHS = ['/proxy', '/button', routes.CONNECT, routes.CONNECT_DONE]
 
 function filesUnder(dir: string): string[] {
   return readdirSync(dir, { recursive: true, withFileTypes: true })

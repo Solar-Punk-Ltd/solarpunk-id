@@ -76,6 +76,7 @@ export {
 export { UtilizationStoreDB } from "./storage/utilization-store"
 
 export { initProxy } from "./swarm-id-proxy"
+export { initButtonFrame } from "./swarm-id-button-frame"
 
 export {
   createSyncAccount,
