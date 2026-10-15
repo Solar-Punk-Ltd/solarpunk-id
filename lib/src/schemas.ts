@@ -144,6 +144,40 @@ export const ChatBindingSchema = z.object({
 })
 
 // ============================================================================
+// Wallet Link and Account Settings Schemas
+// ============================================================================
+
+/**
+ * Longer than any wallet link message can be: four short lines around two
+ * addresses and a date. A bound on what is stored and carried, not a check of
+ * the format, which `verifyWalletLink` does.
+ */
+export const WALLET_LINK_MAX_LENGTH = 256
+
+/**
+ * The account's and its wallet's statement that they belong together
+ * (`utils/wallet-link.ts`, docs/Wallet-Link.md). Kept in the account's synced
+ * settings while the person has "Show my ENS name on sites" on, and shared
+ * with sites in the connection identity.
+ */
+export const WalletLinkSchema = z.object({
+  message: z.string().max(WALLET_LINK_MAX_LENGTH),
+  walletSignature: z.string().regex(/^0x[0-9a-fA-F]{130}$/),
+  accountSignature: z.string().regex(/^0x[0-9a-fA-F]{130}$/),
+})
+
+/**
+ * The account's synced settings, one shape for the account record, the state
+ * snapshot and the device feed, so a setting one of them does not name is
+ * never stripped on the way to another device. The whole object is one
+ * last-writer-wins field (`settingsAt`).
+ */
+export const AccountSettingsSchema = z.object({
+  appSessionDuration: z.number().optional(),
+  walletLink: WalletLinkSchema.optional(),
+})
+
+// ============================================================================
 // Connected App Schema
 // ============================================================================
 
@@ -332,11 +366,7 @@ export const SyncedAccountSchemaV1 = z.object({
   connectedApps: z.array(ConnectedAppSchemaV1).default([]),
   postageStamps: z.array(PostageStampSchemaV1).default([]),
   // Per-account settings (was identity.settings).
-  settings: z
-    .object({
-      appSessionDuration: z.number().optional(),
-    })
-    .optional(),
+  settings: AccountSettingsSchema.optional(),
   // Per-field LWW clocks for the scalar account fields, so a concurrent change to
   // a *different* scalar on another device is not dropped wholesale, and a peer's
   // change propagates on refresh. Absent → fall back to the account's `createdAt`,
@@ -432,11 +462,7 @@ export const AccountMetadataSchemaV1 = z.object({
   // App-facing public key (compressed secp256k1 hex). Mirrors account.publicKey.
   publicKey: CompressedPublicKeySchema,
   // Per-account settings (was identity.settings).
-  settings: z
-    .object({
-      appSessionDuration: z.number().optional(),
-    })
-    .optional(),
+  settings: AccountSettingsSchema.optional(),
   // Per-field LWW clocks for the scalar fields (see `SyncedAccountSchemaV1`).
   accountNameAt: z.number().optional(),
   defaultStampAt: z.number().optional(),
@@ -485,6 +511,7 @@ export type SignedOutAccount = z.infer<typeof SignedOutAccountSchemaV1>
 /** The local (on-device) account record: `SignedInAccount | SignedOutAccount`. */
 export type Account = z.infer<typeof LocalAccountSchemaV1>
 export type ConnectedApp = z.infer<typeof ConnectedAppSchemaV1>
+export type AccountSettings = z.infer<typeof AccountSettingsSchema>
 export type PostageStamp = z.infer<typeof PostageStampSchemaV1>
 export type AccountMetadata = z.infer<typeof AccountMetadataSchemaV1>
 export type AccountStateSnapshot = z.infer<typeof AccountStateSnapshotSchemaV1>

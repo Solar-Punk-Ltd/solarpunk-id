@@ -14,6 +14,7 @@ import {
 import { mergeSnapshotWithRemote } from "./merge-snapshot"
 import type { AccountStateSnapshot } from "../utils/account-state-snapshot"
 import type { ConnectedApp, Device, PostageStamp } from "../schemas"
+import { signedWalletLink } from "../test-fixtures"
 
 const ACCOUNT_ID = "aa".repeat(20)
 // Compressed secp256k1 public key (prefix byte + 32 bytes = 66 bare hex chars).
@@ -105,6 +106,22 @@ describe("device-state serialization", () => {
     expect(back.postageStamps[0].deletedAt).toBe(7)
     expect(back.connectedApps[0].revokedAt).toBe(5)
     expect(back.accountName).toEqual({ value: "my account", at: 9 })
+  })
+
+  // The wallet link is a synced setting, so another device must get it back
+  // whole from this device's feed, not with its unknown key stripped.
+  it("carries the wallet link in the settings", () => {
+    const walletLink = signedWalletLink()
+    const view = makeView({
+      settings: { value: { appSessionDuration: 3600, walletLink }, at: 9 },
+    })
+    const bytes = new TextEncoder().encode(
+      JSON.stringify(serializeDeviceState(ACCOUNT_ID, "dev-1", view)),
+    )
+    expect(deserializeDeviceState(bytes).settings).toEqual({
+      value: { appSessionDuration: 3600, walletLink },
+      at: 9,
+    })
   })
 })
 

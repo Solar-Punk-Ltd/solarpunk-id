@@ -16,6 +16,7 @@ import {
   createConnectedApp,
   createPostageStamp,
   createDevice,
+  signedWalletLink,
 } from "../test-fixtures"
 
 /**
@@ -541,5 +542,18 @@ describe("AccountStateSnapshotSchemaV1", () => {
   it("should be exported and usable for direct validation", () => {
     expect(AccountStateSnapshotSchemaV1).toBeDefined()
     expect(typeof AccountStateSnapshotSchemaV1.safeParse).toBe("function")
+  })
+
+  it("keeps the wallet link in the settings", () => {
+    const walletLink = signedWalletLink()
+    const account = createAccount({ settings: { walletLink } })
+
+    const result = AccountStateSnapshotSchemaV1.safeParse(
+      JSON.parse(JSON.stringify(serializeFromAccount(account))),
+    )
+
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.metadata.settings?.walletLink).toEqual(walletLink)
   })
 })

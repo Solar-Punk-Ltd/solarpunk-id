@@ -29,8 +29,10 @@ import {
 } from "@ethersphere/bee-js"
 import { z } from "zod"
 import {
+  AccountSettingsSchema,
   ConnectedAppSchemaV1,
   PostageStampSchemaV1,
+  type AccountSettings,
   type AccountStateSnapshot,
   type ConnectedApp,
   type Device,
@@ -52,10 +54,6 @@ export const DEVICE_STATE_TOPIC_PREFIX = "swarm-id-devstate-v1"
 
 const DEVICE_STATE_VERSION = 1
 
-/** Account settings carried in a device view (mirrors `account.settings`). */
-const SettingsSchema = z.object({ appSessionDuration: z.number().optional() })
-export type AccountSettings = z.infer<typeof SettingsSchema>
-
 const ClockedSchema = <T extends z.ZodTypeAny>(value: T) =>
   z.object({ value, at: z.number() })
 
@@ -72,7 +70,7 @@ export const DeviceStateSnapshotSchemaV1 = z.object({
   postageStamps: z.array(PostageStampSchemaV1),
   accountName: ClockedSchema(z.string()),
   defaultPostageStampBatchID: ClockedSchema(z.string().length(64).optional()),
-  settings: ClockedSchema(SettingsSchema.optional()),
+  settings: ClockedSchema(AccountSettingsSchema.optional()),
   // Account-level immutables — carried on the robust per-device feed (not the
   // roster), so the fold reconstructs them without a shared doc. Identical
   // across devices.

@@ -4,6 +4,7 @@
 import { describe, it, expect, expectTypeOf } from "vitest"
 import { BatchId } from "@ethersphere/bee-js"
 import {
+  AccountSettingsSchema,
   ConnectedAppSchemaV1,
   LocalAccountSchemaV1,
   NO_POSTAGE_STAMP,
@@ -15,6 +16,7 @@ import {
   TEST_PUBLIC_KEY_HEX,
   createAccount,
   createSignedOutAccount,
+  signedWalletLink,
 } from "./test-fixtures"
 import { serializeConnectedApp } from "./utils/storage-managers"
 
@@ -328,5 +330,24 @@ describe("ConnectedAppSchemaV1 stamp choice", () => {
     expect((parsed.postageStampBatchID as BatchId).toHex()).toBe(
       "cc".repeat(32),
     )
+  })
+})
+
+describe("AccountSettingsSchema wallet link", () => {
+  it("keeps a wallet link with both signatures", () => {
+    const walletLink = signedWalletLink()
+    expect(AccountSettingsSchema.parse({ walletLink })).toEqual({ walletLink })
+  })
+
+  it.each([
+    ["no account signature", { accountSignature: undefined }],
+    ["a wallet signature that is not 65 bytes", { walletSignature: "0x1234" }],
+    ["a message longer than any link", { message: "x".repeat(1024) }],
+  ])("refuses a link with %s", (_label, change) => {
+    expect(
+      AccountSettingsSchema.safeParse({
+        walletLink: { ...signedWalletLink(), ...change },
+      }).success,
+    ).toBe(false)
   })
 })
