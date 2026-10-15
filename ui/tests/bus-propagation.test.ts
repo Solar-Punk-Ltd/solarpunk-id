@@ -151,7 +151,7 @@ test('a partitioned session with no drive reports the handover, not a failure', 
     ),
   ).toBeVisible({ timeout: 15000 })
   await expectProxyPartitioned(page)
-  await expect(page.getByText('This account has no drive', { exact: false })).toBeVisible()
+  await expect(page.getByText('This site has no drive in Swarm ID', { exact: false })).toBeVisible()
   // Grey, not red: nothing here is evidence against the feature.
   await expect(page.getByText('❌')).toHaveCount(0)
 })
