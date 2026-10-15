@@ -1980,6 +1980,29 @@ describe("SwarmIdClient mountButton()", () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  // The window reads which frames to hand the session to from the button
+  // frame, its opener, as it opens. Removing that frame first would lose it.
+  it("keeps the frame, hidden, until its open window closes", () => {
+    const { button, frame } = mount()
+    fromFrame(frame, { type: "buttonWindowChanged", state: "open" })
+    button.unmount()
+
+    expect(frame.remove).not.toHaveBeenCalled()
+    expect(frame.style.display).toBe("none")
+
+    fromFrame(frame, { type: "buttonWindowChanged", state: "closed" })
+    expect(frame.remove).toHaveBeenCalled()
+    expect(listeners).toHaveLength(1)
+  })
+
+  it("removes the frame at once on destroy(), window open or not", () => {
+    const { frame } = mount()
+    fromFrame(frame, { type: "buttonWindowChanged", state: "open" })
+    client.destroy()
+
+    expect(frame.remove).toHaveBeenCalled()
+  })
+
   it("unmounts every button on destroy()", () => {
     const { frame } = mount()
     client.destroy()

@@ -89,6 +89,12 @@ export function openChangeStampWindow(page: Page) {
  * stamp, the confirm does.
  */
 export async function connectedOnDefault(page: Page, demoOrigin: string) {
+  await accountWithTwoDrivesOnTheDemo(page, demoOrigin)
+  await confirmOnDefault(page, await openSwarmIdButtonPopup(page))
+}
+
+/** An account with two drives made on Swarm ID, then the demo open and listened to */
+export async function accountWithTwoDrivesOnTheDemo(page: Page, demoOrigin: string) {
   await seedNoChain(page)
   await page.goto(`${ID_ORIGIN}/?signin`)
   await completeCreateFlow(page)
@@ -98,8 +104,10 @@ export async function connectedOnDefault(page: Page, demoOrigin: string) {
 
   await page.goto(`${demoOrigin}/account`)
   await recordStampsNamed(page)
+}
 
-  const popup = await openSwarmIdButtonPopup(page)
+/** Picks the account in `popup`, unlocks it and confirms the default drive */
+export async function confirmOnDefault(page: Page, popup: Page) {
   await popup.getByRole('button', { name: /0x[0-9a-fA-F]{4}/ }).click()
   await popup.getByRole('textbox', { name: 'Account password' }).fill(PASSWORD)
   await popup.getByRole('button', { name: 'Confirm' }).click()

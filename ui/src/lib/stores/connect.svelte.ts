@@ -82,6 +82,10 @@ export const connectStore = {
     if (!appOrigin) {
       return request !== undefined
     }
+    // A link with a challenge came from a Swarm ID button, which its site may
+    // remove at any moment, so the frames beside it are read before anything
+    // waits. Nothing is sent to them unless the handover is needed below.
+    if (params.get('challenge')) rememberHandoverTargets()
     const generation = ++linkGeneration
     request = undefined
     refusal = undefined
@@ -108,8 +112,6 @@ export const connectStore = {
         sessionStorage.setItem(CHALLENGE_MATCHED_KEY, challenge)
       } else if (sessionStorage.getItem(CHALLENGE_MATCHED_KEY) !== challenge) {
         partitionChallenge = challenge
-        // Now, while the button that opened this window is surely still there
-        rememberHandoverTargets()
       }
     }
 

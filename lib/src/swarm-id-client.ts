@@ -187,7 +187,8 @@ export class SwarmIdClient {
   private iframeLoadReject?: (error: SwarmIdError) => void
   private popupMode: "popup" | "window"
   private metadata: AppMetadata
-  private mountedButtons = new Set<MountedButton>()
+  /** Each mounted button, with what removes its frame at once */
+  private mountedButtons = new Map<MountedButton, () => void>()
   private subsidisedGatewayUrl?: string
   private beeApiUrl?: string
   private ready: boolean = false
@@ -956,14 +957,17 @@ export class SwarmIdClient {
   /**
    * Shows a Swarm ID button in `container`: a small frame of Swarm ID's own,
    * apart from the hidden session frame, that fills the container. Its click
-   * opens the connect window, which hands the session back through it, and
-   * the site hears of it on {@link ClientOptions.onConnectionChange} as from
+   * opens the connect window, which hands the session to the site's Swarm ID
+   * frames, and the site hears of it on {@link ClientOptions.onConnectionChange} as from
    * any sign-in. This is how a person signs in, or changes the stamp the
    * site uses, wherever the site and Swarm ID are on different sites.
    *
-   * Unmounting removes only the button. The session stays, and signing out
-   * stays {@link disconnect}. Keep the button mounted while its window is
-   * open (`onWindowChange`): the window hands the session over through it.
+   * Unmounting removes only the button, at any time. The session stays, and
+   * signing out stays {@link disconnect}. A button unmounted while its window
+   * is open stays hidden until the window closes, because the window reads
+   * from it, as it opens, where to hand the session. Removing its container
+   * yourself in the moment between the click and the window opening loses
+   * that sign-in, and the person signs in again.
    *
    * @param container - The element the button fills. Give it the size the button should have
    * @param options.action - `sign-in`, or `change-stamp` for a person signed in
@@ -994,6 +998,8 @@ export class SwarmIdClient {
     let config: ButtonConfig | undefined = options.config
     let loaded = false
     let settled = false
+    let windowOpen = false
+    let unmounted = false
 
     const frame = document.createElement("iframe")
     frame.src = `${iframeOrigin}${this.iframePath.replace(/\/proxy$/, "")}/button`
@@ -1045,7 +1051,21 @@ export class SwarmIdClient {
       if (message.type === "buttonReady") resolveReady()
       else if (message.type === "buttonInitError")
         rejectReady(new SwarmIdError("init-failed", message.error))
-      else options.onWindowChange?.(message.state)
+      else {
+        windowOpen = message.state === "open"
+        options.onWindowChange?.(message.state)
+        if (unmounted && !windowOpen) remove()
+      }
+    }
+    const remove = () => {
+      this.mountedButtons.delete(mounted)
+      window.removeEventListener("message", listener)
+      frame.remove()
+      if (!settled) {
+        rejectReady(
+          new SwarmIdError("invalid-state", "Swarm ID button unmounted"),
+        )
+      }
     }
     window.addEventListener("message", listener)
     container.appendChild(frame)
@@ -1058,18 +1078,17 @@ export class SwarmIdClient {
         frame.style.borderRadius = config?.borderRadius ?? "0"
         if (loaded) post({ type: "buttonUpdate", action, config })
       },
+      // The connect window reads which frames to hand the session to from
+      // this frame, its opener, as it opens, so while it is open the frame
+      // stays, hidden, and goes once the window closes.
       unmount: () => {
-        if (!this.mountedButtons.delete(mounted)) return
-        window.removeEventListener("message", listener)
-        frame.remove()
-        if (!settled) {
-          rejectReady(
-            new SwarmIdError("invalid-state", "Swarm ID button unmounted"),
-          )
-        }
+        if (unmounted || !this.mountedButtons.has(mounted)) return
+        unmounted = true
+        if (windowOpen) frame.style.display = "none"
+        else remove()
       },
     }
-    this.mountedButtons.add(mounted)
+    this.mountedButtons.set(mounted, remove)
     return mounted
   }
 
@@ -3653,7 +3672,7 @@ export class SwarmIdClient {
     const destroyed = () =>
       new SwarmIdError("invalid-state", "Client destroyed")
 
-    for (const button of [...this.mountedButtons]) button.unmount()
+    for (const remove of [...this.mountedButtons.values()]) remove()
 
     // Clear pending requests
     this.pendingRequests.forEach((pending) => {

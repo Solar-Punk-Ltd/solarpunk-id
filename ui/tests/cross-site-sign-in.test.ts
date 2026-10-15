@@ -21,6 +21,8 @@ import { type Page, expect, test } from '@playwright/test'
 import {
   CHAT_BATCH,
   MAIN_BATCH,
+  accountWithTwoDrivesOnTheDemo,
+  confirmOnDefault,
   connectedOnDefault,
   lastStampNamed,
   openChangeStampWindow,
@@ -161,4 +163,32 @@ test('Disconnect on the Apps screen reaches the open site', async ({ page }, tes
   await expect(page.getByRole('heading', { name: 'Not connected' })).toBeVisible({
     timeout: 15000,
   })
+})
+
+// The window hands the session to the frames beside the button that opened
+// it, read when it opens, so a site may remove its button while the window is
+// still open, as one that closes its panel does, and still be signed in with
+// the stamp confirmed there.
+test('a button removed while its window is open still signs the site in with its stamp', async ({
+  page,
+}, testInfo) => {
+  await accountWithTwoDrivesOnTheDemo(page, demoOrigin!)
+  if (partitions(testInfo.project.name)) await expectProxyPartitioned(page)
+
+  await page.getByRole('button', { name: 'Connect Swarm ID' }).click()
+  const button = page.frameLocator('#swarm-id-button iframe').getByRole('button', {
+    name: 'Connect to Swarm',
+  })
+  await expect(button).toBeVisible({ timeout: 15000 })
+  const popupPromise = page.waitForEvent('popup', { timeout: 15000 })
+  await button.click()
+  const popup = await popupPromise
+  // Gone as a site's closed panel takes it, once the window is up
+  await expect(popup.getByRole('button', { name: /0x[0-9a-fA-F]{4}/ })).toBeVisible({
+    timeout: 15000,
+  })
+  await page.locator('#swarm-id-button iframe').evaluate((frame) => frame.remove())
+
+  await confirmOnDefault(page, popup)
+  await signedIn(page)
 })

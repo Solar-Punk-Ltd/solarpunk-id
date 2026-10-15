@@ -996,9 +996,8 @@ export interface MountButtonOptions {
   action: ButtonAction
   config?: ButtonConfig
   /**
-   * Called when the button's connect window opens, closes or is blocked. The
-   * window hands the session to the button's frame, so a site keeps the
-   * button mounted while the window is open.
+   * Called when the button's connect window opens, closes or is blocked, for
+   * example to say that the browser blocked it.
    */
   onWindowChange?: (state: ButtonWindowState) => void
 }
