@@ -1872,6 +1872,61 @@ describe("SwarmIdClient mountButton()", () => {
     expect(error).toMatchObject({ code: "invalid-state" })
   })
 
+  // The frame drops a message it cannot parse, so a bad value would leave the
+  // button unshown or an update unapplied with nothing said on the site's side.
+  it.each([
+    [
+      "a plain-http font file",
+      { fontFaces: [{ family: "B", url: "http://site.example.com/b.woff2" }] },
+      "fontFaces",
+    ],
+    [
+      "a border style it does not draw",
+      { borderStyle: "inset" },
+      "borderStyle",
+    ],
+  ])("refuses %s on mount, naming the field", (_case, config, field) => {
+    const error = thrownBy(() =>
+      client.mountButton(container as unknown as HTMLElement, {
+        action: "sign-in",
+        config: config as never,
+      }),
+    )
+    expect(error).toMatchObject({ code: "invalid-request" })
+    expect((error as Error).message).toContain(field)
+    expect(container.appendChild).not.toHaveBeenCalled()
+  })
+
+  it("refuses an action it does not know", () => {
+    const error = thrownBy(() =>
+      client.mountButton(container as unknown as HTMLElement, {
+        action: "sign-out" as never,
+      }),
+    )
+    expect(error).toMatchObject({ code: "invalid-request" })
+    expect((error as Error).message).toContain("action")
+  })
+
+  it("refuses a bad update, naming the field, and keeps the button as it was", () => {
+    const { button, frame } = mount()
+    fromFrame(frame, { type: "buttonFrameLoaded" })
+    frame.contentWindow.postMessage.mockClear()
+
+    const error = thrownBy(() =>
+      button.update({
+        config: {
+          fontFaces: Array(9).fill({
+            family: "B",
+            url: "https://a.example/b.woff2",
+          }),
+        },
+      }),
+    )
+    expect(error).toMatchObject({ code: "invalid-request" })
+    expect((error as Error).message).toContain("fontFaces")
+    expect(frame.contentWindow.postMessage).not.toHaveBeenCalled()
+  })
+
   it("puts Swarm ID's button page in the container, filling it", () => {
     const { frame } = mount()
 

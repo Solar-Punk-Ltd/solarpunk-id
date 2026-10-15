@@ -177,6 +177,7 @@ Unmounting removes only the button, at any time: the session stays, and signing 
 **Throws:**
 
 - `invalid-state` if the client is not initialized
+- `invalid-request` if `action` or a `config` value is not one the button takes, a plain-http font file for example. The message names the field, and `update()` refuses such a value the same way
 
 **Example:**
 
