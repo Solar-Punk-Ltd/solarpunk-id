@@ -193,6 +193,44 @@ describe("ButtonConfigSchema typography (#779)", () => {
     expect(() => ButtonConfigSchema.parse({ borderStyle: "inset" })).toThrow()
   })
 
+  it("takes font files on https, or on loopback http for local work", () => {
+    const fontFaces = [
+      {
+        family: "Brand",
+        url: "https://site.example.com/brand.woff2",
+        weight: 600,
+      },
+      {
+        family: "Brand",
+        url: "http://localhost:3500/brand.woff2",
+        style: "italic",
+      },
+      { family: "Brand", url: "http://127.0.0.1:3500/brand.woff2" },
+    ]
+    expect(ButtonConfigSchema.parse({ fontFaces })).toEqual({ fontFaces })
+  })
+
+  it.each([
+    ["plain http", "http://site.example.com/brand.woff2"],
+    ["a data URL", "data:font/woff2;base64,AAAA"],
+    ["a script URL", "javascript:alert(1)"],
+    ["no URL", "brand.woff2"],
+  ])("refuses a font file on %s", (_case, url) => {
+    expect(() =>
+      ButtonConfigSchema.parse({ fontFaces: [{ family: "Brand", url }] }),
+    ).toThrow()
+  })
+
+  it("refuses more font files than a button needs", () => {
+    const face = {
+      family: "Brand",
+      url: "https://site.example.com/brand.woff2",
+    }
+    expect(() =>
+      ButtonConfigSchema.parse({ fontFaces: Array(9).fill(face) }),
+    ).toThrow()
+  })
+
   it("carries them to the button frame rather than stripping them", () => {
     const parsed = ParentToButtonMessageSchema.parse({
       type: "buttonIdentify",

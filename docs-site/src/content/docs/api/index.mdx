@@ -223,6 +223,12 @@ interface ButtonConfig {
   fontFamily?: string
   fontSize?: string
   fontWeight?: string | number
+  fontFaces?: {
+    family: string
+    url: string
+    weight?: string | number
+    style?: 'normal' | 'italic' | 'oblique'
+  }[]
 }
 ```
 
@@ -242,8 +248,25 @@ interface ButtonConfig {
 | `fontFamily`      | `string`                                      | CSS font-family. A stack resolves against Swarm ID's frame, so name web-safe or system families                   | the frame's own font                                   |
 | `fontSize`        | `string`                                      | CSS font-size                                                                                                     | `14px`                                                 |
 | `fontWeight`      | `string \| number`                            | CSS font-weight                                                                                                   | `600`                                                  |
+| `fontFaces`       | `ButtonFontFace[]`                            | Up to 8 font files the button frame loads for the label, see below                                                | none                                                   |
 
 The button is busy by itself while its connect window is open, and comes back when the window closes.
+
+To paint the label in a font your site serves, name the file in `fontFaces` and the family first in `fontFamily`:
+
+```typescript
+client.mountButton(container, {
+  action: 'sign-in',
+  config: {
+    fontFamily: "'Brand Sans', system-ui, sans-serif",
+    fontFaces: [
+      { family: 'Brand Sans', url: 'https://my-app.example/fonts/brand-sans.woff2', weight: 600 },
+    ],
+  },
+})
+```
+
+The frame fetches the file itself, from Swarm ID's origin, so serve it with an `Access-Control-Allow-Origin` header that names Swarm ID's origin (`https://solarpunkid.bzz.link`) or `*`. Only https URLs are taken, and http on `localhost` in a development build of Swarm ID. A file that does not load leaves the label in the next family of `fontFamily`, and the frame says so once in its console.
 
 ---
 

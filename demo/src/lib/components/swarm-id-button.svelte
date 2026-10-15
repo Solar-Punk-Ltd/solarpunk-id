@@ -10,7 +10,7 @@
 -->
 <script lang="ts">
   import type { ButtonAction } from '@solarpunkltd/swarm-id'
-  import { DEMO_BUTTON_CONFIG, clientStore } from '$lib/stores/client.svelte'
+  import { clientStore, demoButtonConfig } from '$lib/stores/client.svelte'
   import { logStore } from '$lib/stores/log.svelte'
 
   interface Props {
@@ -29,7 +29,7 @@
     if (!container || !client || clientStore.initializing) return
     const button = client.mountButton(container, {
       action,
-      config: { ...DEMO_BUTTON_CONFIG, text },
+      config: { ...demoButtonConfig(), text },
       onWindowChange: (state) => {
         if (state === 'blocked') logStore.log('The browser blocked the Swarm ID window', 'warn')
       },

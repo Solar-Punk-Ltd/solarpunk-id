@@ -23,6 +23,7 @@ export type {
   AppMetadata,
   ButtonAction,
   ButtonConfig,
+  ButtonFontFace,
   ButtonWindowState,
   MountButtonOptions,
   MountedButton,

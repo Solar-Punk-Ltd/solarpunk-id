@@ -129,6 +129,10 @@ if (status.authenticated) {
 }
 ```
 
+### Try a Font in the Buttons
+
+The demo's buttons take a font file named in `localStorage`, under `swarm-id-demo-button-font`, as `{ "family": "Brand", "url": "http://127.0.0.1:3500/brand.woff2" }`. The file must be served with an `Access-Control-Allow-Origin` naming the identity origin, and the browser suite does exactly that.
+
 ### Change the Stamp
 
 ```javascript

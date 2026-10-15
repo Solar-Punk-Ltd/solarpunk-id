@@ -34,17 +34,46 @@ const SUBSIDISED_GATEWAY_STORAGE_KEY = 'swarm-id-demo-subsidised-gateway'
 // omitted it, but the sidebar never omitted it — it passed `false`.)
 const SUBSIDISED_GATEWAY_DEFAULT = false
 
+const DEMO_FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+
+/**
+ * A font file to try the buttons in, as `{ "family": …, "url": … }` under this
+ * key: the demo has none of its own, and the browser suite sets one.
+ */
+const BUTTON_FONT_STORAGE_KEY = 'swarm-id-demo-button-font'
+
 /**
  * How the demo's Swarm ID buttons look. They are painted inside Swarm ID's
  * own frame, so this is the only way they match the page (app.css).
  */
-export const DEMO_BUTTON_CONFIG: ButtonConfig = {
-  backgroundColor: '#667eea',
-  color: 'white',
-  borderRadius: '6px',
-  fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-  fontSize: '15px',
-  fontWeight: 600,
+export function demoButtonConfig(): ButtonConfig {
+  const config: ButtonConfig = {
+    backgroundColor: '#667eea',
+    color: 'white',
+    borderRadius: '6px',
+    fontFamily: DEMO_FONT_STACK,
+    fontSize: '15px',
+    fontWeight: 600,
+  }
+  const font = readButtonFont()
+  if (!font) return config
+  return {
+    ...config,
+    fontFamily: `"${font.family}", ${DEMO_FONT_STACK}`,
+    fontFaces: [font],
+  }
+}
+
+function readButtonFont(): { family: string; url: string } | undefined {
+  try {
+    const raw = localStorage.getItem(BUTTON_FONT_STORAGE_KEY)
+    const font = raw ? (JSON.parse(raw) as { family?: unknown; url?: unknown }) : undefined
+    return typeof font?.family === 'string' && typeof font.url === 'string'
+      ? { family: font.family, url: font.url }
+      : undefined
+  } catch {
+    return undefined
+  }
 }
 
 const BEE_ICON =

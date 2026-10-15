@@ -17,6 +17,9 @@
  * client listens on.
  */
 import { type Page, expect, test } from '@playwright/test'
+import { readFileSync, readdirSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
 
 import {
   CHAT_BATCH,
@@ -191,4 +194,61 @@ test('a button removed while its window is open still signs the site in with its
 
   await confirmOnDefault(page, popup)
   await signedIn(page)
+})
+
+/**
+ * A real TrueType file to serve: the icon font Playwright's own trace viewer
+ * ships, found by its folder since its name carries a content hash.
+ */
+function anyFontFile(): Buffer {
+  const core = dirname(createRequire(import.meta.url).resolve('playwright-core/package.json'))
+  const folder = join(core, 'lib', 'vite', 'traceViewer')
+  const name = readdirSync(folder).find((file) => file.endsWith('.ttf'))
+  if (!name) throw new Error(`no .ttf under ${folder} to serve as the site's font`)
+  return readFileSync(join(folder, name))
+}
+
+const BRAND_FAMILY = 'E2E Brand'
+
+// The site names a font file it serves itself, with an
+// Access-Control-Allow-Origin naming Swarm ID's origin, and Swarm ID's button
+// frame loads it and paints the label in it.
+test("the button loads a font file from the site's origin and uses it", async ({
+  page,
+}, testInfo) => {
+  const fontUrl = `${demoOrigin}/e2e-fonts/brand.ttf`
+  const font = anyFontFile()
+  await page.context().route(fontUrl, (route) =>
+    route.fulfill({
+      body: font,
+      headers: { 'Content-Type': 'font/ttf', 'Access-Control-Allow-Origin': ID_ORIGIN },
+    }),
+  )
+  await page.addInitScript(
+    ({ family, url }) =>
+      localStorage.setItem('swarm-id-demo-button-font', JSON.stringify({ family, url })),
+    { family: BRAND_FAMILY, url: fontUrl },
+  )
+  await onTheDemo(page, testInfo.project.name)
+  await page.getByRole('button', { name: 'Connect Swarm ID' }).click()
+  await expect(
+    page.frameLocator('#swarm-id-button iframe').getByRole('button', { name: 'Connect to Swarm' }),
+  ).toBeVisible({ timeout: 15000 })
+
+  const buttonFrame = page.frames().find((frame) => frame.url().includes('/button'))!
+  await expect
+    .poll(() =>
+      buttonFrame.evaluate(
+        (family) =>
+          [...document.fonts].some(
+            (face) => face.family.replace(/"/g, '') === family && face.status === 'loaded',
+          ),
+        BRAND_FAMILY,
+      ),
+    )
+    .toBe(true)
+  const shownIn = await buttonFrame.evaluate(
+    () => getComputedStyle(document.querySelector('button')!).fontFamily,
+  )
+  expect(shownIn).toContain(BRAND_FAMILY)
 })

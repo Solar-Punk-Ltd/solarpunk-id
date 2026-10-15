@@ -19,7 +19,10 @@
 
   onMount(() => {
     if (!container) return
-    const frame = initButtonFrame({ siteAllowList: siteAllowList() }, container)
+    const frame = initButtonFrame(
+      { siteAllowList: siteAllowList(), allowLocalHttp: import.meta.env.DEV },
+      container,
+    )
     return () => frame.destroy()
   })
 </script>

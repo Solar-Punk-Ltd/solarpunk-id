@@ -942,6 +942,46 @@ export type AppMetadata = z.infer<typeof AppMetadataSchema>
 export const ButtonActionSchema = z.enum(["sign-in", "change-stamp"])
 export type ButtonAction = z.infer<typeof ButtonActionSchema>
 
+/** Hosts a font file may be served from over plain http, for local work */
+const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
+
+/** More than a button's label could use, and a bound on what one frame fetches */
+const MAX_BUTTON_FONT_FACES = 8
+
+/**
+ * A font file's URL: https, or http on a loopback host for local work. The
+ * button frame takes loopback http only in a development build.
+ */
+export function isButtonFontUrl(value: string): boolean {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return false
+  }
+  return (
+    url.protocol === "https:" ||
+    (url.protocol === "http:" && LOOPBACK_HOSTS.includes(url.hostname))
+  )
+}
+
+export const ButtonFontFaceSchema = z.object({
+  family: z.string().min(1),
+  url: z.string().refine(isButtonFontUrl, {
+    message: "A font file is served over https, or over http on localhost",
+  }),
+  weight: z.union([z.string(), z.number()]).optional(),
+  style: z.enum(["normal", "italic", "oblique"]).optional(),
+})
+
+/**
+ * A font file the button frame loads itself, so the label can use a family
+ * the site serves. It is fetched cross-origin from Swarm ID's frame, so the
+ * site serves it with an `Access-Control-Allow-Origin` that names Swarm ID's
+ * origin. Name `family` in `fontFamily` too, ahead of a fallback.
+ */
+export type ButtonFontFace = z.infer<typeof ButtonFontFaceSchema>
+
 export const ButtonConfigSchema = z.object({
   text: z.string().optional(),
   busyText: z.string().optional(),
@@ -957,6 +997,10 @@ export const ButtonConfigSchema = z.object({
   fontFamily: z.string().optional(),
   fontSize: z.string().optional(),
   fontWeight: z.union([z.string(), z.number()]).optional(),
+  fontFaces: z
+    .array(ButtonFontFaceSchema)
+    .max(MAX_BUTTON_FONT_FACES)
+    .optional(),
 })
 
 /**
@@ -998,6 +1042,12 @@ export interface ButtonConfig {
   fontSize?: string
   /** CSS font-weight, a keyword or a number. Default: "600" */
   fontWeight?: string | number
+  /**
+   * Font files the frame loads for the label, at most 8. A file that does not
+   * load leaves the label in the next family of `fontFamily`, and the frame
+   * says so once in the console
+   */
+  fontFaces?: ButtonFontFace[]
 }
 
 /** Where a mounted button's connect window is. `blocked`: the browser refused to open it */

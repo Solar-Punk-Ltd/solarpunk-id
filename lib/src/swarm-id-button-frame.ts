@@ -9,6 +9,7 @@ import {
   type AppMetadata,
   type ButtonAction,
   type ButtonConfig,
+  type ButtonFontFace,
   type ButtonToParentMessage,
   type ButtonWindowState,
   type ConnectWindowOpenedMessage,
@@ -30,6 +31,8 @@ export interface ButtonFrameConfig {
    * session frame asks. A site it refuses gets no button.
    */
   siteAllowList: SiteAllowList
+  /** Take font files over http on localhost, which only a development build does */
+  allowLocalHttp?: boolean
 }
 
 /**
@@ -59,6 +62,8 @@ export class SwarmIdButtonFrame {
   private watchStart: ReturnType<typeof setTimeout> | undefined
   private watchInterval: ReturnType<typeof setInterval> | undefined
   private button: HTMLButtonElement | undefined
+  /** Font files asked for, so each is fetched, and reported, once */
+  private readonly requestedFonts = new Set<string>()
   private readonly onMessage = (event: MessageEvent) => {
     void this.handleMessage(event)
   }
@@ -106,6 +111,7 @@ export class SwarmIdButtonFrame {
     this.config = parsed.data.config ?? {}
     this.metadata = parsed.data.metadata
     this.popupMode = parsed.data.popupMode ?? "window"
+    this.loadFontFaces(this.config.fontFaces)
     this.render()
     this.tellParent({ type: "buttonReady" })
   }
@@ -119,7 +125,46 @@ export class SwarmIdButtonFrame {
     }
     this.action = parsed.data.action
     this.config = parsed.data.config ?? {}
+    this.loadFontFaces(this.config.fontFaces)
     this.render()
+  }
+
+  /**
+   * Loads the site's font files into this frame. The label already names the
+   * family, so it changes once a file arrives, and keeps the fallback family
+   * when one does not. The fetch is cross-origin, so the site serves the file
+   * with an `Access-Control-Allow-Origin` naming Swarm ID's origin.
+   */
+  private loadFontFaces(faces: ButtonFontFace[] | undefined): void {
+    for (const face of faces ?? []) {
+      const key = JSON.stringify([
+        face.family,
+        face.url,
+        face.weight,
+        face.style,
+      ])
+      if (this.requestedFonts.has(key)) continue
+      this.requestedFonts.add(key)
+      const url = new URL(face.url)
+      if (url.protocol === "http:" && !this.options.allowLocalHttp) {
+        console.warn(
+          `[Button] Font file ${url.href} is not https, so the label keeps its fallback family.`,
+        )
+        continue
+      }
+      const descriptors: FontFaceDescriptors = {}
+      if (face.weight !== undefined) descriptors.weight = String(face.weight)
+      if (face.style !== undefined) descriptors.style = face.style
+      new FontFace(face.family, `url(${JSON.stringify(url.href)})`, descriptors)
+        .load()
+        .then(
+          (loaded) => document.fonts.add(loaded),
+          () =>
+            console.warn(
+              `[Button] Font file ${url.href} did not load, so the label keeps its fallback family. It needs an Access-Control-Allow-Origin naming ${window.location.origin}.`,
+            ),
+        )
+    }
   }
 
   private render(): void {

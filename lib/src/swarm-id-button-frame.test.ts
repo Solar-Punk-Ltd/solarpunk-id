@@ -67,6 +67,13 @@ describe("SwarmIdButtonFrame", () => {
   let storage: Map<string, string>
   let buttons: FakeButton[]
   let frame: SwarmIdButtonFrame
+  let faces: {
+    family: string
+    source: string
+    descriptors: Record<string, string>
+  }[]
+  let failingUrls: Set<string>
+  let fontsAdded: unknown[]
 
   beforeEach(() => {
     probe.shared = false
@@ -96,12 +103,36 @@ describe("SwarmIdButtonFrame", () => {
       setItem: (key: string, value: string) => storage.set(key, value),
       removeItem: (key: string) => storage.delete(key),
     })
+    faces = []
+    failingUrls = new Set()
+    fontsAdded = []
+    vi.stubGlobal(
+      "FontFace",
+      class {
+        constructor(
+          readonly family: string,
+          readonly source: string,
+          readonly descriptors: Record<string, string>,
+        ) {
+          faces.push(this)
+        }
+        load() {
+          const failing = [...failingUrls].some((url) =>
+            this.source.includes(url),
+          )
+          return failing
+            ? Promise.reject(new Error("NetworkError"))
+            : Promise.resolve(this)
+        }
+      },
+    )
     vi.stubGlobal("document", {
       createElement: vi.fn(() => {
         const button = fakeButton()
         buttons.push(button)
         return button
       }),
+      fonts: { add: (face: unknown) => fontsAdded.push(face) },
     })
     frame = new SwarmIdButtonFrame(
       { siteAllowList: allowingSites(PARENT_ORIGIN) },
@@ -110,6 +141,7 @@ describe("SwarmIdButtonFrame", () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     frame.destroy()
     vi.useRealTimers()
     vi.unstubAllGlobals()
@@ -303,5 +335,76 @@ describe("SwarmIdButtonFrame", () => {
       "https://other.example.com",
     )
     expect(buttons[0].textContent).toBe("Change stamp")
+  })
+
+  describe("font files", () => {
+    const BRAND = "https://site.example.com/brand.woff2"
+    const BRAND_ITALIC = "https://site.example.com/brand-italic.woff2"
+
+    it("loads the site's font files and makes them the frame's", async () => {
+      await identify({
+        config: {
+          fontFamily: "Brand, sans-serif",
+          fontFaces: [
+            { family: "Brand", url: BRAND, weight: 600 },
+            { family: "Brand", url: BRAND_ITALIC, style: "italic" },
+          ],
+        },
+      })
+
+      expect(faces.map((face) => [face.family, face.source])).toEqual([
+        ["Brand", `url("${BRAND}")`],
+        ["Brand", `url("${BRAND_ITALIC}")`],
+      ])
+      expect(faces[0].descriptors).toMatchObject({ weight: "600" })
+      expect(faces[1].descriptors).toMatchObject({ style: "italic" })
+      expect(fontsAdded).toEqual(faces)
+      expect(buttons[0].style.fontFamily).toBe("Brand, sans-serif")
+    })
+
+    it("says once that a file did not load, and keeps the fallback", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+      failingUrls.add(BRAND)
+      const config = {
+        fontFamily: "Brand, sans-serif",
+        fontFaces: [{ family: "Brand", url: BRAND }],
+      }
+      await identify({ config })
+      await fromParent({ type: "buttonUpdate", action: "sign-in", config })
+
+      expect(fontsAdded).toEqual([])
+      expect(
+        warn.mock.calls.filter(([line]) => String(line).includes(BRAND)),
+      ).toHaveLength(1)
+      expect(buttons[0].style.fontFamily).toBe("Brand, sans-serif")
+    })
+
+    it("loads a file only once across updates", async () => {
+      const config = { fontFaces: [{ family: "Brand", url: BRAND }] }
+      await identify({ config })
+      await fromParent({ type: "buttonUpdate", action: "sign-in", config })
+
+      expect(faces).toHaveLength(1)
+    })
+
+    it("takes loopback http only in a development build", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+      const local = "http://localhost:3500/brand.woff2"
+      await identify({
+        config: { fontFaces: [{ family: "Brand", url: local }] },
+      })
+      expect(faces).toHaveLength(0)
+      expect(warn).toHaveBeenCalledTimes(1)
+
+      frame.destroy()
+      frame = new SwarmIdButtonFrame(
+        { siteAllowList: allowingSites(PARENT_ORIGIN), allowLocalHttp: true },
+        { appendChild: vi.fn() } as unknown as HTMLElement,
+      )
+      await identify({
+        config: { fontFaces: [{ family: "Brand", url: local }] },
+      })
+      expect(faces).toHaveLength(1)
+    })
   })
 })
