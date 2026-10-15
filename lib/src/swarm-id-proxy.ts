@@ -3752,7 +3752,7 @@ export class SwarmIdProxy {
     if (!this.postageBatchId || !this.signerKey) {
       throw new SwarmIdError(
         "upload-unavailable",
-        "This site has no drive in Swarm ID. If it just signed in, confirm its drive in the sign-in window. Otherwise choose one for it on the Apps screen, or add one, before uploading.",
+        "This site has no drive in Swarm ID. Connect to it again and confirm a drive in the sign-in window, adding one first if the account has none, before uploading.",
         { reason: "no-stamp" },
       )
     }

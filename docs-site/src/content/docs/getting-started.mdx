@@ -151,11 +151,11 @@ Two ways to handle it, and most apps do both:
   `https://api.gateway.ethswarm.org/` is fine for development and demos. See
   [Using the public gateway](../subsidised-gateway/#using-the-public-gateway) for its limits.
 - **Tell the user how to give the site a drive.** When `uploadUnavailableReason === 'no-stamp'`,
-  offer the three ways: confirm a drive in the connect window, which
-  [`connect()`](../api/#connectoptions) opens again, choose one for your site on the identity
-  site's Apps screen (`https://solarpunkid.bzz.link/#apps/<your origin, encoded>`), or add one on
-  its Storage tab (`https://solarpunkid.bzz.link/#storage`). Once the site has a drive, the session
-  uses it in preference to any gateway.
+  ask them to confirm a drive in the connect window, which [`connect()`](../api/#connectoptions)
+  opens again. If the account has none, they add one first on the identity site's Storage tab
+  (`https://solarpunkid.bzz.link/#storage`). A drive picked on the Apps screen while the site waits
+  for the confirm does not end the wait, so the connect window is the one route that always works.
+  Once the site has a drive, the session uses it in preference to any gateway.
   :::
 
 :::caution[Browser only]

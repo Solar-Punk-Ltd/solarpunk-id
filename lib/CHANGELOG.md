@@ -30,8 +30,9 @@
   choice alone.
 - **lib:** `uploadUnavailableReason: "no-stamp"` means your site has no drive, whether the account
   has none, the person set your site to none, or the person has not yet confirmed its drive since
-  it signed in. The message of a write refused that way now tells the person to confirm the drive
-  in the sign-in window, or to choose one for the site on the Apps screen or add one.
+  it signed in. The message of a write refused that way now tells the person to connect again and
+  confirm a drive in the sign-in window. A drive picked on the Apps screen while your site waits
+  does not end the wait: it is saved, and your site uses it from its next confirmed connect.
 
 ### Bug Fixes
 

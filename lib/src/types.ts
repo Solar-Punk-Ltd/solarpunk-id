@@ -850,10 +850,10 @@ export const ConnectionInfoSchema = z.object({
    * Why `uploadMode` is `"unavailable"`; absent whenever uploads work.
    *
    * The two causes look identical from the dApp side without it, and they
-   * call for opposite responses: `"no-stamp"` is the user's to fix (confirm
-   * the site's drive in the connect window, choose one for the site on Swarm
-   * ID's Apps screen, or add one), `"stamper-failed"` is ours: the stamp
-   * resolved and the write path still would not build.
+   * call for opposite responses: `"no-stamp"` is the user's to fix (connect
+   * again and confirm a drive in the connect window, adding one first if the
+   * account has none), `"stamper-failed"` is ours: the stamp resolved and the
+   * write path still would not build.
    *
    * Reporting it is what made the real-Safari run (#584) readable: an account
    * with no drive had been reported as a failed `window.opener` handover,
