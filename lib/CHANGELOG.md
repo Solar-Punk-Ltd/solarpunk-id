@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.8.2
+
+### Features
+
+- **lib:** `connectionInfo.postageBatchId` names the stamp the person gave your site in Swarm ID,
+  the one `getPostageBatch()` reads and `stampChunk()` stamps with, and is absent when your site
+  has none. When the person gives your open site another stamp, the frame sends
+  `connectionInfoChanged`, so `onConnectionChange` fires with the new `postageBatchId` and the next
+  `getPostageBatch()`, `stampChunk()` and stamped upload use the new stamp.
+- **lib:** the person can set your site to no stamp, on Swarm ID's Apps screen or in the connect
+  window. Such a site gets no stamp at all, the account default included. `stampChunk()` and
+  stamped uploads are refused with `upload-unavailable` and reason `no-stamp`, unless your site
+  names a subsidised gateway, which it keeps uploading through.
+- **lib:** calling `connect()` while the person is signed in opens the connect window again, with
+  the drive picker starting on the stamp your site uses now. This is how a site lets the person
+  change its stamp without leaving it. The stamp picked there reaches your open site at once, also
+  when your site and Swarm ID do not share the browser's storage, as long as your page still holds
+  the frame that opened the window.
+
+### Changed
+
+- **lib:** every sign-in, a first one or a reconnect, hands your site no stamp until the person
+  confirms its drive with "Go to app" in the connect window. Until then `postageBatchId` is absent
+  and `stampChunk()` is refused as above. If the person closes the window without confirming, your
+  site stays signed in with no stamp until they connect again.
+- **lib:** disconnecting or removing your site on Swarm ID's Apps screen forgets the stamp chosen
+  for it, so the next connect starts on the account default. Your own `disconnect()` leaves the
+  choice alone.
+
+### Bug Fixes
+
+- **lib:** a write from a site with no stamp and no gateway is refused as `no-stamp`. Before, it
+  reached the write lock and was refused as `not-authenticated`.
+
 ## 0.8.1
 
 ### Features
