@@ -135,21 +135,29 @@ account with what the reader expects. Any Ethereum library's
 `recoverMessageAddress` (viem) or `verifyMessage` (ethers) recovers the same
 two addresses from the same message.
 
-`resolveVerifiedEnsName` then answers the wallet's ENS name only when both
-directions agree:
+`resolveVerifiedEnsName` then asks ENS's Universal Resolver for the wallet's
+primary name, through viem's `getEnsName`, and answers it only when all of
+these hold:
 
-1. The registry names a resolver for the wallet's reverse node,
-   `<address>.addr.reverse`, and that resolver's `name` is not empty.
-2. The name is already in its ENSIP-15 normalised form. A name that normalises
+1. The wallet's reverse record names a name. The Universal Resolver reads it
+   from the wallet's reverse node, `<address>.addr.reverse`.
+2. That name's address record names the wallet back. The Universal Resolver
+   checks this itself and refuses a name whose address record names another
+   wallet.
+3. The name is already in its ENSIP-15 normalised form. A name that normalises
    to something else, upper case, a zero-width joiner, full-width letters, can
    look like a different name on screen, so it is refused rather than
    normalised.
-3. The registry names a resolver for the name, and that resolver's `addr` is
-   the wallet.
 
 Anyone can point their own reverse record at any name, so the reverse record
-alone proves nothing. Only the forward record, which the name's owner controls,
-makes the name the wallet's.
+alone proves nothing. Only the address record, which the name's owner
+controls, makes the name the wallet's.
+
+Names whose records live off chain are read too. A resolver that answers
+through CCIP-read (EIP-3668), a wildcard (ENSIP-10) or a chain-specific
+reverse record (ENSIP-19) is followed the way ENS itself follows it. For such
+a name the resolver's own gateway sees the lookup, from the reader's IP
+address, beside the endpoint below.
 
 It reads over an Ethereum mainnet JSON-RPC endpoint the caller names, never a
 Swarm gateway. That endpoint is trusted with two things. It decides which name
@@ -158,19 +166,18 @@ lies can show any name it likes beside any wallet, or hide a real one. And it
 sees every wallet looked up, which for a chat page is every sender with a
 link, each asked from the reader's own IP address. A deployment therefore
 names an endpoint it trusts with both, such as its own node or a provider it
-has chosen for that. `timeoutMs` bounds the whole lookup and defaults to 10 seconds.
-Every response body is read only up to a byte bound, and a longer one is
-refused as it streams in, before anything parses it. Everything that goes
-wrong, no endpoint, an endpoint that is down or slow, an answer too long or that
-does not decode, answers no name, never a throw. An answer, a name or a
-definite no name, is kept in memory for ten minutes per endpoint and wallet. A
-failed read answers no name for 30 seconds before the endpoint is asked again,
-so a page that renders many messages does not query a broken endpoint for each
-one.
-
-Only on-chain resolvers are read. A name whose resolver answers through
-CCIP-read (EIP-3668) or only through a wildcard (ENSIP-10) reads as having no
-name.
+has chosen for that. `timeoutMs` bounds the whole lookup and defaults to 10
+seconds. A failed request is not retried. Everything that goes wrong, no
+endpoint, an endpoint that is down or slow, an answer that does not decode, a
+name's offchain gateway that fails, answers no name, never a throw. An answer,
+a name or a definite no name, is kept in memory for ten minutes per endpoint
+and wallet. A failed read answers no name for 30 seconds before the endpoint
+is asked again, so a page that renders many messages does not query a broken
+endpoint for each one. A definite no name is a wallet with no reverse record
+or an empty one, a name whose address record names another wallet, and a
+resolver that is not a contract or cannot answer a name. Any other refusal,
+such as a resolver that reverts or an offchain gateway that fails, is a failed
+read.
 
 ## What it does not do
 

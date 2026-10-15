@@ -17,10 +17,11 @@
   wallet and date it names, or undefined. `buildWalletLinkMessage`, `parseWalletLinkMessage`,
   `WALLET_LINK_TITLE` and `WALLET_LINK_STATEMENT` give the exact format.
 - **lib:** `resolveVerifiedEnsName(wallet, { rpcUrl, timeoutMs })` answers a wallet's ENS name
-  when its reverse record and the name's `addr` record agree and the name is already ENSIP-15
-  normalised, read over the mainnet endpoint you name. Anything that goes wrong answers undefined.
-  Answers are kept for ten minutes, and a failed read for 30 seconds. The library now depends on
-  `@adraffy/ens-normalize`.
+  when ENS's Universal Resolver, read through viem's `getEnsName` over the mainnet endpoint you
+  name, finds a primary name whose address record names the wallet back, and the name is already
+  ENSIP-15 normalised. Names behind CCIP-read, wildcard and ENSIP-19 resolvers are read too, and
+  their gateway sees the lookup. Anything that goes wrong answers undefined. Answers are kept for
+  ten minutes, and a failed read for 30 seconds. The library now depends on `viem`.
 
 ## 0.9.1
 
