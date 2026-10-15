@@ -8,7 +8,8 @@
   Swarm loader while it loads from Swarm, instead of a blank white page for several seconds. The
   theme is the stored choice, else the system's. The loader's pulse stops when motion is reduced,
   and the hidden frame and the button frame a site embeds never show it. A screen reader reads
-  "Loading Swarm ID" from the loader's one live region.
+  "Loading Swarm ID" from the loader's one live region, and after 30 seconds a line under the mark
+  says "Swarm ID is taking longer than usual." in that same region.
 
 ## 0.9.0
 

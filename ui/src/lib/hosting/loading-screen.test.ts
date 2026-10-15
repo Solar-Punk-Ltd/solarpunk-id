@@ -19,6 +19,8 @@ const BUILT = existsSync(BUILT_INDEX)
 const BUILD_REQUIRED = Boolean(process.env.CI)
 
 const STORAGE_KEY = 'swarm-id-theme'
+const SLOW_LINE_ID = 'swarm-id-loading-slow'
+const SLOW_AFTER_MS = 30_000
 
 function inlineScript(html: string): string {
   const match = html.match(/<script>([\s\S]*?)<\/script>/)
@@ -39,6 +41,7 @@ function themeFor(
   const classes = new Set<string>()
   const self = {}
   const window = {
+    setTimeout: () => 0,
     self,
     top: framed ? {} : self,
     matchMedia: (query: string) => ({
@@ -100,6 +103,53 @@ function describePage(name: string, read: () => string) {
         'role="status"',
       ])
       expect(textOf(loader)).toContain('Loading Swarm ID')
+    })
+
+    it('says in words under the mark, in that same region, when the wait passes 30 seconds', () => {
+      const html = read()
+      const slowLine = { textContent: '' }
+      const timers: { run: () => void; delay: number }[] = []
+      const window = {
+        self: {},
+        top: {},
+        matchMedia: () => ({ matches: false }),
+        setTimeout: (run: () => void, delay: number) => timers.push({ run, delay }),
+      }
+      const document = {
+        documentElement: { classList: { add: () => undefined } },
+        getElementById: (id: string) => (id === SLOW_LINE_ID ? slowLine : undefined),
+      }
+      new Function('window', 'localStorage', 'document', inlineScript(html))(
+        window,
+        { getItem: () => undefined },
+        document,
+      )
+
+      expect(timers.map((timer) => timer.delay)).toEqual([SLOW_AFTER_MS])
+      expect(slowLine.textContent).toBe('')
+      timers[0].run()
+      expect(slowLine.textContent).toBe('Swarm ID is taking longer than usual.')
+      expect(loaderMarkup(html)).toContain(`id="${SLOW_LINE_ID}"`)
+    })
+
+    it('says nothing more once the app took the loader away', () => {
+      const timers: (() => void)[] = []
+      const window = {
+        self: {},
+        top: {},
+        matchMedia: () => ({ matches: false }),
+        setTimeout: (run: () => void) => timers.push(run),
+      }
+      const document = {
+        documentElement: { classList: { add: () => undefined } },
+        getElementById: () => null,
+      }
+      new Function('window', 'localStorage', 'document', inlineScript(read()))(
+        window,
+        { getItem: () => undefined },
+        document,
+      )
+      expect(() => timers[0]()).not.toThrow()
     })
 
     it('shows no loader and no background inside a frame', () => {
