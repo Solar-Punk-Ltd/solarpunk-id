@@ -57,6 +57,7 @@
     "url": "https://github.com/Solar-Punk-Ltd/solarpunk-id/issues"
   },
   "dependencies": {
+    "@adraffy/ens-normalize": "1.11.1",
     "@ethersphere/bee-js": "^13.0.0",
     "@ethersphere/core-sdk": "^0.1.1",
     "@noble/curves": "1.2.0",

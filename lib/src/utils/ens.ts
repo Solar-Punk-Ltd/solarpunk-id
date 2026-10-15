@@ -183,6 +183,54 @@ export async function readEnsResolver(
 }
 
 /**
+ * Call a resolver function of the form `f(bytes32)` that returns an address,
+ * such as `addr(bytes32)`. Undefined for the zero address.
+ * @throws when the endpoint fails or the answer does not decode.
+ */
+export async function callResolverForAddress(
+  rpcUrl: string,
+  resolver: string,
+  functionSelector: string,
+  node: string,
+  options: EnsReadOptions,
+): Promise<string | undefined> {
+  return decodeAddress(
+    await ethCall(
+      rpcUrl,
+      resolver,
+      `0x${functionSelector}${node.slice(2)}`,
+      options.timeoutMs,
+    ),
+    "The resolver",
+    options.maxAnswerBytes ?? MAX_CHAIN_ANSWER_BYTES,
+  )
+}
+
+/**
+ * Call a resolver function of the form `f(bytes32)` that returns a string,
+ * such as `name(bytes32)`.
+ * @throws when the endpoint fails or the answer does not decode.
+ */
+export async function callResolverForString(
+  rpcUrl: string,
+  resolver: string,
+  functionSelector: string,
+  node: string,
+  options: EnsReadOptions,
+): Promise<string> {
+  return decodeString(
+    await ethCall(
+      rpcUrl,
+      resolver,
+      `0x${functionSelector}${node.slice(2)}`,
+      options.timeoutMs,
+    ),
+    "The resolver",
+    options.maxAnswerBytes ?? MAX_CHAIN_ANSWER_BYTES,
+  )
+}
+
+/**
  * The text record `key` of `name`, through the resolver the registry names.
  * @throws when the name has no resolver or the answers do not decode.
  */
