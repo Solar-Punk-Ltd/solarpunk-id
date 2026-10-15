@@ -50,6 +50,17 @@
     {/if}
   </button>
 
+  {#if clientStore.authenticated}
+    <!-- connect() while signed in opens the connect window again, where the
+         person picks the drive this site uses -->
+    <button
+      onclick={() => clientStore.client?.connect()}
+      class="pl-6 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+    >
+      Change in Swarm ID
+    </button>
+  {/if}
+
   {#if clientStore.stamp}
     <div class="text-xs text-muted-foreground pl-6">TTL: {clientStore.stamp.ttl}</div>
     <div class="text-xs text-muted-foreground pl-6">
