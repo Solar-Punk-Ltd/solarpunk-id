@@ -156,9 +156,9 @@ Swarm gateway. That endpoint is trusted with two things. It decides which name
 is shown: nothing checks its answers against the chain, so an endpoint that
 lies can show any name it likes beside any wallet, or hide a real one. And it
 sees every wallet looked up, which for a chat page is every sender with a
-link, from the reader's own address. A deployment therefore names an endpoint
-it trusts with both, such as its own node or a provider it has chosen for
-that. `timeoutMs` bounds the whole lookup and defaults to 10 seconds.
+link, each asked from the reader's own IP address. A deployment therefore
+names an endpoint it trusts with both, such as its own node or a provider it
+has chosen for that. `timeoutMs` bounds the whole lookup and defaults to 10 seconds.
 Every response body is read only up to a byte bound, and a longer one is
 refused as it streams in, before anything parses it. Everything that goes
 wrong, no endpoint, an endpoint that is down or slow, an answer too long or that
