@@ -32,6 +32,7 @@
   import AccountAvatar from '$lib/components/account-avatar.svelte'
   import DeleteAccountDialog from '$lib/components/delete-account-dialog.svelte'
   import DriveAddDialog from '$lib/components/drive-add-dialog.svelte'
+  import EnsNameSetting from '$lib/components/ens-name-setting.svelte'
   import KeyCard from '$lib/components/key-card.svelte'
   import NewPasswordFields, { isNewPasswordValid } from '$lib/components/new-password-fields.svelte'
   import PhraseGrid from '$lib/components/phrase-grid.svelte'
@@ -371,6 +372,13 @@
           class="shrink-0 overflow-hidden rounded-lg"
         />
       </div>
+      <!-- Shown off only where the wallet can turn it on, but shown on everywhere, so any
+        device can turn it off. -->
+      {#if access.type === 'eth-wallet' || account.settings?.walletLink !== undefined}
+        <div class="pl-5">
+          <EnsNameSetting {account} />
+        </div>
+      {/if}
     {/if}
   </div>
 
