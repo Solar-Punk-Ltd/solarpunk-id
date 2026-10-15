@@ -58,11 +58,12 @@ the account on every site.
 
 ## The format
 
-The message is plain UTF-8 text of exactly four lines, joined by a single
+The message is plain UTF-8 text of exactly five lines, joined by a single
 `\n`, with no trailing newline:
 
 ```
 Swarm ID wallet link v1
+I link this wallet to the Swarm ID account below, so sites may show my ENS name beside its messages.
 Account: 0x<40 lower-case hex characters>
 Wallet: 0x<40 lower-case hex characters>
 Date: 2026-10-15T12:00:00.000Z
@@ -70,6 +71,13 @@ Date: 2026-10-15T12:00:00.000Z
 
 - The first line names the format and its version. Any other first line is a
   different statement and is refused.
+- The second line says in plain words what the person agrees to, and is read
+  exactly, byte for byte. A wallet shows the person the text it signs and
+  nothing else, so this sentence is what tells them that signing links their
+  wallet to an account. Without it a hostile site could ask a wallet to sign a
+  link that names the site owner's account, in a prompt that looks like an
+  ordinary sign-in, and then post as that wallet's ENS name. With it, the
+  person reads what the signature does before giving it.
 - `Account` is the account's address, its `id`: the address of the account's
   own key, the private key of its BIP-39 seed. `0x` and lower case.
 - `Wallet` is the wallet's address, `0x` and lower case, never in its EIP-55
@@ -108,8 +116,8 @@ if (linked) {
 
 `verifyWalletLink` accepts a link only when all of these hold:
 
-1. The message has exactly the shape above. Another first line, a missing or
-   extra line, a trailing newline, CRLF line ends, an address in another
+1. The message has exactly the shape above. Another first line, another
+   statement, a missing or extra line, a trailing newline, CRLF line ends, an address in another
    spelling and a date in another form are all refused.
 2. The wallet signature recovers the wallet the message names.
 3. The account signature recovers the account the message names.

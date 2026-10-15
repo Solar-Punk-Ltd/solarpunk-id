@@ -148,11 +148,11 @@ export const ChatBindingSchema = z.object({
 // ============================================================================
 
 /**
- * Longer than any wallet link message can be: four short lines around two
- * addresses and a date. A bound on what is stored and carried, not a check of
- * the format, which `verifyWalletLink` does.
+ * Longer than any wallet link message can be: five lines, 258 characters,
+ * around two addresses and a date. A bound on what is stored and carried, not
+ * a check of the format, which `verifyWalletLink` does.
  */
-export const WALLET_LINK_MAX_LENGTH = 256
+export const WALLET_LINK_MAX_LENGTH = 320
 
 /**
  * The account's and its wallet's statement that they belong together

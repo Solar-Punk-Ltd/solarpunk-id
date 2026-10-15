@@ -14,8 +14,11 @@
  * against the addresses the message names, then looks up the wallet's ENS
  * name itself (`resolveVerifiedEnsName`).
  *
- * The format mirrors the chat binding's (`chat-binding.ts`): four plain lines,
- * the first naming the format and its version, and every other shape refused.
+ * The format mirrors the chat binding's (`chat-binding.ts`): plain lines, the
+ * first naming the format and its version, and every other shape refused. The
+ * second says in plain words what the person signs, since a wallet shows the
+ * text and nothing else, so a site that asks a wallet to sign a link naming
+ * someone else's account has to show that sentence to get it.
  */
 
 import { PrivateKey } from "@ethersphere/bee-js"
@@ -24,11 +27,15 @@ import { personalSign, recoverPersonalSigner } from "./personal-sign"
 /** The first line, which also versions the format. */
 export const WALLET_LINK_TITLE = "Swarm ID wallet link v1"
 
+/** The second line, what the wallet's owner agrees to, read exactly. */
+export const WALLET_LINK_STATEMENT =
+  "I link this wallet to the Swarm ID account below, so sites may show my ENS name beside its messages."
+
 const ACCOUNT_PREFIX = "Account: "
 const WALLET_PREFIX = "Wallet: "
 const DATE_PREFIX = "Date: "
 const LINE_SEPARATOR = "\n"
-const LINE_COUNT = 4
+const LINE_COUNT = 5
 
 const ADDRESS_PATTERN = /^0x[0-9a-f]{40}$/
 const ADDRESS_INPUT_PATTERN = /^(0x)?[0-9a-fA-F]{40}$/
@@ -75,7 +82,7 @@ function canonicalDate(text: string): boolean {
   return !Number.isNaN(time) && new Date(time).toISOString() === text
 }
 
-/** Build the exact four-line message for these fields. */
+/** Build the exact five-line message for these fields. */
 export function buildWalletLinkMessage(fields: {
   account: string
   wallet: string
@@ -92,6 +99,7 @@ export function buildWalletLinkMessage(fields: {
   }
   return [
     WALLET_LINK_TITLE,
+    WALLET_LINK_STATEMENT,
     `${ACCOUNT_PREFIX}0x${normalizeAddress(fields.account)}`,
     `${WALLET_PREFIX}0x${normalizeAddress(fields.wallet)}`,
     `${DATE_PREFIX}${fields.date.toISOString()}`,
@@ -117,8 +125,8 @@ function address(line: string, prefix: string): string {
 
 /**
  * Read the fields out of a link message, refusing every shape but the one
- * `buildWalletLinkMessage` writes: another first line, a missing or extra
- * line, a trailing newline, an address in another spelling, a date in
+ * `buildWalletLinkMessage` writes: another first line, another statement, a
+ * missing or extra line, a trailing newline, an address in another spelling, a date in
  * another form.
  */
 export function parseWalletLinkMessage(message: string): WalletLinkFields {
@@ -126,9 +134,12 @@ export function parseWalletLinkMessage(message: string): WalletLinkFields {
   if (lines.length !== LINE_COUNT) {
     throw new Error(`Wallet link has ${lines.length} lines, not ${LINE_COUNT}.`)
   }
-  const [title, accountLine, walletLine, dateLine] = lines
+  const [title, statement, accountLine, walletLine, dateLine] = lines
   if (title !== WALLET_LINK_TITLE) {
     throw new Error("Not a Swarm ID wallet link v1.")
+  }
+  if (statement !== WALLET_LINK_STATEMENT) {
+    throw new Error("Wallet link statement is not the v1 statement.")
   }
   const account = address(accountLine, ACCOUNT_PREFIX)
   const wallet = address(walletLine, WALLET_PREFIX)

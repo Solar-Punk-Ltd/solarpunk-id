@@ -115,6 +115,7 @@ export type {
 // secured with, signed by both. A reader checks it, then looks up the
 // wallet's ENS name itself.
 export {
+  WALLET_LINK_STATEMENT,
   WALLET_LINK_TITLE,
   buildWalletLinkMessage,
   parseWalletLinkMessage,

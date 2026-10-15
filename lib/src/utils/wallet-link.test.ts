@@ -5,6 +5,7 @@ import { PrivateKey } from "@ethersphere/bee-js"
 import { describe, expect, it } from "vitest"
 import { personalSign } from "./personal-sign"
 import {
+  WALLET_LINK_STATEMENT,
   WALLET_LINK_TITLE,
   buildWalletLinkMessage,
   countersignWalletLink,
@@ -27,6 +28,7 @@ const OTHER = addressOf(OTHER_KEY)
 
 const WELL_FORMED = [
   WALLET_LINK_TITLE,
+  WALLET_LINK_STATEMENT,
   `Account: ${ACCOUNT}`,
   `Wallet: ${WALLET}`,
   `Date: ${DATE_TEXT}`,
@@ -42,7 +44,7 @@ function link(message = WELL_FORMED): WalletLink {
 }
 
 describe("buildWalletLinkMessage", () => {
-  it("writes the exact four lines", () => {
+  it("writes the exact five lines", () => {
     expect(
       buildWalletLinkMessage({ account: ACCOUNT, wallet: WALLET, date: DATE }),
     ).toBe(WELL_FORMED)
@@ -79,6 +81,15 @@ describe("buildWalletLinkMessage", () => {
   })
 })
 
+describe("the statement line", () => {
+  it("says in plain words what the wallet signs", () => {
+    expect(WALLET_LINK_STATEMENT).toBe(
+      "I link this wallet to the Swarm ID account below, so sites may show my ENS name beside its messages.",
+    )
+    expect(WELL_FORMED.split("\n")[1]).toBe(WALLET_LINK_STATEMENT)
+  })
+})
+
 describe("parseWalletLinkMessage", () => {
   it("reads the fields of a well-formed message", () => {
     expect(parseWalletLinkMessage(WELL_FORMED)).toEqual({
@@ -95,33 +106,40 @@ describe("parseWalletLinkMessage", () => {
   it.each([
     ["another title", withLine(0, "Swarm ID wallet link v2")],
     ["the chat binding's title", withLine(0, "Swarm ID chat binding v1")],
+    ["no statement line", lines.filter((_, at) => at !== 1).join("\n")],
+    [
+      "another statement",
+      withLine(1, "I link this wallet to the Swarm ID account below."),
+    ],
+    ["the statement with a trailing space", withLine(1, `${lines[1]} `)],
+    ["the statement in upper case", withLine(1, lines[1].toUpperCase())],
     ["a trailing newline", `${WELL_FORMED}\n`],
-    ["a missing line", lines.slice(0, 3).join("\n")],
+    ["a missing line", lines.slice(0, 4).join("\n")],
     ["an extra line", `${WELL_FORMED}\nNote: hi`],
     ["CRLF line ends", lines.join("\r\n")],
     [
       "lines in another order",
-      [lines[0], lines[2], lines[1], lines[3]].join("\n"),
+      [lines[0], lines[1], lines[3], lines[2], lines[4]].join("\n"),
     ],
     [
       "an upper-case account",
-      withLine(1, `Account: 0x${ACCOUNT.slice(2).toUpperCase()}`),
+      withLine(2, `Account: 0x${ACCOUNT.slice(2).toUpperCase()}`),
     ],
-    ["an account without 0x", withLine(1, `Account: ${ACCOUNT.slice(2)}`)],
+    ["an account without 0x", withLine(2, `Account: ${ACCOUNT.slice(2)}`)],
     [
       "a wallet in upper case",
-      withLine(2, `Wallet: 0x${WALLET.slice(2).toUpperCase()}`),
+      withLine(3, `Wallet: 0x${WALLET.slice(2).toUpperCase()}`),
     ],
-    ["a short wallet", withLine(2, `Wallet: ${WALLET.slice(0, -2)}`)],
-    ["a space after the prefix", withLine(2, `Wallet:  ${WALLET}`)],
-    ["a date without milliseconds", withLine(3, "Date: 2026-10-15T12:00:00Z")],
+    ["a short wallet", withLine(3, `Wallet: ${WALLET.slice(0, -2)}`)],
+    ["a space after the prefix", withLine(3, `Wallet:  ${WALLET}`)],
+    ["a date without milliseconds", withLine(4, "Date: 2026-10-15T12:00:00Z")],
     [
       "a date with an offset",
-      withLine(3, "Date: 2026-10-15T14:00:00.000+02:00"),
+      withLine(4, "Date: 2026-10-15T14:00:00.000+02:00"),
     ],
     [
       "a date that does not exist",
-      withLine(3, "Date: 2026-02-30T12:00:00.000Z"),
+      withLine(4, "Date: 2026-02-30T12:00:00.000Z"),
     ],
     ["empty", ""],
   ])("refuses %s", (_label, message) => {
