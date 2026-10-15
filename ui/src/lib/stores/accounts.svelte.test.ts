@@ -477,6 +477,15 @@ describe('Account.confirmAppStamp', () => {
     account.confirmAppStamp('https://other.example.com')
     expect(account.connectedApps[0].stampPending).toBe(true)
   })
+  // Only the confirm in the connect window ends the wait. A pick on the Apps
+  // screen is saved and becomes what the next connect starts on.
+  it('is not ended by a pick on the Apps screen', () => {
+    const account = pendingAccount()
+    account.setAppStamp(APP_URL, NO_POSTAGE_STAMP)
+    const [app] = account.connectedApps
+    expect(app.stampPending).toBe(true)
+    expect(app.postageStampBatchID).toBe(NO_POSTAGE_STAMP)
+  })
 })
 
 // A site the person disconnects or removes comes back on the account default
