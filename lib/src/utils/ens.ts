@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Reading ENS records over an Ethereum mainnet JSON-RPC endpoint the caller
- * names: the registry's resolver for a name, then one record from that
+ * Reading an ENS text record over an Ethereum mainnet JSON-RPC endpoint the
+ * caller names: the registry's resolver for a name, then the record from that
  * resolver. Never through a Swarm gateway, since what ENS says decides who a
  * page trusts, and a gateway that serves this code must not be able to say it.
  *
@@ -24,7 +24,7 @@ export const ENS_REGISTRY_ADDRESS = "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"
  * bytes overflows the stack of the hex test, so anything longer is refused
  * before it is read.
  */
-export const MAX_CHAIN_ANSWER_BYTES = 128 * 1024
+const MAX_CHAIN_ANSWER_BYTES = 128 * 1024
 
 const WORD_BYTES = 32
 const ADDRESS_BYTES = 20
@@ -35,15 +35,13 @@ const HEX_PREFIX_LENGTH = 2
 const RESOLVER_SELECTOR = selector("resolver(bytes32)")
 const TEXT_SELECTOR = selector("text(bytes32,string)")
 
-/** How long each read may take, and how long an answer may be. */
+/** How long each read may take. */
 export interface EnsReadOptions {
   timeoutMs: number
-  /** Defaults to {@link MAX_CHAIN_ANSWER_BYTES}. */
-  maxAnswerBytes?: number
 }
 
 /** The 4-byte function selector of a Solidity signature, bare hex. */
-export function selector(signature: string): string {
+function selector(signature: string): string {
   return uint8ArrayToHex(
     keccak_256(new TextEncoder().encode(signature)).slice(0, SELECTOR_BYTES),
   )
@@ -74,17 +72,13 @@ function encodeTextCall(node: string, key: string): string {
   return `0x${TEXT_SELECTOR}${node.slice(2)}${head}${word(keyBytes.length)}${keyHex.padEnd(paddedLength, "0")}`
 }
 
-function resultBytes(
-  result: unknown,
-  subject: string,
-  maxBytes: number,
-): Uint8Array {
+function resultBytes(result: unknown, subject: string): Uint8Array {
   if (
     typeof result === "string" &&
-    result.length > HEX_PREFIX_LENGTH + maxBytes * 2
+    result.length > HEX_PREFIX_LENGTH + MAX_CHAIN_ANSWER_BYTES * 2
   ) {
     throw new Error(
-      `${subject} answered ${result.length} characters, longer than ${maxBytes} bytes of hex data.`,
+      `${subject} answered ${result.length} characters, longer than ${MAX_CHAIN_ANSWER_BYTES} bytes of hex data.`,
     )
   }
   if (typeof result !== "string" || !/^0x([0-9a-fA-F]{2})*$/.test(result)) {
@@ -106,12 +100,8 @@ function readWord(bytes: Uint8Array, offset: number): bigint {
  * One ABI-encoded `address` return value, or undefined for the zero address.
  * @throws on an answer that is not exactly one word holding an address.
  */
-function decodeAddress(
-  result: unknown,
-  subject: string,
-  maxBytes: number,
-): string | undefined {
-  const bytes = resultBytes(result, subject, maxBytes)
+function decodeAddress(result: unknown, subject: string): string | undefined {
+  const bytes = resultBytes(result, subject)
   if (bytes.length !== WORD_BYTES) {
     throw new Error(`${subject} answered an address that is not one word.`)
   }
@@ -129,12 +119,8 @@ function decodeAddress(
  * One ABI-encoded `string` return value, strict UTF-8.
  * @throws on an offset or a length past the answer's end, or invalid UTF-8.
  */
-function decodeString(
-  result: unknown,
-  subject: string,
-  maxBytes: number,
-): string {
-  const bytes = resultBytes(result, subject, maxBytes)
+function decodeString(result: unknown, subject: string): string {
+  const bytes = resultBytes(result, subject)
   const offset = readWord(bytes, 0)
   if (offset > BigInt(bytes.length)) {
     throw new Error(`${subject} answered a string offset past its end.`)
@@ -156,10 +142,8 @@ function decodeString(
  */
 const ENVELOPE_ALLOWANCE_BYTES = 256
 
-/** The response body an answer of `maxAnswerBytes` arrives in, at most. */
-function maxBodyBytesFor(maxAnswerBytes: number): number {
-  return maxAnswerBytes * 2 + ENVELOPE_ALLOWANCE_BYTES
-}
+/** The response body the longest answer read arrives in, at most. */
+const MAX_BODY_BYTES = MAX_CHAIN_ANSWER_BYTES * 2 + ENVELOPE_ALLOWANCE_BYTES
 
 async function ethCall(
   rpcUrl: string,
@@ -169,9 +153,7 @@ async function ethCall(
 ): Promise<unknown> {
   return jsonRpcCall(rpcUrl, "eth_call", [{ to, data }, "latest"], {
     timeoutMs: options.timeoutMs,
-    maxBodyBytes: maxBodyBytesFor(
-      options.maxAnswerBytes ?? MAX_CHAIN_ANSWER_BYTES,
-    ),
+    maxBodyBytes: MAX_BODY_BYTES,
   })
 }
 
@@ -179,7 +161,7 @@ async function ethCall(
  * The resolver the registry names for `node`, or undefined when it names none.
  * @throws when the endpoint fails or the answer does not decode.
  */
-export async function readEnsResolver(
+async function readEnsResolver(
   rpcUrl: string,
   node: string,
   options: EnsReadOptions,
@@ -192,55 +174,6 @@ export async function readEnsResolver(
       options,
     ),
     "The registry",
-    options.maxAnswerBytes ?? MAX_CHAIN_ANSWER_BYTES,
-  )
-}
-
-/**
- * Call a resolver function of the form `f(bytes32)` that returns an address,
- * such as `addr(bytes32)`. Undefined for the zero address.
- * @throws when the endpoint fails or the answer does not decode.
- */
-export async function callResolverForAddress(
-  rpcUrl: string,
-  resolver: string,
-  functionSelector: string,
-  node: string,
-  options: EnsReadOptions,
-): Promise<string | undefined> {
-  return decodeAddress(
-    await ethCall(
-      rpcUrl,
-      resolver,
-      `0x${functionSelector}${node.slice(2)}`,
-      options,
-    ),
-    "The resolver",
-    options.maxAnswerBytes ?? MAX_CHAIN_ANSWER_BYTES,
-  )
-}
-
-/**
- * Call a resolver function of the form `f(bytes32)` that returns a string,
- * such as `name(bytes32)`.
- * @throws when the endpoint fails or the answer does not decode.
- */
-export async function callResolverForString(
-  rpcUrl: string,
-  resolver: string,
-  functionSelector: string,
-  node: string,
-  options: EnsReadOptions,
-): Promise<string> {
-  return decodeString(
-    await ethCall(
-      rpcUrl,
-      resolver,
-      `0x${functionSelector}${node.slice(2)}`,
-      options,
-    ),
-    "The resolver",
-    options.maxAnswerBytes ?? MAX_CHAIN_ANSWER_BYTES,
   )
 }
 
@@ -262,6 +195,5 @@ export async function readEnsText(
   return decodeString(
     await ethCall(rpcUrl, resolver, encodeTextCall(node, key), options),
     "The resolver",
-    options.maxAnswerBytes ?? MAX_CHAIN_ANSWER_BYTES,
   )
 }
