@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.10.0
+
+### Features
+
+- **ui:** "Show my ENS name on sites", in the Account tab's Identity section, for an account
+  secured with an Ethereum wallet. Off by default. Turning it on asks the wallet to sign a wallet
+  link, a four-line "Swarm ID wallet link v1" statement naming the account and the wallet, which
+  the account's own key countersigns. It is kept in the account's synced settings, so every device
+  has it. A smart-contract wallet cannot turn it on. Turning it off stops sites receiving it, and
+  messages already sent keep the name (docs/Wallet-Link.md).
+- **lib:** while the setting is on, `connectionInfo.identity.walletLink` carries the link as
+  `{ message, walletSignature, accountSignature }`. While it is off, a site learns no wallet.
+- **lib:** `verifyWalletLink(link, { account })` checks a link strictly and returns the account,
+  wallet and date it names, or undefined. `buildWalletLinkMessage`, `parseWalletLinkMessage` and
+  `WALLET_LINK_TITLE` give the exact format.
+- **lib:** `resolveVerifiedEnsName(wallet, { rpcUrl, timeoutMs })` answers a wallet's ENS name
+  when its reverse record and the name's `addr` record agree and the name is already ENSIP-15
+  normalised, read over the mainnet endpoint you name. Anything that goes wrong answers undefined,
+  and answers are kept for ten minutes. The library now depends on `@adraffy/ens-normalize`.
+
 ## 0.9.1
 
 ### Fixed
