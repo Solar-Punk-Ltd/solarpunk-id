@@ -5,7 +5,7 @@ description: Add Swarm ID to your app in a few minutes
 
 import { Tabs, TabItem } from '@astrojs/starlight/components'
 
-Install the library, create a client, call `connect()`. That is the whole integration.
+Install the library, create a client, show Swarm ID's button. That is the whole integration.
 The rest of this page is what happens around it.
 
 ## Install
@@ -110,12 +110,13 @@ const client = new SwarmIdClient({
 // 2. Initialize: embeds the hidden iframe and fills client.connectionInfo
 await client.initialize()
 
-// 3. Connect. Either let the iframe show its own connect button, or call
-//    connect() from yours. It opens the popup and resolves when the user is
-//    through. Keep the iframe mounted for the life of the page: unmounting
-//    its container on sign-in leaves the popup with nothing to hand the
-//    session to.
-await client.connect()
+// 3. Show Swarm ID's button. Its click opens the connect window from inside
+//    Swarm ID, which is what lets a site on another site than Swarm ID sign
+//    in. Removing it, say when the person is signed in, keeps the session.
+const button = client.mountButton(document.getElementById('sign-in')!, {
+  action: 'sign-in',
+  config: { text: 'Sign in', borderRadius: '6px' },
+})
 
 // 4. The connection state is always available synchronously
 const info = client.connectionInfo
@@ -151,8 +152,8 @@ Two ways to handle it, and most apps do both:
   `https://api.gateway.ethswarm.org/` is fine for development and demos. See
   [Using the public gateway](../subsidised-gateway/#using-the-public-gateway) for its limits.
 - **Tell the user how to give the site a drive.** When `uploadUnavailableReason === 'no-stamp'`,
-  ask them to confirm a drive in the connect window, which [`connect()`](../api/#connectoptions)
-  opens again. If the account has none, they add one first on the identity site's Storage tab
+  ask them to confirm a drive in the connect window, which a Swarm ID button with the
+  `change-stamp` action ([`mountButton()`](../api/#mountbuttoncontainer-options)) opens again. If the account has none, they add one first on the identity site's Storage tab
   (`https://solarpunkid.bzz.link/#storage`). A drive picked on the Apps screen while the site waits
   for the confirm does not end the wait, so the connect window is the one route that always works.
   Once the site has a drive, the session uses it in preference to any gateway.
@@ -180,12 +181,12 @@ chunk so the user's own drive is spent through the public gateway. See
 | `metadata.icon`        | `string`   | No       | Your app's icon as a data URL, SVG or PNG, under 4 KB                                 |
 | `onConnectionChange`   | `function` | No       | Called when the app-visible connection state changes (identity, stamp, account, auth) |
 
-The full list, including the subsidised gateway and the iframe button's look, is on the
+The full list, including the subsidised gateway and the Swarm ID button's look, is on the
 [API Reference](../api/).
 
 ## Data
 
-Everything below needs a connected user. Call `client.connect()` or let the iframe button do it.
+Everything below needs a connected user, signed in through the Swarm ID button.
 
 ### Upload and download bytes
 

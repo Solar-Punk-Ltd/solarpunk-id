@@ -4,9 +4,10 @@ description: How the popup, the hidden iframe and your page fit together
 ---
 
 Swarm ID has three parts. Your page runs the library. The library embeds a hidden iframe from the
-Swarm ID site, and that iframe does all the talking to Swarm. When the user connects, a popup opens
-on the Swarm ID site, unlocks the account, and hands the iframe a secret made for your app alone.
-The secret that controls the account never leaves the Swarm ID site.
+Swarm ID site, and that iframe does all the talking to Swarm. Where your page asks, it also shows a
+small Swarm ID button, a second iframe from the same site. When the user clicks it, a popup opens on
+the Swarm ID site, unlocks the account, and hands the hidden iframe a secret made for your app
+alone. The secret that controls the account never leaves the Swarm ID site.
 
 ```text
 ┌───────────────────────────────────────────────────────────────────┐
@@ -23,7 +24,11 @@ The secret that controls the account never leaves the Swarm ID site.
 │   └─────────────────────────────────────────────────────────────┘ │
 │     ▲ postMessage, both ways, every message validated             │
 │     │                                                             │
-│  connect() / the iframe's own button  ──────────▶  window.open    │
+│   ┌─────────────────────────────────────────────────────────────┐ │
+│   │ Button iframe  (https://solarpunkid.bzz.link/button)        │ │
+│   │  - the click  ─────────────────────────────▶  window.open   │ │
+│   │  - tells the hidden iframe the popup's challenge            │ │
+│   └─────────────────────────────────────────────────────────────┘ │
 └───────────────────────────────────────────────────────────────────┘
                                                           │
                                                           ▼
@@ -35,7 +40,7 @@ The secret that controls the account never leaves the Swarm ID site.
    │  - same-site: writes the connection to the shared store,       │
    │    and the iframe picks it up from a storage event             │
    │  - partitioned: posts the secret and the account view to       │
-   │    the iframe through window.opener                            │
+   │    the Swarm ID iframes beside the button that opened it       │
    └────────────────────────────────────────────────────────────────┘
 ```
 
@@ -46,7 +51,8 @@ The secret that controls the account never leaves the Swarm ID site.
 The library your page uses. It:
 
 - creates and embeds a hidden iframe from the Swarm ID site
-- offers a connect button inside the iframe, or a `connect()` method for your own
+- shows Swarm ID's button where your page asks (`mountButton()`), and offers `connect()` for your
+  own control where your page shares Swarm ID's storage
 - exposes the Swarm operations: upload, download, chunks, single-owner chunks, feeds, GSOC and ACT
 - talks to the iframe only through postMessage
 
@@ -62,6 +68,18 @@ Runs inside the hidden iframe, on the Swarm ID site. It:
 - validates every message from the page before acting on it
 - is a peer on the [account bus](../account-bus/), so a revoke or a rename made elsewhere reaches
   it while it is open
+
+### The button iframe
+
+The `/button` route of the identity site, which `mountButton()` embeds in a container of your
+page. A browser lets a frame open a window only from a click inside that frame, and only a window
+a Swarm ID frame opened can hand a partitioned session over, so the click has to happen here. It:
+
+- shows one native button, labelled and styled as your page asks
+- opens the connect popup from its click, and is the popup's `window.opener`
+- tells the hidden iframe beside it the popup's challenge, so the hidden iframe takes the handover
+  that comes back under it, with every check it makes on a handover
+- holds no session, so your page can remove it and keep the session
 
 ### The connect popup
 
@@ -119,15 +137,16 @@ iframe keeps one session per app origin in it.
 
 Where the two are cross-site, or the browser partitions storage regardless (Safari's Intelligent
 Tracking Prevention, strict privacy settings elsewhere), the iframe gets its own store. The connect
-popup hands it the account's synced view (drives and signer keys, never the vault) through
-`window.opener`, and the iframe keeps the session in its own partition, so a reload does not repeat
-the handshake. That iframe is a full writer and a peer on the [account bus](../account-bus/),
+popup, opened by the button iframe, hands it the account's synced view (drives and signer keys,
+never the vault) by posting to the Swarm ID iframes of the page whose button opened it, and the
+iframe keeps the session in its own partition, so a reload does not repeat the handshake. Both
+iframes are the Swarm ID site under your page's site, so they share that partition. That iframe is a full writer and a peer on the [account bus](../account-bus/),
 which is how a revoke or a rename made anywhere else still reaches it while it is open.
 [#277](https://github.com/snaha/swarm-id/issues/277) has the background.
 
 :::note[Checked on real Safari]
 The whole path is checked on a device (iOS 18.7 / Safari 26.6): ITP partitions the iframe, the
-popup's `postMessage` through `window.opener` reaches it, the session builds a working stamper
+popup's `postMessage` reaches it, the session builds a working stamper
 from the handed-over view, and a chunk uploads and reads back byte for byte. A handover that
 carries no account view is refused rather than starting a session that could neither upload nor be
 told it had been revoked, and `ConnectionInfo.uploadUnavailableReason` says which of the remaining
@@ -186,9 +205,21 @@ message kinds:
 
 ### Popup to iframe
 
-| Message     | Purpose                                                                                                                                                                                            |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `setSecret` | the derived app secret and the account view, sent through `window.opener` when the iframe's storage is partitioned, and sent again by the same window when the person picks the site's stamp there |
+| Message     | Purpose                                                                                                                                                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `setSecret` | the derived app secret and the account view, sent to the Swarm ID iframes beside the button that opened the popup when the iframe's storage is partitioned, and sent again by the same window when the person picks the site's stamp there |
+
+### Page and button iframe
+
+| Message               | Purpose                                                                                  |
+| --------------------- | ---------------------------------------------------------------------------------------- |
+| `buttonFrameLoaded`   | button to page: the button iframe loaded                                                 |
+| `buttonIdentify`      | page to button: what the button does, how it looks, and the app metadata the popup shows |
+| `buttonUpdate`        | page to button: a new action or look                                                     |
+| `buttonReady`         | button to page: the button is shown                                                      |
+| `buttonInitError`     | button to page: Swarm ID refused the page's site                                         |
+| `buttonWindowChanged` | button to page: its popup opened, closed, or was blocked                                 |
+| `connectWindowOpened` | button to the hidden iframe beside it: the challenge of the popup it opened              |
 
 The [account bus](../account-bus/) has its own message kinds: account snapshots, partition
 handover and presence. They travel between the account's live contexts rather than between a page

@@ -28,10 +28,10 @@ const client = new SwarmIdClient({
 
 await client.initialize()
 
-// Option 1: Open authentication page manually
-await client.connect()
+// Show Swarm ID's sign-in button where your page has room for it
+client.mountButton(document.getElementById('sign-in')!, { action: 'sign-in' })
 
-// Option 2: Read current connection state and upload if authenticated.
+// Read current connection state and upload if authenticated.
 // Check `canUpload` too — an authenticated user can still lack upload
 // capability (no postage stamp, no subsidised gateway).
 if (client.connectionInfo?.identity && client.connectionInfo.canUpload) {
@@ -55,13 +55,11 @@ Creates a new SwarmIdClient instance.
 | `options.timeout`               | `number`                         | No       | Request timeout in milliseconds (defaults to `30000`). Bounds each call's whole round trip through the iframe; a call's own `requestOptions.timeout` replaces it for that call                                                                                                                                  |
 | `options.initializationTimeout` | `number`                         | No       | Initialization timeout in milliseconds (defaults to `30000`)                                                                                                                                                                                                                                                    |
 | `options.onConnectionChange`    | `(info: ConnectionInfo) => void` | No       | Callback invoked when the app-visible connection state changes (identity, app key, postage stamp, account, auth). The current snapshot is also available synchronously via `client.connectionInfo`.                                                                                                             |
-| `options.popupMode`             | `"popup" \| "window"`            | No       | How to display the authentication popup (defaults to `"window"`)                                                                                                                                                                                                                                                |
+| `options.popupMode`             | `"popup" \| "window"`            | No       | How the connect window opens, from a mounted button or `connect()` (defaults to `"window"`)                                                                                                                                                                                                                     |
 | `options.metadata`              | `AppMetadata`                    | Yes      | Application metadata shown to users during authentication                                                                                                                                                                                                                                                       |
 | `options.metadata.name`         | `string`                         | Yes      | Application name (1-100 characters)                                                                                                                                                                                                                                                                             |
 | `options.metadata.description`  | `string`                         | No       | Application description (max 500 characters)                                                                                                                                                                                                                                                                    |
 | `options.metadata.icon`         | `string`                         | No       | Application icon as a data URL (SVG or PNG, max 4KB)                                                                                                                                                                                                                                                            |
-| `options.buttonConfig`          | `ButtonConfig`                   | No       | Button configuration for the authentication UI                                                                                                                                                                                                                                                                  |
-| `options.containerId`           | `string`                         | No       | ID of container element to place iframe in (optional)                                                                                                                                                                                                                                                           |
 | `options.subsidisedGatewayUrl`  | `string`                         | No       | URL of a subsidised gateway for uploads without user's postage stamp. See [Subsidised Gateway](../subsidised-gateway/) for details.                                                                                                                                                                             |
 | `options.beeApiUrl`             | `string`                         | No       | The Bee node this site's content reads and stamped uploads go through, in place of the node the person set in Swarm ID. The person's account and device coordination stay on their own node. Change it later with [`setBeeApiUrl()`](#setbeeapiurlurl). See [The site's own Bee node](#the-sites-own-bee-node). |
 
@@ -102,7 +100,6 @@ This method must be called before using any other client methods. It creates a h
 **Throws:**
 
 - `invalid-state` if the client is already initialized, or `destroy()` runs before it resolves
-- `invalid-request` if `containerId` names no element
 - `init-failed` if the iframe fails to load, the proxy refuses the page's origin (it serves only the sites on its allow list, and the error message says which site and why), or the proxy does not respond within the initialization timeout period (configurable via `initializationTimeout`, defaults to 30 seconds)
 
 **Example:**
@@ -127,7 +124,7 @@ This method should be called when the client is no longer needed. It performs th
 
 - Rejects every pending request, and a pending `initialize()`, with a `SwarmIdError` of code `invalid-state`
 - Removes the message event listener
-- Removes the iframe from the DOM
+- Removes the iframe, and every button `mountButton()` showed, from the DOM
 - Resets the client to an uninitialized state
 
 After calling `destroy()`, the client instance cannot be reused. Create a new instance if you need to reconnect.
@@ -152,43 +149,71 @@ useEffect(() => {
 
 ## Authentication Methods
 
-### `getAuthIframe()`
+### `mountButton(container, options)`
 
-Returns the authentication iframe element.
+Shows a Swarm ID button in `container`. The button is a small frame of Swarm ID's own, apart from the hidden frame `initialize()` creates, and it fills the container, so give the container the size the button should have.
 
-The iframe displays authentication UI based on the current auth status:
+A click on it opens the connect window, and the window hands the session back to your site's Swarm ID frame. `onConnectionChange` fires as for any sign-in. This is how a person signs in, or changes the stamp your site uses, whenever your site and Swarm ID are on different sites, for example your site at its own domain and Swarm ID at `solarpunkid.bzz.link`. There the browser keeps Swarm ID's frames apart from Swarm ID's own storage, and a frame may open a window only from a click inside it, so the click has to happen in a Swarm ID frame. It works the same where the two share storage.
 
-- If not authenticated: shows a "Connect" button
-- If authenticated: shows identity info and a "Disconnect" button
+Unmounting removes only the button: the session stays, and signing out stays [`disconnect()`](#disconnect). So a site can show the button in a panel and close the panel once the person is signed in. The stamp the person confirms in the window afterwards still reaches your site, as long as your page is not reloaded or left before they confirm.
 
-The iframe is positioned fixed in the bottom-right corner of the viewport.
+**Parameters:**
 
-**Returns:** `HTMLIFrameElement` - The iframe element displaying the authentication UI
+| Parameter                | Type                                 | Required | Description                                                                                                        |
+| ------------------------ | ------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| `container`              | `HTMLElement`                        | Yes      | The element the button fills                                                                                       |
+| `options.action`         | `"sign-in" \| "change-stamp"`        | Yes      | `sign-in` for a person signed out, `change-stamp` for one signed in. Decides the default label                     |
+| `options.config`         | `ButtonConfig`                       | No       | The label, its busy and disabled states, colours and typography, see [Button look](#button-look)                   |
+| `options.onWindowChange` | `(state: ButtonWindowState) => void` | No       | Called with `open` and `closed` for the button's connect window, and `blocked` when the browser refused to open it |
+
+**Returns:** `MountedButton`
+
+| Member                       | Description                                                                                                                                                        |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ready`                      | A promise that resolves once the button is shown, and rejects with `init-failed` when Swarm ID refuses your site or does not answer within `initializationTimeout` |
+| `update({ action, config })` | Changes what the button does or how it looks, in place                                                                                                             |
+| `unmount()`                  | Removes the button and leaves the session as it is                                                                                                                 |
 
 **Throws:**
 
-- `invalid-state` if the client is not initialized, or the iframe is not available
+- `invalid-state` if the client is not initialized
 
 **Example:**
 
 ```typescript
-const iframe = client.getAuthIframe()
-// The iframe is already displayed; this returns a reference to it
+await client.initialize()
+
+const button = client.mountButton(document.getElementById('sign-in')!, {
+  action: client.connectionInfo.identity ? 'change-stamp' : 'sign-in',
+  config: { text: 'Sign in', backgroundColor: '#000', borderRadius: '6px' },
+  onWindowChange: (state) => {
+    if (state === 'blocked') showHint('Allow pop-ups for this site to sign in')
+  },
+})
+await button.ready
+
+// The person signed in: offer the stamp change instead
+button.update({ action: 'change-stamp', config: { text: 'Change stamp' } })
+
+// Closing the panel the button sits in
+button.unmount()
 ```
+
+`destroy()` unmounts every button the client mounted.
 
 ---
 
-### Button Configuration
+### Button look
 
-The authentication button in the iframe can be customized using the `buttonConfig` option in the constructor. This configuration allows you to customize the button text, colors, and styling.
-
-**ButtonConfig Interface:**
+The button is painted inside Swarm ID's frame, where your page's CSS cannot reach it, so everything it should match is said in `ButtonConfig`. It fills its frame, and a label that does not fit ends in an ellipsis. It is a native button, reached with Tab and pressed with Enter or Space, and its accessible name is its label, or `ariaLabel` when you give one.
 
 ```typescript
 interface ButtonConfig {
-  connectText?: string
-  disconnectText?: string
-  loadingText?: string
+  text?: string
+  busyText?: string
+  ariaLabel?: string
+  disabled?: boolean
+  busy?: boolean
   backgroundColor?: string
   color?: string
   borderRadius?: string
@@ -198,86 +223,45 @@ interface ButtonConfig {
 }
 ```
 
-**Example: Customizing Button Configuration**
+| Property          | Type               | Description                                                                                     | Default                                                |
+| ----------------- | ------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `text`            | `string`           | The label                                                                                       | "Sign in with Swarm ID", or "Change stamp in Swarm ID" |
+| `busyText`        | `string`           | The label while the connect window is open, or while `busy` is set                              | "Waiting for Swarm ID"                                 |
+| `ariaLabel`       | `string`           | The accessible name, where the label alone does not say what the button does                    | the label                                              |
+| `disabled`        | `boolean`          | Shown but not clickable, and out of the tab order                                               | `false`                                                |
+| `busy`            | `boolean`          | Shown as working and not clickable, for a step of your own such as signing out. Stays focusable | `false`                                                |
+| `backgroundColor` | `string`           | CSS colour                                                                                      | `#dd7200`                                              |
+| `color`           | `string`           | CSS colour of the label                                                                         | `white`                                                |
+| `borderRadius`    | `string`           | CSS border-radius of the button and its frame                                                   | `0`                                                    |
+| `fontFamily`      | `string`           | CSS font-family. A stack resolves against Swarm ID's frame, so name web-safe or system families | the frame's own font                                   |
+| `fontSize`        | `string`           | CSS font-size                                                                                   | `14px`                                                 |
+| `fontWeight`      | `string \| number` | CSS font-weight                                                                                 | `600`                                                  |
 
-```typescript
-const client = new SwarmIdClient({
-  iframeOrigin: 'https://swarm-id.example.com',
-  metadata: {
-    name: 'My App',
-    description: 'A decentralized application',
-  },
-  buttonConfig: {
-    connectText: 'Connect with Swarm',
-    disconnectText: 'Disconnect',
-    loadingText: 'Loading...',
-    backgroundColor: '#4CAF50',
-    color: 'white',
-    borderRadius: '8px',
-    fontFamily: 'Inter, system-ui, sans-serif',
-    fontSize: '15px',
-    fontWeight: '500',
-  },
-  onConnectionChange: (info) => {
-    console.log('Connection changed:', info.identity?.name, 'canUpload=', info.canUpload)
-  },
-})
-
-await client.initialize()
-```
-
-**ButtonConfig Properties:**
-
-| Property          | Type               | Required | Description                          | Default Value                            |
-| ----------------- | ------------------ | -------- | ------------------------------------ | ---------------------------------------- |
-| `connectText`     | `string`           | No       | Text for the connect button          | "🔐 Login with Swarm ID"                 |
-| `disconnectText`  | `string`           | No       | Text for the disconnect button       | "🔓 Disconnect from Swarm ID"            |
-| `loadingText`     | `string`           | No       | Text shown during loading            | "⏳ Loading..."                          |
-| `backgroundColor` | `string`           | No       | Background color for buttons         | `#dd7200` (connect), `#666` (disconnect) |
-| `color`           | `string`           | No       | Text color for buttons               | `white`                                  |
-| `borderRadius`    | `string`           | No       | Border radius for buttons and iframe | `0`                                      |
-| `fontFamily`      | `string`           | No       | CSS `font-family` for the button     | the iframe's own font                    |
-| `fontSize`        | `string`           | No       | CSS `font-size` for the button       | `14px`                                   |
-| `fontWeight`      | `string \| number` | No       | CSS `font-weight` for the button     | `600`                                    |
-
-**Notes:**
-
-- Button configuration is passed directly to the constructor, not via postMessage
-- The `borderRadius` property affects both the buttons and the iframe container
-- Colors should be valid CSS color strings (e.g., `'#FF0000'`, `'rgb(255, 0, 0)'`, `'red'`)
-- The typography properties are the only way to make the button match the page's type: the button is painted inside the cross-origin iframe, where the page's own CSS cannot reach it
-- `fontFamily` takes a CSS font stack and falls back the way a stack always does — the browser reads it left to right and takes the first family that resolves. It resolves against the IFRAME, so name web-safe or system families (a font the page loads itself is not available inside the iframe)
-- `fontSize` has a box to fit into. In the default floating placement the client fixes the iframe at 300×50 px and the proxy page hides the overflow, so a button too tall for 50 px is silently clipped. Pass `containerId` when you want a larger size — the app then owns the box
-- Text properties support plain text or emoji combinations
-- The configuration applies to both authentication states (connect/disconnect)
+The button is busy by itself while its connect window is open, and comes back when the window closes.
 
 ---
 
-### Manual Authentication
+### Signing in from your own control
 
-In addition to the iframe-based authentication (via `getAuthIframe()`), you can manually trigger the authentication flow by calling `connect()`. This opens the same authentication URL in a new window:
+Where your site and Swarm ID share the browser's storage, a site on the same site as Swarm ID such as a self-hosted copy on your own domain, [`connect()`](#connectoptions) opens the connect window from your page instead, from your own button. Anywhere else it refuses with `button-required`, because a window your page opens could never hand the session over, and would end on "Connected" with your site still signed out. The Swarm ID button works in both cases, so a site that always mounts it never needs `connect()`.
 
 ```typescript
-// Open authentication page (default: new window)
-await client.connect()
-
-// Open as popup window
-await client.connect({ popupMode: 'popup' })
+try {
+  await client.connect()
+} catch (error) {
+  if (error instanceof SwarmIdError && error.code === 'button-required') {
+    client.mountButton(container, { action: 'sign-in' })
+  }
+}
 ```
-
-**When to use `connect()`:**
-
-- When you want to trigger authentication from a custom UI element
-- When you prefer the authentication to open in a new window instead of an iframe
-- When the person is already signed in and wants to change the stamp your site uses, see [The stamp your site uses](#the-stamp-your-site-uses)
 
 **Authentication Flow:**
 
-1. User calls `client.connect()` or clicks the iframe button
-2. Authentication page opens with the app metadata
-3. User authenticates with their Swarm ID
-4. Authentication state is shared with the iframe proxy
-5. `onConnectionChange` callback fires with the new connection snapshot
+1. The person clicks the Swarm ID button, or your own control calls `client.connect()` where storage is shared
+2. The connect window opens with the app metadata
+3. The person authenticates with their Swarm ID
+4. The window hands the session to your site's Swarm ID frame, through the shared storage or directly
+5. `onConnectionChange` fires with the new connection snapshot
 
 ---
 
@@ -311,11 +295,9 @@ if (status.authenticated) {
 
 ### `connect(options?)`
 
-Opens Swarm ID authentication page in a new window.
+Opens the Swarm ID connect window from your page, where your site's Swarm ID frame shares Swarm ID's storage. The window writes the connection to that storage and the frame picks it up. Anywhere else this refuses with `button-required` and opens nothing: use [`mountButton()`](#mountbuttoncontainer-options), see [Signing in from your own control](#signing-in-from-your-own-control).
 
-This method creates the same authentication URL as used by the iframe proxy and opens it in a new browser window. The user can authenticate with their Swarm ID, and the resulting authentication will be available to the client when they return.
-
-It works the same while the person is already signed in. The window then lists their account as used with your site and asks again which stamp your site uses, starting on the current one. That is how a site lets the person change its stamp without leaving it. Every connect signs your site in with no stamp, first or not, and the stamp arrives when the person confirms in the window, see [The stamp your site uses](#the-stamp-your-site-uses).
+It works the same while the person is already signed in. The window then lists their account as used with your site and asks again which stamp your site uses, starting on the current one. Every connect signs your site in with no stamp, first or not, and the stamp arrives when the person confirms in the window, see [The stamp your site uses](#the-stamp-your-site-uses).
 
 **Parameters:**
 
@@ -337,6 +319,7 @@ interface ConnectOptions {
 **Throws:**
 
 - `invalid-state` if the client is not initialized
+- `button-required` if your site's Swarm ID frame does not share Swarm ID's storage, or it is not proven that it does
 - `popup-blocked` if the browser blocks the popup
 
 **Example:**
@@ -985,8 +968,8 @@ console.log('Chunk size:', chunk.length)
 Swarm ID gives each connected site one stamp (a "drive" in Swarm ID's own words): the account's default, another of the person's stamps, or none. The connect window asks which one every time the person connects to your site, starting on the one your site uses now. Your site never chooses among the person's stamps and cannot preselect one, it only reads the one it was given.
 
 - Every connect, a first one or a reconnect, signs your site in with no stamp: `postageBatchId` is absent and `stampChunk()` is refused, as below. The stamp arrives when the person confirms the drive with "Go to app" in the window, whether or not your site and Swarm ID share the browser's storage. No reload is needed and no signaling server is involved. A frame whose storage the browser keeps apart, which is the usual case for a site on another domain, is handed the confirmed drive by the window directly. If the person closes the window without confirming, your site stays signed in with no stamp, a reload included, until they connect again. Their choice in Swarm ID is kept as it was.
-- To let the person change the stamp from your site, call [`connect()`](#connectoptions) while they are signed in. Your site has no stamp from then until the person confirms.
-- The confirmed drive can reach a frame kept apart only while your page still holds the frame that opened the window. If your site reloads, navigates away or calls `connect()` again before the person confirms, it has no stamp until it connects again. When the window can tell the frame is gone it says so before it closes. When the frame reloaded in place it cannot tell, and says nothing.
+- To let the person change the stamp from your site, mount a Swarm ID button with the `change-stamp` action while they are signed in ([`mountButton()`](#mountbuttoncontainer-options)). Your site has no stamp from then until the person confirms.
+- The confirmed drive can reach a frame kept apart only while your page still holds its Swarm ID frames. Unmounting the button is fine. If your site reloads, navigates away or opens the window again before the person confirms, it has no stamp until it connects again. When the window can tell the frames are gone it says so before it closes. When the frame reloaded in place it cannot tell, and says nothing.
 - While your site waits for the confirm, only "Go to app" in the window ends the wait. A drive the person picks for your site on Swarm ID's Apps screen in the meantime is saved, but your site still has no stamp: the window starts on that pick at the next connect, and the site uses it once the person confirms there.
 - Once the wait has ended, the person can also change the choice on Swarm ID's Apps screen, to another of their stamps or to none. That change reaches your open site when your site and Swarm ID share the browser's storage, through that store. A frame whose storage the browser keeps apart, and a frame on another device, hear of it only over the [account bus](../account-bus/) relay, so only while a bus signaling server is configured and the frame is open. Otherwise the frame keeps the stamp it was handed, a reload included, until the person connects to your site again.
 - When a change arrives, `connectionInfo.postageBatchId` changes and `onConnectionChange` fires, and the next `getPostageBatch()`, `stampChunk()` and stamped upload use the new stamp. A client from before `postageBatchId` existed still gets the `onConnectionChange` call, and `getPostageBatch()` there names the new stamp.
@@ -1005,8 +988,8 @@ const client = new SwarmIdClient({
   },
 })
 
-// From a click, so the browser lets the window open
-changeStampButton.onclick = () => client.connect()
+// Swarm ID's own button, whose click opens the window
+client.mountButton(changeStampContainer, { action: 'change-stamp' })
 
 const manageUrl = `https://solarpunkid.bzz.link/#apps/${encodeURIComponent(location.origin)}`
 ```
@@ -1883,6 +1866,7 @@ try {
 | `invalid-state`       | The client cannot take the call in its current state: `initialize()` has not resolved, was already called, or `destroy()` ran. A call, or an `initialize()`, still pending when `destroy()` runs rejects with this too |                               |
 | `init-failed`         | The proxy iframe did not come up: it failed to load, the proxy refused the origin, or it did not answer within `initializationTimeout`; `initialize()` rejects with this                                               |                               |
 | `popup-blocked`       | The browser blocked the authentication popup `connect()` opens: not called from a user gesture, or a blocker                                                                                                           |                               |
+| `button-required`     | `connect()` was called where your site's Swarm ID frame does not share Swarm ID's storage. Sign in through [`mountButton()`](#mountbuttoncontainer-options)                                                            |                               |
 | `internal`            | Anything else; the message is preserved                                                                                                                                                                                |                               |
 
 The instance is built on the client side from the fields the proxy sends — an `Error` posted through the iframe bridge arrives as a plain `Error`, so it never crosses it. An app that bundles two copies of the package should branch on `error.code` rather than `instanceof`, which is per copy.
@@ -1901,8 +1885,14 @@ import type {
   AvatarSource,
   PostageBatch,
   AppMetadata,
-  ButtonConfig,
   RequestOptions,
+
+  // The Swarm ID button
+  ButtonAction,
+  ButtonConfig,
+  ButtonWindowState,
+  MountButtonOptions,
+  MountedButton,
 
   // Upload/Download
   UploadOptions,

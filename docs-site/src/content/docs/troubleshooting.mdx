@@ -78,24 +78,23 @@ checks again), `stamper-failed` is a bug to report. Pass the public gateway as `
 free tier. See [Quick Start](../getting-started/#a-batch-you-were-given) and
 [Why Uploads Are Unavailable](../subsidised-gateway/#why-uploads-are-unavailable).
 
-### `Iframe not initialized` after sign-in
-
-**Cause.** The element the button container lives in was unmounted — typically rendered only
-in the signed-out branch of the UI — which destroyed the proxy iframe with it. Every later call
-has no iframe to talk to, and a later popup has no opener. Through the library it is a
-`SwarmIdError` with code `invalid-state`.
-
-**Fix.** Keep the container mounted for the life of the page, in every state. See
-[Quick Start](../getting-started/#connect-and-upload).
-
 ### `Failed to open authentication popup`
 
 **Cause.** The browser blocked the popup: `connect()` was not called from a user gesture, or a
-blocker is on. The code is `popup-blocked`.
+blocker is on. The code is `popup-blocked`. A Swarm ID button the browser blocks says so to
+`onWindowChange` with `blocked`.
 
-**Fix.** Call `connect()` synchronously from the click handler, or render the iframe's own
-button. The client opens the popup from the iframe or the page as the storage situation
-requires, so an app's own button works on partitioned storage too.
+**Fix.** Call `connect()` synchronously from the click handler, or show Swarm ID's button
+(`mountButton()`), whose window opens from its own click.
+
+### `Sign in through the button from client.mountButton()`
+
+**Cause.** `connect()` was called where your site's Swarm ID frame does not share Swarm ID's
+storage, the usual case for a site on another domain. A window your page opens could not hand the
+session over there, so the client refuses. The code is `button-required`.
+
+**Fix.** Show Swarm ID's button with `mountButton()`. It works whether the storage is shared or
+not. See [`mountButton()`](../api/#mountbuttoncontainer-options).
 
 ### `[SwarmIdClient] Rejected message from unauthorized origin`, several times a second
 

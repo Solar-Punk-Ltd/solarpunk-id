@@ -81,11 +81,15 @@ const client = new SwarmIdClient({
     description: 'Demo application showcasing Swarm ID authentication and Bee API operations',
     icon: BEE_ICON,
   },
-  buttonConfig: { connectText: 'Connect to Swarm', disconnectText: 'Disconnect' },
-  containerId: 'swarm-id-button',
 })
 
 await client.initialize()
+
+// Swarm ID's own sign-in button, in a frame of its own beside the hidden one
+client.mountButton(document.getElementById('swarm-id-button'), {
+  action: 'sign-in',
+  config: { text: 'Connect to Swarm' },
+})
 ```
 
 The client automatically:
@@ -125,11 +129,13 @@ if (status.authenticated) {
 }
 ```
 
-### Get Auth Iframe
+### Change the Stamp
 
 ```javascript
-// The iframe is automatically positioned in the bottom-right corner
-const iframe = client.getAuthIframe()
+// Signed in: the same connect window, where the person picks the site's drive
+const button = client.mountButton(container, { action: 'change-stamp' })
+// Removing the button keeps the session
+button.unmount()
 ```
 
 ## Benefits of Using the Library

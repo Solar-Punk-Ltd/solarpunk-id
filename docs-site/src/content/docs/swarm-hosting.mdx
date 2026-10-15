@@ -34,12 +34,13 @@ under `_app/`, so no route path is a folder and nothing is redirected. Uploaded 
 | ---------------------------------------------------- | ------------ | ---- |
 | `/`                                                  | `index.html` | 1    |
 | `/_app/...`, `/favicon.png`, `/manifest.json`        | that file    | 2    |
-| `/proxy`, `/connect`, `/connect/done`, `/product`    | `index.html` | 5    |
+| `/proxy`, `/button`, `/connect`, `/connect/done`     | `index.html` | 5    |
+| `/product`                                           | `index.html` | 5    |
 | `/account/new`, `/account/new/access` and the others | `index.html` | 5    |
 
-The page then routes itself from the URL. The library opens the frame at `/proxy` and the
-popup at `/connect`, both without a trailing slash, and the frame works out its own base path
-by stripping `/proxy` from the end of its URL. A frame loaded at `/proxy/` would not find it,
+The page then routes itself from the URL. The library opens the frame at `/proxy`, a mounted
+button at `/button` and the popup at `/connect`, all without a trailing slash, and each frame
+works out its own base path by stripping `/proxy` or `/button` from the end of its URL. A frame loaded at `/proxy/` would not find it,
 which is one more reason no route may become a folder.
 
 `ui/src/lib/hosting/swarm-website.test.ts` holds this rule as code and checks the real
