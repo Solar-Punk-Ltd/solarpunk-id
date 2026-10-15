@@ -18,15 +18,23 @@
     text: string
     id?: string
     class?: string
+    /** Mounted only while true, as a site mounts its button while a panel is open */
+    active?: boolean
   }
 
-  let { action, text, id, class: className = 'h-[36px] w-full' }: Props = $props()
+  let {
+    action,
+    text,
+    id,
+    class: className = 'h-[36px] w-full',
+    active = true,
+  }: Props = $props()
 
   let container = $state<HTMLDivElement>()
 
   $effect(() => {
     const client = clientStore.client
-    if (!container || !client || clientStore.initializing) return
+    if (!active || !container || !client || clientStore.initializing) return
     const button = client.mountButton(container, {
       action,
       config: { ...demoButtonConfig(), text },
