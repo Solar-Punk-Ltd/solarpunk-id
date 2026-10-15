@@ -61,6 +61,23 @@ function themeFor(
   return [...classes].sort()
 }
 
+/** The loader's element and everything inside it */
+function loaderMarkup(html: string): string {
+  const start = html.indexOf(`<div id="${LOADING_SCREEN_ID}"`)
+  if (start === -1) throw new Error('no loader in the page')
+  const end = html.indexOf('</svg>', start)
+  return html.slice(start, html.indexOf('</div>', end) + '</div>'.length)
+}
+
+/** The words a screen reader reads from markup, the parts hidden from it left out */
+function textOf(markup: string): string {
+  return markup
+    .replace(/<svg[\s\S]*?<\/svg>/g, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function describePage(name: string, read: () => string) {
   describe(name, () => {
     it('paints the dark and the light background before anything loads', () => {
@@ -75,6 +92,14 @@ function describePage(name: string, read: () => string) {
       expect(html).toContain(`id="${LOADING_SCREEN_ID}"`)
       expect(html).toMatch(new RegExp(`id="${LOADING_SCREEN_ID}"[\\s\\S]*?<svg`))
       expect(html).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*{[^}]*animation:\s*none/)
+    })
+
+    it('says in words, inside its one live region, what it waits for', () => {
+      const loader = loaderMarkup(read())
+      expect(loader.match(/role="status"|aria-live=/g), 'one live region').toEqual([
+        'role="status"',
+      ])
+      expect(textOf(loader)).toContain('Loading Swarm ID')
     })
 
     it('shows no loader and no background inside a frame', () => {

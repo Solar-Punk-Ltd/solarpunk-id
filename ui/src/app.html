@@ -64,6 +64,14 @@
           transform: scale(1);
         }
       }
+      .swarm-id-loading-words {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
       @media (prefers-reduced-motion: reduce) {
         #swarm-id-loading svg {
           animation: none;
@@ -89,7 +97,7 @@
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">
-    <div id="swarm-id-loading" role="status" aria-label="Loading Swarm ID">
+    <div id="swarm-id-loading" role="status">
       <svg viewBox="0 0 30 30" width="48" height="48" fill="currentColor" aria-hidden="true">
         <path
           d="M0 17.8927V25.9641L6.97471 30L13.9494 25.9639V17.8913L6.97471 13.8565L0 17.8927Z"
@@ -104,6 +112,7 @@
           d="M21.925 8.07901L25.4099 6.053V2.01794L21.9303 0L18.4365 2.01901L21.9303 4.03238L21.925 8.07901Z"
         />
       </svg>
+      <span class="swarm-id-loading-words">Loading Swarm ID</span>
     </div>
     <div style="display: contents">%sveltekit.body%</div>
   </body>

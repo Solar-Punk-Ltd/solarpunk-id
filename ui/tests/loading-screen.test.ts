@@ -36,7 +36,7 @@ test('a page starts dark with the loader when the stored theme is dark', async (
   await page.goto(`${ID_ORIGIN}/connect`)
 
   await expect(page.locator(LOADER)).toBeVisible()
-  await expect(page.getByRole('status', { name: 'Loading Swarm ID' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Loading Swarm ID' })).toBeVisible()
   expect(await backgroundOf(page)).toBe(DARK_BACKGROUND)
 })
 

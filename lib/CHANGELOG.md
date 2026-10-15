@@ -7,7 +7,8 @@
 - **ui:** every Swarm ID page, the connect window included, starts in the person's theme with a
   Swarm loader while it loads from Swarm, instead of a blank white page for several seconds. The
   theme is the stored choice, else the system's. The loader's pulse stops when motion is reduced,
-  and the hidden frame and the button frame a site embeds never show it.
+  and the hidden frame and the button frame a site embeds never show it. A screen reader reads
+  "Loading Swarm ID" from the loader's one live region.
 
 ## 0.9.0
 
