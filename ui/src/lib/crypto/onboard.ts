@@ -106,6 +106,10 @@ export const onboard = Onboard({
   wallets,
   chains,
   appMetadata,
+  // Onboard otherwise fetches the Inter font from rsms.me whenever the picker
+  // opens, telling that host who opened Swarm ID. The picker takes the app's
+  // own font instead, through `--w3o-font-family` in app.css.
+  disableFontDownload: true,
   connect: {
     showSidebar: false,
   },

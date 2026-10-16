@@ -52,6 +52,14 @@ describe('the wallet picker without a WalletConnect project id', () => {
     )
   })
 
+  // Onboard's own default is the Inter font from rsms.me, fetched on every
+  // page that opens the picker, which tells that host who opened Swarm ID.
+  it('fetches no font from outside and keeps the app font', () => {
+    expect(onboardFactory).toHaveBeenCalledWith(
+      expect.objectContaining({ disableFontDownload: true }),
+    )
+  })
+
   it('offers the same wallets to unlock an account with, Coinbase as an EOA', async () => {
     await connectAccessWallet()
 
