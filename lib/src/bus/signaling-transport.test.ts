@@ -197,6 +197,37 @@ describe("SignalingTransport — who sent it, and who left", () => {
   })
 })
 
+// A peer that joins after a change has missed it, since the room keeps no
+// mailbox, so the one already in the room is told of the arrival and can answer
+// it. The id is the one the newcomer's own messages then carry.
+describe("SignalingTransport — who joined", () => {
+  it("reports a peer that joins after it, by the id its messages carry", async () => {
+    const first = makeTransport()
+    const second = makeTransport()
+    const joined: string[] = []
+    const senders: (string | undefined)[] = []
+    let third: SignalingTransport | undefined
+    try {
+      await waitForPeers(first, 1)
+      await waitForPeers(second, 1)
+      first.onPeerJoined((peerId) => joined.push(peerId))
+      first.subscribe((_raw, from) => senders.push(from))
+
+      third = makeTransport()
+      await vi.waitFor(() => expect(joined).toHaveLength(1))
+      await waitForPeers(third, 2)
+      third.publish(UTILIZATION_MESSAGE)
+
+      await vi.waitFor(() => expect(senders).toHaveLength(1))
+      expect(senders[0]).toBe(joined[0])
+    } finally {
+      first.close()
+      second.close()
+      third?.close()
+    }
+  })
+})
+
 describe("SignalingTransport — reconnect backoff", () => {
   // Every client connected when the service restarts schedules its retry from
   // the same instant, so an undithered delay brings them all back together at
