@@ -77,6 +77,9 @@ const accessWallets = [
   coinbaseModule({ ...coinbaseOptions, supportedWalletType: 'eoaOnly' }),
   ...walletConnectModules,
 ]
+// The rpcUrl is handed to the wallet when it adds a chain. Onboard's own ENS
+// lookup ignored it for a public endpoint baked into the library, and is patched
+// to read nothing (`patches/@web3-onboard__core@2.24.1.patch`).
 const chains = walletChains.map((chain) => ({
   id: `0x${chain.id.toString(16)}`,
   token: chain.nativeCurrency.symbol,

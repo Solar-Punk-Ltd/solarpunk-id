@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: false
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@web3-onboard/core@2.24.1': 3511368fb384aded97bdb85dce6f69a5df03696541219db1917c603bc18c7c42
+
 importers:
 
   .:
@@ -307,7 +310,7 @@ importers:
         version: 2.4.2(typescript@5.8.3)(zod@3.25.76)
       '@web3-onboard/core':
         specifier: ^2.24.1
-        version: 2.24.1(typescript@5.8.3)(zod@3.25.76)
+        version: 2.24.1(patch_hash=3511368fb384aded97bdb85dce6f69a5df03696541219db1917c603bc18c7c42)(typescript@5.8.3)(zod@3.25.76)
       '@web3-onboard/injected-wallets':
         specifier: ^2.11.3
         version: 2.11.3(typescript@5.8.3)(zod@3.25.76)
@@ -9034,7 +9037,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@web3-onboard/core@2.24.1(typescript@5.8.3)(zod@3.25.76)':
+  '@web3-onboard/core@2.24.1(patch_hash=3511368fb384aded97bdb85dce6f69a5df03696541219db1917c603bc18c7c42)(typescript@5.8.3)(zod@3.25.76)':
     dependencies:
       '@web3-onboard/common': 2.4.2(typescript@5.8.3)(zod@3.25.76)
       bnc-sdk: 4.6.9
