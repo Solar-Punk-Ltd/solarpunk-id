@@ -1859,6 +1859,51 @@ describe("SwarmIdProxy partitioned write enablement", () => {
 
           expect(lastIdentity()?.walletLink).toEqual(walletLink)
         })
+
+        // An account with no drive publishes nothing, so a change made while
+        // no page of the site was open reaches the frame only from an open
+        // Swarm ID tab or a new sign-in. Until one of them confirms the saved
+        // link, the frame cannot tell it from one the person withdrew, and a
+        // message carrying a withdrawn wallet cannot be taken back.
+        describe("for an account that published nothing", () => {
+          it("holds the saved link back on the next load", async () => {
+            ;(await signedInWith(signedWalletLink())).close()
+
+            await reload()
+            await flushBus()
+
+            expect(lastIdentity()).toBeDefined()
+            expect(lastIdentity()?.walletLink).toBeUndefined()
+          })
+
+          it("shares it once an open Swarm ID tab confirms it", async () => {
+            const walletLink = signedWalletLink()
+            ;(await signedInWith(walletLink)).close()
+            await reload()
+            await awaitBusJoin()
+            const busChannel = new BroadcastChannel(accountChannelName)
+            try {
+              busChannel.postMessage(walletLinkDelta(walletLink, SIGNED_IN_AT))
+
+              await vi.waitFor(() =>
+                expect(lastIdentity()?.walletLink).toEqual(walletLink),
+              )
+            } finally {
+              busChannel.close()
+            }
+          })
+
+          it("shares it once the person signs in again", async () => {
+            const walletLink = signedWalletLink()
+            ;(await signedInWith(walletLink)).close()
+            await reload()
+            await flushBus()
+            expect(lastIdentity()?.walletLink).toBeUndefined()
+            ;(await signedInWith(walletLink)).close()
+
+            expect(lastIdentity()?.walletLink).toEqual(walletLink)
+          })
+        })
       })
 
       it("keeps the link when the change is older than its own", async () => {

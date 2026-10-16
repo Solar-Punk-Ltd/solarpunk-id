@@ -258,8 +258,10 @@ With the bus in place the partitioned iframe is a first-class writer:
   session reads the account's published state before its first write, to catch a revoke made
   while the tab was closed, which reaches it no other way ([Hardening](Hardening.md)). That read is a revocation check,
   not a fold, with one exception: the wallet link, which is taken when its own clock is newer
-  so a link turned off while the site was closed is not handed back to it
-  ([Wallet-Link.md](Wallet-Link.md)). Everything else still arrives over the bus, and a fold that lands re-persists
+  so a link turned off while the site was closed is not handed back to it. Until that read, a
+  peer's `account-delta` or a new handover confirms the restored link, the frame keeps it out of
+  the site's identity, so an account with no drive, which publishes nothing to read, never hands
+  back a link it cannot confirm ([Wallet-Link.md](Wallet-Link.md)). Everything else still arrives over the bus, and a fold that lands re-persists
   the record so the next reload does not undo it. The iframe keeps its own
   `swarm-id-device-id` and lease cache — it _is_ a device, named after the dApp it belongs to
   in the roster (#643), and its liveness comes from presence like every other device's; nothing
@@ -523,7 +525,8 @@ Not yet written:
   was closed is not adopted on restore;
   the session comes up on the handed-over view and corrects at the next live overlap. The wallet
   link is the one field the restore adopts, read beside the check from the same fold, because a
-  stale one publishes the person's wallet on the site's behalf. Changes
+  stale one publishes the person's wallet on the site's behalf, and it is held back until
+  something confirms it. Changes
   that arrive while it IS live are folded and re-persisted, so they survive a reload.
 - **Network settings do not reach a partitioned session at all.** The Bee node and RPC URLs are
   browser-local (`swarm-id-network-settings`), not account state, so they ride the connect

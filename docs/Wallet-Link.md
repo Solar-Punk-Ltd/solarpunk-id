@@ -76,6 +76,15 @@ it stands, so a frame loaded while one is open, a site reloaded right after the
 change included, takes the link from that answer. With no page of Swarm ID
 open, such an account's frame learns the change at the next sign-in.
 
+So a restored frame holds its saved link back until something confirms it: the
+account's published state, read on load, an answer from an open page of Swarm
+ID, or a new sign-in. Until then the site's identity carries no link, because
+the frame cannot tell a saved link from one the person withdrew while the site
+was closed, and a message published with a withdrawn wallet cannot be taken
+back. The cost is the other way round: an account with no drive and the setting
+on shows no ENS name after a reload until Swarm ID is opened or the person
+signs in again.
+
 Every connected site receives the same link. It names no site, unlike a chat
 binding ([Chat-Binding.md](Chat-Binding.md)), because what it says is true of
 the account on every site.

@@ -444,6 +444,12 @@ export class SwarmIdProxy {
    * first-class writer despite the partition (docs/Account-Bus.md, phase 3).
    */
   private partitionAccount: SignedInAccount | undefined
+  /**
+   * Set while a restored session's saved wallet link is unconfirmed, and kept
+   * out of the identity until then (docs/Wallet-Link.md). Cleared by the
+   * account's published state, a peer's `account-delta` or a new handover.
+   */
+  private walletLinkUnconfirmed = false
   /** Account-derived topic the attached bus transports share; undefined when
    *  none are attached. */
   private busTopic: string | undefined
@@ -1099,6 +1105,7 @@ export class SwarmIdProxy {
 
   /** Authenticate in storage-partitioned mode from a checked handover */
   private async adoptHandover(data: AuthData): Promise<void> {
+    this.walletLinkUnconfirmed = false
     this.appSecret = data.secret
     this.chatBinding = this.acceptHandedOverChatBinding(data)
     this.authenticated = true
@@ -2068,6 +2075,7 @@ export class SwarmIdProxy {
       // The stored session goes with it, or the next reload undoes this fold
       // (#636 review).
       this.refreshStoredPartitionAccount()
+      this.walletLinkUnconfirmed = false
     }
 
     // On the reconcile queue, not beside it: this runs the same stamper rebind
@@ -2909,6 +2917,9 @@ export class SwarmIdProxy {
     this.authenticated = true
     this.storagePartitioned = true
     this.deviceId = getOrCreateDeviceId()
+    // Saved before any change made while no page of the site was open, which
+    // an account with no drive publishes nowhere this frame can read.
+    this.walletLinkUnconfirmed = true
 
     await this.hydratePartitionAccount(
       data.account,
@@ -2936,6 +2947,9 @@ export class SwarmIdProxy {
    * the restored copy would go on handing the site the withdrawn wallet, so
    * the published state decides on the link's own clock. Only the link: the
    * rest of the published account still arrives over the bus.
+   *
+   * Nothing published, or nothing read, confirms nothing, so the restored link
+   * stays held back.
    */
   private foldPublishedWalletLink(
     accountId: string,
@@ -2943,15 +2957,15 @@ export class SwarmIdProxy {
   ): void {
     const account = this.partitionAccount
     if (!published || !account || account.id.toHex() !== accountId) return
-    if (published.walletLinkAt <= (account.walletLinkAt ?? account.createdAt)) {
-      return
+    this.walletLinkUnconfirmed = false
+    if (published.walletLinkAt > (account.walletLinkAt ?? account.createdAt)) {
+      this.partitionAccount = {
+        ...account,
+        walletLink: published.walletLink,
+        walletLinkAt: published.walletLinkAt,
+      }
+      this.refreshStoredPartitionAccount()
     }
-    this.partitionAccount = {
-      ...account,
-      walletLink: published.walletLink,
-      walletLinkAt: published.walletLinkAt,
-    }
-    this.refreshStoredPartitionAccount()
     this.emitConnectionInfoIfChanged()
   }
 
@@ -3667,6 +3681,7 @@ export class SwarmIdProxy {
     // expiry the reconcile noticed — so the stored copy goes with it, or the
     // next load would bring it back (#635).
     this.clearPartitionSession()
+    this.walletLinkUnconfirmed = false
 
     // Clear stamper state from localStorage
     const stamperKey = `swarm-stamper-${this.parentOrigin}-${this.postageBatchId}`
@@ -3933,6 +3948,7 @@ export class SwarmIdProxy {
             postageSignerAddress,
             avatar: generatedAvatar(account.id.toHex()),
             walletLink:
+              !this.walletLinkUnconfirmed &&
               walletLink &&
               verifyWalletLink(walletLink, { account: account.id.toHex() })
                 ? walletLink
