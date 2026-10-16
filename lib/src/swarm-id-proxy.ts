@@ -153,6 +153,10 @@ import type { DeviceStateSnapshot } from "./sync"
 import { mergeDevicesList } from "./sync/merge-snapshot"
 import { checkRestoredSession, type SessionVerdict } from "./sync/session-check"
 import {
+  readPublishedWalletLink,
+  type PublishedWalletLink,
+} from "./sync/published-wallet-link"
+import {
   accountDeltaFromSnapshot,
   restoreLocalSessionFields,
 } from "./bus/account-delta"
@@ -2893,6 +2897,13 @@ export class SwarmIdProxy {
       // it as 0 for exactly that reason.
       connectedAt,
     })
+    // Started beside the check, whose Swarm read it shares.
+    const accountId = data.account.id.toHex()
+    const publishedWalletLink = readPublishedWalletLink({
+      bee: this.accountBee,
+      derivationKey: data.account.derivationKey,
+      accountId,
+    })
     this.appSecret = data.secret
     this.chatBinding = this.acceptHandedOverChatBinding(data)
     this.authenticated = true
@@ -2910,6 +2921,37 @@ export class SwarmIdProxy {
       data.stampPending,
     )
 
+    this.emitConnectionInfoIfChanged()
+    void publishedWalletLink.then((published) =>
+      this.foldPublishedWalletLink(accountId, published),
+    )
+  }
+
+  /**
+   * Take the wallet link the account published when it is newer than the
+   * restored copy, and tell the site (docs/Wallet-Link.md).
+   *
+   * The bus carries a change of "Show my ENS name on sites" to a frame that is
+   * open, and keeps no mailbox. Turned off while no page of the site was open,
+   * the restored copy would go on handing the site the withdrawn wallet, so
+   * the published state decides on the link's own clock. Only the link: the
+   * rest of the published account still arrives over the bus.
+   */
+  private foldPublishedWalletLink(
+    accountId: string,
+    published: PublishedWalletLink | undefined,
+  ): void {
+    const account = this.partitionAccount
+    if (!published || !account || account.id.toHex() !== accountId) return
+    if (published.walletLinkAt <= (account.walletLinkAt ?? account.createdAt)) {
+      return
+    }
+    this.partitionAccount = {
+      ...account,
+      walletLink: published.walletLink,
+      walletLinkAt: published.walletLinkAt,
+    }
+    this.refreshStoredPartitionAccount()
     this.emitConnectionInfoIfChanged()
   }
 

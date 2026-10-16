@@ -94,6 +94,21 @@ const restoredSessionVerdict = vi.hoisted(
 vi.mock("./sync/session-check", () => ({
   checkRestoredSession: vi.fn(() => restoredSessionVerdict.value),
 }))
+/**
+ * The wallet link the account last published, which a restored session reads
+ * on its load. Left answering nothing, the account that never published.
+ */
+const publishedWalletLink = vi.hoisted(
+  () =>
+    ({ value: undefined }) as {
+      value:
+        | { walletLink: WalletLink | undefined; walletLinkAt: number }
+        | undefined
+    },
+)
+vi.mock("./sync/published-wallet-link", () => ({
+  readPublishedWalletLink: vi.fn(async () => publishedWalletLink.value),
+}))
 
 // Passes through, so a test can say this page could not reach the wrapping
 // key for one stored value, which is what a failed IndexedDB read leaves.
@@ -1794,6 +1809,55 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         await vi.waitFor(() => {
           expect(lastIdentity()).toBeDefined()
           expect(lastIdentity()?.walletLink).toBeUndefined()
+        })
+      })
+
+      // The bus keeps no mailbox, so a change made while no page of the site
+      // was open reaches its frame only through what the account published.
+      describe("while the site was closed", () => {
+        afterEach(() => {
+          publishedWalletLink.value = undefined
+        })
+
+        it("stops sharing the link on the next load", async () => {
+          ;(await signedInWith(signedWalletLink())).close()
+          publishedWalletLink.value = {
+            walletLink: undefined,
+            walletLinkAt: CHANGED_AT,
+          }
+
+          await reload()
+
+          await vi.waitFor(() => {
+            expect(lastIdentity()).toBeDefined()
+            expect(lastIdentity()?.walletLink).toBeUndefined()
+          })
+        })
+
+        it("starts sharing the link on the next load", async () => {
+          const walletLink = signedWalletLink()
+          ;(await signedInWith(undefined)).close()
+          publishedWalletLink.value = { walletLink, walletLinkAt: CHANGED_AT }
+
+          await reload()
+
+          await vi.waitFor(() =>
+            expect(lastIdentity()?.walletLink).toEqual(walletLink),
+          )
+        })
+
+        it("keeps the link the published state turned off before it", async () => {
+          const walletLink = signedWalletLink()
+          ;(await signedInWith(walletLink)).close()
+          publishedWalletLink.value = {
+            walletLink: undefined,
+            walletLinkAt: SIGNED_IN_AT - 1,
+          }
+
+          await reload()
+          await flushBus()
+
+          expect(lastIdentity()?.walletLink).toEqual(walletLink)
         })
       })
 
