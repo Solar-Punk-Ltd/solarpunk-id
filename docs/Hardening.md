@@ -59,6 +59,13 @@ drive moved the site onto the default. The connect window offers the default
 to a site that has none, and only the person's confirm makes it the site's
 drive, stored by its batch so a later change of default does not move the site.
 
+Swarm ID's own account records written from a site's frame (the device-state
+feed, the roster, the lock and the partition lease, through the coordinator built
+on the site's resolved stamp) are paid from the drive the person picked for that
+site (Levi's ruling A, 2026-10-16). A site with no pick writes none, and Swarm
+ID's own window pays from the account's drives as before. Not done yet, follow-up
+B: housekeeping on the account default through its own coordinator.
+
 Signing in gives the site no stamp. Every connect, first or not, marks the
 site's entry `stampPending`, and the handover that signs a frame kept apart in
 says `stampPending` and carries no stamp at all, signer key included. While it

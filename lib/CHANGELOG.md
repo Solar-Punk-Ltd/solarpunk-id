@@ -18,6 +18,7 @@
 
 ### Features
 
+- **lib:** Swarm ID's own account records written from a site's frame are paid from the drive the person picked for that site, and a site with no pick writes none (docs/Hardening.md).
 - **ui:** "Show my ENS name on sites", in the Account tab's Identity section, for an account
   secured with an Ethereum wallet. Off by default. Turning it on asks the wallet to sign a wallet
   link, a five-line "Swarm ID wallet link v1" statement that says in plain words what it does and

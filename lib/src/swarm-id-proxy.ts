@@ -3206,10 +3206,11 @@ export class SwarmIdProxy {
    * `buildAccountStateSnapshotForPublish` below — reusing that one would cost
    * two key derivations to send a bus message.
    *
-   * `requireDefaultStamp` is the FEED path's precondition, not the snapshot's:
-   * that write is paid for by the default stamp, while a bus message costs
-   * nothing to send and `metadata.defaultPostageStampBatchID` is optional on
-   * the wire. An account with no drives is a supported connected state, and
+   * `requireDefaultStamp` is the FEED path's precondition, not the snapshot's.
+   * That write is paid from the drive the person picked for this site, through
+   * the coordinator built on the site's resolved stamp, and not from the
+   * account default this flag checks. A bus message costs nothing to send and
+   * `metadata.defaultPostageStampBatchID` is optional on the wire. An account with no drives is a supported connected state, and
    * gating the delta on a stamp is how such an account's revokes never reach
    * its partitioned sessions at all.
    */
@@ -3337,7 +3338,9 @@ export class SwarmIdProxy {
    * and to the shared feed via the coordinator (same write lock + held
    * partition). The feed write needs a partition; the bus message does not, so
    * it goes out first and a read-only session still relays to peers that
-   * cannot see storage at all. Single-device accounts' feeds are published by
+   * cannot see storage at all. The feed write is paid from the site's picked
+   * drive, through the coordinator, and a site with no pick has no coordinator
+   * and writes none. Single-device accounts' feeds are published by
    * the SwarmID UI. Re-arms if a publish is already in flight so the latest
    * state still lands.
    */
