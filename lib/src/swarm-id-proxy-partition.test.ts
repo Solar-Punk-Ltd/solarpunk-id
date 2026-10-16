@@ -1694,6 +1694,121 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       expect(lastIdentity()).toBeDefined()
       expect(lastIdentity()?.walletLink).toBeUndefined()
     })
+
+    // The setting is turned on or off in Swarm ID's own tab, which a
+    // partitioned frame hears only as an `account-delta` on the link's own
+    // clock. The site has to be told while it is open, or its next message
+    // still carries the wallet the person just withdrew.
+    describe("changed in Swarm ID while the site is signed in", () => {
+      const SIGNED_IN_AT = 2_000_000
+      const CHANGED_AT = 3_000_000
+
+      function walletLinkDelta(
+        walletLink: WalletLink | undefined,
+        walletLinkAt: number,
+      ): Record<string, unknown> {
+        const account = linkedAccount(walletLink)
+        return {
+          type: "account-delta",
+          snapshot: serializeAccountStateSnapshot({
+            accountId: account.id.toHex(),
+            metadata: {
+              accountName: account.name,
+              defaultPostageStampBatchID: BATCH_ID_HEX,
+              publicKey: account.publicKey,
+              settings: undefined,
+              walletLink,
+              walletLinkAt,
+              createdAt: account.createdAt,
+              lastModified: walletLinkAt,
+              devices: [],
+              partitionCount: 2,
+            },
+            connectedApps: [],
+            postageStamps: account.postageStamps,
+            timestamp: walletLinkAt,
+          }),
+        }
+      }
+
+      async function signedInWith(
+        walletLink: WalletLink | undefined,
+      ): Promise<BroadcastChannel> {
+        const challenge = await startPartitionedConnect()
+        await sendSetSecret(challenge, {
+          account: serializeSyncedAccount({
+            ...linkedAccount(walletLink),
+            walletLinkAt: SIGNED_IN_AT,
+          }),
+        })
+        await awaitBusJoin()
+        return new BroadcastChannel(accountChannelName)
+      }
+
+      it("stops sharing the link once it is turned off", async () => {
+        const walletLink = signedWalletLink()
+        const busChannel = await signedInWith(walletLink)
+        try {
+          expect(lastIdentity()?.walletLink).toEqual(walletLink)
+
+          busChannel.postMessage(walletLinkDelta(undefined, CHANGED_AT))
+
+          await vi.waitFor(() => {
+            expect(lastIdentity()).toBeDefined()
+            expect(lastIdentity()?.walletLink).toBeUndefined()
+          })
+        } finally {
+          busChannel.close()
+        }
+      })
+
+      it("starts sharing the link once it is turned on", async () => {
+        const walletLink = signedWalletLink()
+        const busChannel = await signedInWith(undefined)
+        try {
+          expect(lastIdentity()?.walletLink).toBeUndefined()
+
+          busChannel.postMessage(walletLinkDelta(walletLink, CHANGED_AT))
+
+          await vi.waitFor(() =>
+            expect(lastIdentity()?.walletLink).toEqual(walletLink),
+          )
+        } finally {
+          busChannel.close()
+        }
+      })
+
+      it("keeps it off on the site's next load", async () => {
+        const busChannel = await signedInWith(signedWalletLink())
+        try {
+          busChannel.postMessage(walletLinkDelta(undefined, CHANGED_AT))
+          await vi.waitFor(() =>
+            expect(lastIdentity()?.walletLink).toBeUndefined(),
+          )
+        } finally {
+          busChannel.close()
+        }
+
+        await reload()
+
+        await vi.waitFor(() => {
+          expect(lastIdentity()).toBeDefined()
+          expect(lastIdentity()?.walletLink).toBeUndefined()
+        })
+      })
+
+      it("keeps the link when the change is older than its own", async () => {
+        const walletLink = signedWalletLink()
+        const busChannel = await signedInWith(walletLink)
+        try {
+          busChannel.postMessage(walletLinkDelta(undefined, SIGNED_IN_AT - 1))
+          await flushBus()
+          expect(lastIdentity()?.walletLink).toEqual(walletLink)
+        } finally {
+          busChannel.close()
+        }
+      })
+    })
   })
 
   // The device id is the frame's own: the lease and the roster identify this
