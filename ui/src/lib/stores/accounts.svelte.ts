@@ -402,8 +402,8 @@ export class Account {
   }
 
   /**
-   * Point an app at a specific drive, at no drive with `NO_POSTAGE_STAMP`, or
-   * back at the account default with `undefined`. The choice carries through the cross-device merge on its OWN
+   * Point an app at a specific drive, or at no drive with `NO_POSTAGE_STAMP`.
+   * The choice carries through the cross-device merge on its OWN
    * clock: it says nothing about whether the app is still connected, and a
    * clock that ranked the whole entry let this edit outrank a revoke made on
    * another device (#681). No-op when the app has no entry (nothing to point)
@@ -473,7 +473,8 @@ export class Account {
 
   /**
    * Add or replace a stamp (deduped by batch id). The first stamp added becomes
-   * the account default so uploads have something to spend against. Re-adding a
+   * the account default, the drive the connect window offers a site that has
+   * none. No site spends it until the person picks it there. Re-adding a
    * previously removed batch revives it (a fresh `createdAt` beats the old
    * tombstone on merge).
    */
@@ -669,7 +670,8 @@ function revoked(app: ConnectedApp, tombstone: boolean): ConnectedApp {
     disconnectedAt: now,
     revokedAt: tombstone ? now : app.revokedAt,
     // The drive chosen for the site goes with the connection, so a reconnect
-    // starts on the account default or on what the connect window is told.
+    // leaves the site with no drive until the person picks one in the connect
+    // window.
     // Its own clock moves too, or an older choice on another device would win
     // the merge and bring it back.
     postageStampBatchID: undefined,

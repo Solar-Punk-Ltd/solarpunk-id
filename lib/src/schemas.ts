@@ -200,9 +200,10 @@ export const ConnectedAppSchemaV1 = z.object({
   appDescription: z.string().optional(),
   connectedUntil: z.number().optional(),
   appSecret: z.string().optional(),
-  // The stamp the person chose for this app in Swarm ID. Absent → the account
-  // default (`account.defaultPostageStampBatchID`) pays for this app's uploads.
-  // `NO_POSTAGE_STAMP` → none does, and only a gateway the app names can pay.
+  // The stamp the person chose for this app in Swarm ID, and the only one the
+  // app may spend. Absent means the person has not picked one yet, and the
+  // account default does not stand in for it. `NO_POSTAGE_STAMP` means the
+  // person chose none. Either way only a gateway the app names can pay.
   postageStampBatchID: z
     .union([z.literal(NO_POSTAGE_STAMP), StoredBatchId])
     .optional(),

@@ -742,10 +742,11 @@ export type UploadMode = z.infer<typeof UploadModeSchema>
 /**
  * Why a session cannot upload, when `uploadMode` is `"unavailable"`.
  *
- * - `no-stamp`: the site has no stamp to use. The account has no drive (or
- *   its pointers name only drives that are gone), the person set this site to
- *   no drive, or the person has not yet confirmed the site's drive in the
- *   connect window since the site signed in.
+ * - `no-stamp`: the site has no stamp to use. The person has not picked a
+ *   drive for this site, the drive they picked is gone, they set this site to
+ *   no drive, or they have not yet confirmed the site's drive in the connect
+ *   window since the site signed in. The account's default drive never
+ *   stands in for a missing pick.
  * - `stamper-failed` — the stamp resolved and the stamper still did not build.
  *   `initializeStamper` logs and returns rather than throwing, so without this
  *   the symptom is indistinguishable from having no stamp at all.
@@ -2413,7 +2414,7 @@ export interface ClientOptions {
   initializationTimeout?: number
   /**
    * Invoked whenever the dApp-visible ConnectionInfo changes (identity rename,
-   * default-stamp change, local↔synced account migration, postage stamp added,
+   * the site's drive changed, local↔synced account migration, postage stamp added,
    * auth transitions, etc.). Fires once on initial auth check, then on every
    * effective change. The current snapshot is also available synchronously
    * via `client.connectionInfo`.

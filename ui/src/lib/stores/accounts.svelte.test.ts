@@ -478,7 +478,7 @@ describe('Account.setAppStamp', () => {
     expect(rehydrated.connectedApps[0].postageStampBatchID).toBe(NO_POSTAGE_STAMP)
   })
 
-  it('clears the pointer back to the account default', () => {
+  it('clears the pointer, which leaves the site with no drive', () => {
     const account = accountWithApp()
     account.setAppStamp(APP_URL, new BatchId(BATCH_HEX))
     account.setAppStamp(APP_URL, undefined)
@@ -559,8 +559,8 @@ describe('Account.confirmAppStamp', () => {
   })
 })
 
-// A site the person disconnects or removes comes back on the account default
-// or on what is picked in the connect window, never on a drive chosen before.
+// A site the person disconnects or removes comes back with no drive until one
+// is picked in the connect window, never on a drive chosen before.
 // The cleared choice carries its own fresh clock, so it wins over an older
 // choice merging in from another device.
 describe('disconnecting a site forgets the drive chosen for it', () => {

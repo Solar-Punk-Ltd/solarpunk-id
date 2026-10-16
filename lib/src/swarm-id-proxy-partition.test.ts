@@ -306,7 +306,16 @@ function makeSyncedAccount(): SyncedAccount {
     publicKey: `02${"ab".repeat(32)}`,
     defaultPostageStampBatchID: new BatchId(BATCH_ID_HEX),
     devices: [],
-    connectedApps: [],
+    // The site has picked the account's one drive: a site spends only its
+    // own pick, never the default (D4, 2026-10-16).
+    connectedApps: [
+      {
+        appUrl: PARENT_ORIGIN,
+        appName: "dApp",
+        lastConnectedAt: 1_000_000,
+        postageStampBatchID: new BatchId(BATCH_ID_HEX),
+      },
+    ],
     postageStamps: [
       {
         batchID: new BatchId(BATCH_ID_HEX),
@@ -502,6 +511,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
           appSecret: "44".repeat(32),
           lastConnectedAt: Date.now(),
           connectedUntil: Date.now() + 60_000,
+          postageStampBatchID: new BatchId(BATCH_ID_HEX),
         },
       ],
       // Inert but schema-valid: the vault is never opened here.
@@ -821,6 +831,12 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         shell.load().map((account) => ({
           ...account,
           defaultPostageStampBatchID: replacement,
+          connectedApps: (account as SignedInAccount).connectedApps.map(
+            (app) => ({
+              ...app,
+              postageStampBatchID: replacement,
+            }),
+          ),
           postageStamps: (account as SyncedAccount).postageStamps.map(
             (stamp) => ({
               ...stamp,
@@ -977,6 +993,12 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         shell.load().map((account) => ({
           ...account,
           defaultPostageStampBatchID: replacement,
+          connectedApps: (account as SignedInAccount).connectedApps.map(
+            (app) => ({
+              ...app,
+              postageStampBatchID: replacement,
+            }),
+          ),
           postageStamps: (account as SyncedAccount).postageStamps.map(
             (stamp) => ({ ...stamp, batchID: replacement }),
           ),
@@ -1138,6 +1160,35 @@ describe("SwarmIdProxy partitioned write enablement", () => {
           mode: "subsidised",
           gatewayUrl: GATEWAY_URL,
         })
+      })
+
+      // D4's second case: the person removes the drive picked for this site.
+      // The account still has another drive as its default, and the site
+      // must not fall through to it.
+      it("leaves the site with no stamp when its picked drive is removed, not on the default", async () => {
+        await seedConnectedAccount()
+        await identify()
+        chooseForSite(new BatchId(OTHER_BATCH_ID_HEX))
+        await vi.waitFor(() =>
+          expect(lastConnectionInfo()?.postageBatchId).toBe(OTHER_BATCH_ID_HEX),
+        )
+
+        const shell = createAccountsStorageManager()
+        const [current] = shell.load() as SignedInAccount[]
+        shell.save([
+          {
+            ...current,
+            postageStamps: current.postageStamps.filter(
+              (stamp) => stamp.batchID.toHex() !== OTHER_BATCH_ID_HEX,
+            ),
+          },
+        ])
+        await vi.waitFor(() =>
+          expect(lastConnectionInfo()?.uploadUnavailableReason).toBe(
+            "no-stamp",
+          ),
+        )
+        expect(lastConnectionInfo()?.postageBatchId).toBeUndefined()
       })
 
       it("says the site has no stamp when it names no gateway", async () => {
@@ -1358,6 +1409,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
               appSecret: OTHER_APP_SECRET,
               lastConnectedAt: Date.now(),
               connectedUntil: Date.now() + PAST_DRIVE_TTL_MS * 2,
+              postageStampBatchID: new BatchId(BATCH_ID_HEX),
             },
           ],
         })
@@ -1453,6 +1505,33 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     expect(last.storagePartitioned).toBe(true)
     expect(last.uploadMode).toBe("unavailable")
     expect(last.uploadUnavailableReason).toBe("no-stamp")
+  })
+
+  // Levi's ruling D4, 2026-10-16: a site spends only the drive the person
+  // picked for it, so an account default the site was never given stays
+  // out of its reach, in the handover and in what it reports.
+  it("reports no-stamp for a site with no pick, though the account has a default drive", async () => {
+    const account = makeSyncedAccount()
+    const challenge = await startPartitionedConnect()
+    await sendSetSecret(challenge, {
+      account: serializeSyncedAccount({
+        ...account,
+        connectedApps: [
+          {
+            appUrl: PARENT_ORIGIN,
+            appName: "dApp",
+            lastConnectedAt: Date.now(),
+          },
+        ],
+      }),
+    })
+
+    const infos = messagesOfType("connectionInfoChanged")
+    const last = infos[infos.length - 1]
+    expect(last.storagePartitioned).toBe(true)
+    expect(last.uploadMode).toBe("unavailable")
+    expect(last.uploadUnavailableReason).toBe("no-stamp")
+    expect(last.postageBatchId).toBeUndefined()
   })
 
   it("reports stamper-failed when the stamp resolves but the stamper does not build", async () => {
@@ -1758,6 +1837,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
             appSecret: "44".repeat(32),
             lastConnectedAt: Date.now(),
             connectedUntil: Date.now() + 60_000,
+            postageStampBatchID: new BatchId(BATCH_ID_HEX),
             stampPending: true,
           },
         ],
@@ -3040,6 +3120,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
               appUrl: PARENT_ORIGIN,
               appName: "dApp",
               lastConnectedAt: Date.now() - 1000,
+              postageStampBatchID: new BatchId(BATCH_ID_HEX),
               chatBinding: binding,
             },
             {
@@ -3262,6 +3343,18 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       }
     }
 
+    /** The site's entry once its drive was replaced: the pick moved to the
+     *  replacement, on a clock newer than the hydrated entry's. */
+    function replacedPick(now: number): ConnectedApp {
+      return {
+        appUrl: PARENT_ORIGIN,
+        appName: "dApp",
+        lastConnectedAt: now,
+        postageStampBatchID: new BatchId(OTHER_BATCH_ID_HEX),
+        postageStampBatchIDAt: now + 1,
+      }
+    }
+
     /** A revoke as the UI writes it: auth material cleared, tombstoned. */
     function revoked(appUrl: string): ConnectedApp {
       const now = Date.now()
@@ -3376,13 +3469,13 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       }
     })
 
-    // A default-stamp change is two moves in one delta: the old stamp is
-    // tombstoned and the pointer moves to a new one. Fold the collections
-    // without the metadata and the pointer stays on the tombstone —
-    // `resolveStampForApp` then resolves nothing, the stamper is cleared, and
-    // the session cannot upload for the page's life with the replacement stamp
+    // Replacing the site's drive is two moves in one delta: the old stamp is
+    // tombstoned and the site's pick moves to a new one. Fold the stamps
+    // without the site's entry and the pick stays on the tombstone, so
+    // `resolveStampForApp` resolves nothing, the stamper is cleared, and the
+    // session cannot upload for the page's life with the replacement stamp
     // and its signer key already in hand.
-    it("rebinds the stamper when a delta moves the default stamp", async () => {
+    it("rebinds the stamper when a delta moves the site's drive", async () => {
       const busChannel = await hydratedSession()
       const replacementKey = "ab".repeat(32)
       try {
@@ -3390,6 +3483,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         const now = Date.now()
         busChannel.postMessage(
           accountDelta({
+            connectedApps: [replacedPick(now)],
             defaultPostageStampBatchID: OTHER_BATCH_ID_HEX,
             defaultStampAt: now,
             postageStamps: [
@@ -3439,7 +3533,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         vi.stubGlobal("Worker", FakeStampWorker)
       })
 
-      it("is rebuilt with the new signer when a delta moves the default stamp", async () => {
+      it("is rebuilt with the new signer when a delta moves the site's drive", async () => {
         const busChannel = await hydratedSession()
         const replacementKey = "ab".repeat(32)
         try {
@@ -3451,6 +3545,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
           const now = Date.now()
           busChannel.postMessage(
             accountDelta({
+              connectedApps: [replacedPick(now)],
               defaultPostageStampBatchID: OTHER_BATCH_ID_HEX,
               defaultStampAt: now,
               postageStamps: [
@@ -3591,7 +3686,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     // re-save the fold above lives only in memory: the next reload comes back
     // on the tombstoned stamp and its superseded signer key, and uploads with
     // it until some later delta happens to arrive while the page is open.
-    it("re-persists the stored session after a delta moves the default stamp", async () => {
+    it("re-persists the stored session after a delta moves the site's drive", async () => {
       const busChannel = await hydratedSession()
       const before = JSON.parse(
         localStorageFake.getItem(partitionSessionStorageKey(PARENT_ORIGIN))!,
@@ -3601,6 +3696,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         const now = Date.now()
         busChannel.postMessage(
           accountDelta({
+            connectedApps: [replacedPick(now)],
             defaultPostageStampBatchID: OTHER_BATCH_ID_HEX,
             defaultStampAt: now,
             postageStamps: [
@@ -3651,7 +3747,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         busChannel.postMessage(
           accountDelta({
             lastModified: localAt - 10_000,
-            // The second stamp has to be one this app's pointers name, or the
+            // The second stamp has to be the one this app picked, or the
             // narrowing (#578) drops it and the fold is unobservable here: the
             // delta re-points the app at it in the same message.
             connectedApps: [
@@ -3674,7 +3770,11 @@ describe("SwarmIdProxy partitioned write enablement", () => {
           }),
         )
         await vi.waitFor(() =>
-          expect(internals.partitionAccount!.postageStamps).toHaveLength(2),
+          expect(
+            internals.partitionAccount!.postageStamps.map((held) =>
+              held.batchID.toHex(),
+            ),
+          ).toEqual([OTHER_BATCH_ID_HEX]),
         )
         expect(internals.partitionAccount!.lastModified).toBe(localAt)
       } finally {
@@ -3818,6 +3918,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
                 appUrl: PARENT_ORIGIN,
                 appName: "dApp",
                 lastConnectedAt: Date.now(),
+                postageStampBatchID: new BatchId(BATCH_ID_HEX),
               },
             ],
           }),
@@ -4055,9 +4156,9 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     /** What the narrowing filters BY has to be what the merge just decided —
      *  the delta carries both the new pointer and the stamp it names, and a
      *  narrowing that reads the pre-merge pointers throws the stamp away while
-     *  keeping the pointer. `resolveStampForApp` then falls through to the
-     *  account default and the session uploads to the wrong batch, until some
-     *  unrelated change happens to publish again. */
+     *  keeping the pointer. `resolveStampForApp` then resolves nothing and the
+     *  session cannot upload, until some unrelated change happens to publish
+     *  again. */
     function otherStamp(): PostageStamp {
       return {
         ...makeSyncedAccount().postageStamps[0],
@@ -4159,11 +4260,11 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       }
     })
 
-    /** Same shape, one field over: the account default moves. Before the
-     *  narrowing the session at least HELD the new default's stamp; now a
-     *  pointer that never folds filters it out, so the session goes
-     *  upload-dead the moment the old default is tombstoned. */
-    it("follows the account default a newer delta moves", async () => {
+    /** Same shape, one field over: the account default moves. The site
+     *  spends only its own pick (D4, 2026-10-16), so the fold takes the new
+     *  default as account metadata and the session neither holds nor stamps
+     *  with the drive it names. */
+    it("keeps its own pick when a newer delta moves the account default", async () => {
       const busChannel = await hydratedSession()
       try {
         busChannel.postMessage(
@@ -4186,7 +4287,10 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         )
         expect(
           held.partitionAccount.postageStamps.map((s) => s.batchID.toHex()),
-        ).toContain(OTHER_BATCH_ID_HEX)
+        ).toEqual([BATCH_ID_HEX])
+        expect(
+          messagesOfType("connectionInfoChanged").at(-1)?.postageBatchId,
+        ).toBe(BATCH_ID_HEX)
       } finally {
         busChannel.close()
       }

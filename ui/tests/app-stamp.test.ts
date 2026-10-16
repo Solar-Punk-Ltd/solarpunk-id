@@ -83,9 +83,11 @@ test('the Apps screen changes the drive a site uses, from a link to that site', 
 
   const row = page.locator('[aria-current="true"]')
   await expect(row).toContainText(SITE)
+  // The site has picked no drive, and the account default does not stand in
+  // for one (D4, 2026-10-16).
   const picker = row.getByRole('combobox', { name: 'Drive this app uses', exact: true })
-  await expect(picker).toHaveValue(MAIN_BATCH)
-  await expect(row.getByText(`Main · 25% used · ${LIFETIME_DAYS} days left`)).toBeVisible()
+  await expect(picker).toHaveValue('none')
+  await expect(row.locator('p', { hasText: /^No drive$/ })).toBeVisible()
 
   await picker.selectOption({ label: 'Chat' })
   await expect(row.getByText(`Chat · 50% used · ${LIFETIME_DAYS} days left`)).toBeVisible()
@@ -95,9 +97,10 @@ test('the Apps screen changes the drive a site uses, from a link to that site', 
   await expect(row.locator('p', { hasText: /^No drive$/ })).toBeVisible()
   await expect.poll(() => storedChoice(page)).toBe('none')
 
-  // The default is stored as following it, so the site moves with the default.
+  // The default is stored by its batch, so the site keeps it when the default moves.
   await picker.selectOption({ label: 'Main (default)' })
-  await expect.poll(() => storedChoice(page)).toBeUndefined()
+  await expect(row.getByText(`Main · 25% used · ${LIFETIME_DAYS} days left`)).toBeVisible()
+  await expect.poll(() => storedChoice(page)).toBe(MAIN_BATCH)
 
   await page.goto(`/#apps/${encodeURIComponent('https://other.example.com')}`)
   await expect(

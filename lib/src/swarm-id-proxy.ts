@@ -860,8 +860,8 @@ export class SwarmIdProxy {
         // New connection, or the connected account / secret changed.
         await this.authenticateFromStorage(app)
       } else {
-        // Same connection — related metadata (default stamp, per-app batch
-        // override, rename) may have changed. A partitioned session skips this
+        // Same connection. Related metadata (the site's picked stamp, a
+        // rename) may have changed. A partitioned session skips this
         // for a storage event, whose account document it cannot read; after a
         // bus fold it must NOT skip it, because the hydrated view it just
         // folded into is exactly what the refresh reads (the same call
@@ -1208,7 +1208,7 @@ export class SwarmIdProxy {
    * Re-persist the stored session's account view after a live fold moved it.
    *
    * Without this the record is frozen at the handover: a rotated signer key or
-   * a moved default stamp arrives over the bus, updates `partitionAccount`, and
+   * a moved pick for this site arrives over the bus, updates `partitionAccount`, and
    * then a reload resurrects the pre-fold copy and uploads with it until the
    * next live overlap.
    *
@@ -2003,11 +2003,11 @@ export class SwarmIdProxy {
       // The shared fold, not a second set of rules: `foldAccount` merges the
       // collections per `appUrl` / `batchID` on their tombstone clocks AND
       // every scalar on its own per-field clock, exactly as the Swarm read
-      // path does. The metadata is not optional here — a moved default stamp
-      // arrives as "old one tombstoned, new one added, pointer moved", so
-      // folding the collections alone leaves the pointer on the tombstone,
-      // `resolveStampForApp` resolves nothing, and the session cannot upload
-      // for the page's life with the replacement key already in hand.
+      // path does. A replaced drive for this site arrives as "old one
+      // tombstoned, new one added, the site's pick moved", and the pick rides
+      // its own clock on the site's entry, so folding only the stamp
+      // collection would leave the pick on the tombstone and the session
+      // unable to upload with the replacement key already in hand.
       // Local view first, so a tie on a collection entry keeps ours.
       const folded = foldAccount(
         [
@@ -2049,17 +2049,15 @@ export class SwarmIdProxy {
         // still runs, because the session must hear about ITS stamp — a
         // rotated signer key, a tombstone — and LWW is what tells it.
         //
-        // Narrowed by the pointers the fold just decided, never the pre-fold
-        // ones: one delta can carry both a re-pointed app (or a moved account
-        // default) and the stamp it now names, and filtering by the old
-        // pointers drops the stamp while keeping the pointer —
-        // `resolveStampForApp` then falls through, and the session spends the
-        // wrong batch or nothing at all, with nothing to correct it until some
+        // Narrowed by the pick the fold just decided, never the pre-fold
+        // one: one delta can carry both a re-pointed app and the stamp it now
+        // names, and filtering by the old pick drops the stamp while keeping
+        // the pointer. `resolveStampForApp` then resolves nothing, and the
+        // session cannot upload with nothing to correct it until some
         // unrelated change publishes again.
         postageStamps: stampsReachableByApp(
           connectedApps.find((app) => app.appUrl === connection.app.appUrl) ??
             connection.app,
-          foldedAccount,
           foldedAccount.postageStamps,
         ),
       }
@@ -3008,10 +3006,7 @@ export class SwarmIdProxy {
         return undefined
       }
 
-      // Resolve the stamp this app should use: its per-app override if set,
-      // otherwise the account default — skipping a pointer whose stamp is
-      // missing so a stale pointer falls through instead of failing.
-      return resolveStampForApp(app, account, account.postageStamps)
+      return resolveStampForApp(app, account.postageStamps)
     } catch (error) {
       console.error("[Proxy] Error looking up postage stamp:", error)
       return undefined
