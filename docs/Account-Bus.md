@@ -218,9 +218,10 @@ With the bus in place the partitioned iframe is a first-class writer:
   encrypted on-Swarm account state contains the `derivationKey` anyway, so holding the derived
   keys is equivalent — derived-only would be defense-in-depth theater.)
 - **What the partitioned session is allowed to hold** (#578). The stamp collection is narrowed
-  to the batches this app's own pointers name — its `postageStampBatchID` override and the
-  account default it falls through to (`stampsReachableByApp`), nothing for an app set to no
-  stamp (`"none"`) or still waiting for the person to confirm its drive (`stampPending`) — at the handover AND after
+  to the one batch the person picked for this app, its `postageStampBatchID`
+  (`stampsReachableByApp`). The account default is never added beside it. Nothing is held for
+  an app with no pick, one set to no stamp (`"none"`), or one still waiting for the person to
+  confirm its drive (`stampPending`). This holds at the handover AND after
   every `account-delta` fold, since the publisher is an unpartitioned context that sends the
   whole collection. A session can only ever spend the stamp `resolveStampForApp` picks, so
   every other signer key it held was exposure with no use.
@@ -513,7 +514,7 @@ Not yet written:
   its roster is empty and allows it ([Hardening](Hardening.md)).
 - That check asks only whether the connection ENDED — a missing entry, a `revokedAt` (Remove), or
   a `disconnectedAt` newer than the connection the session came from (Disconnect). A **rotated
-  signer key, moved default stamp or site stamp changed on the Apps screen** made while the tab
+  signer key or site stamp changed on the Apps screen** made while the tab
   was closed is not adopted on restore;
   the session comes up on the handed-over view and corrects at the next live overlap. Changes
   that arrive while it IS live are folded and re-persisted, so they survive a reload.

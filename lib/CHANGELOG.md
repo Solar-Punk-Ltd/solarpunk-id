@@ -2,6 +2,20 @@
 
 ## 0.10.0
 
+### Breaking changes
+
+- **lib:** a site stamps only with the drive the person picked for it. The account default no
+  longer stands in for a missing pick, so a site with no pick, or whose picked drive is gone,
+  has no stamp and reports `uploadUnavailableReason: "no-stamp"` until the person picks one in
+  the connect window or on the Apps screen. Before, a drive bought after signing in became the
+  default and the site used it unasked, and removing the picked drive moved the site onto the
+  default. `resolveStampForApp(app, stamps)` and `stampsReachableByApp(app, stamps)` in
+  `@solarpunkltd/swarm-id/internal` no longer take the account.
+- **ui:** the connect window still starts its picker on the account default for a site with no
+  drive, and "Go to app" saves that drive as the site's. A drive picked on the Apps screen or in
+  the connect window is stored by its batch, the default included, so a later change of default
+  does not move the site.
+
 ### Features
 
 - **ui:** "Show my ENS name on sites", in the Account tab's Identity section, for an account
