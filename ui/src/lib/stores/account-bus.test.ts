@@ -35,6 +35,8 @@ const transports = vi.hoisted(
       deliver?: (raw: unknown, from?: string) => void
       /** The seam the room's departures arrive on. */
       peerLeft?: (peerId: string) => void
+      /** The seam the room's arrivals arrive on. */
+      peerJoined?: (peerId: string) => void
     }[],
 )
 /** Holds the topic derivation open, so "a publish during the join" is a real
@@ -66,9 +68,16 @@ vi.mock('@solarpunkltd/swarm-id/internal', async (importActual) => {
             transport.peerLeft = undefined
           }
         }),
+        onPeerJoined: vi.fn((handler: (peerId: string) => void) => {
+          transport.peerJoined = handler
+          return () => {
+            transport.peerJoined = undefined
+          }
+        }),
         close: vi.fn(),
         deliver: undefined as ((raw: unknown, from?: string) => void) | undefined,
         peerLeft: undefined as ((peerId: string) => void) | undefined,
+        peerJoined: undefined as ((peerId: string) => void) | undefined,
       }
       transports.push(transport)
       return transport
@@ -370,6 +379,39 @@ describe('accountBusStore', () => {
 
     transports[0].peerLeft?.('socket-1')
     expect(accountBusStore.liveDeviceIds()).toEqual([])
+  })
+
+  // The room keeps no mailbox. A site's frame that joins after a change, such
+  // as a site loaded again right after "Show my ENS name on sites" was turned
+  // off, would otherwise go on with the copy it restored, and an account with
+  // no drive publishes nothing to Swarm it could read instead.
+  it('tells a peer that joins the room how the account stands now', async () => {
+    const account = makeAccount()
+    accountBusStore.join(account)
+    await joined()
+    const renamed = makeAccount({ name: 'Renamed Here', lastModified: 3_000_000 })
+    accountBusStore.publish(renamed)
+    await settlePublish()
+
+    transports[0].peerJoined?.('socket-2')
+    await settlePublish()
+
+    const published = deltasPublished(transports[0])
+    expect(published).toHaveLength(2)
+    expect(published[1].snapshot.accountId).toBe(account.id.toHex())
+    expect(published[1].snapshot.metadata.accountName).toBe('Renamed Here')
+  })
+
+  it('tells no one once the room is left', async () => {
+    accountBusStore.join(makeAccount())
+    await joined()
+    const room = transports[0]
+    accountBusStore.leave()
+
+    room.peerJoined?.('socket-2')
+    await settlePublish()
+
+    expect(deltasPublished(room)).toHaveLength(0)
   })
 
   // Malformed or unknown traffic is dropped by the bus's own schema — the fold

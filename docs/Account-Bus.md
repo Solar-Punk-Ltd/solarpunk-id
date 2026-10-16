@@ -153,7 +153,10 @@ newcomer                         signaling server                       existing
   so a teardown announcement made in the closing tick still reaches the wire.
 - **No mailbox.** A message reaches the peers that are in the room right now. That is the
   whole design: the bus makes live peers converge fast; it does not carry anything to a
-  context that is closed (see Known gaps).
+  context that is closed (see Known gaps). What a newcomer missed while it was closed it
+  hears from a SwarmID tab that is open: the tab answers every `peer-joined` with the
+  account's `account-delta`, debounced like any other publish, and the newcomer folds it on
+  the per-field clocks, so an answer it did not need changes nothing.
 
 Server limits (`signaling/src/server.ts`, all deliberately global rather than per-IP because
 the service sits behind the platform ingress): 500 connections, 200 rooms, 24 peers per room, a

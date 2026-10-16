@@ -109,8 +109,9 @@ never settles, even on a single device.
 ## What the bus is not
 
 - **Not a mailbox.** A message reaches the peers that are in the room now. An app partition that
-  is closed when an app is revoked learns about it when it next overlaps with a live peer, or
-  from the one-time read of the account's published state it does on restore.
+  is closed when an app is revoked learns about it when it next joins the room while a Swarm ID
+  tab is open, which answers every newcomer with the account as it stands, or from the one-time
+  read of the account's published state it does on restore.
 - **Not the record.** Every message either shortcuts a wait the durable protocol would
   have resolved anyway, or carries state the durable stores already hold.
 - **Not replay-protected yet** ([#604](https://github.com/snaha/swarm-id/issues/604)). The lease

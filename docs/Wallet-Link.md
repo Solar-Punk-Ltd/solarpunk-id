@@ -70,9 +70,11 @@ reaches its frame only through what the account published. On its next load
 the frame reads the link the account published, beside its check for a
 session ended while it was closed, and takes it when its clock is newer
 (`readPublishedWalletLink`). An account that has never published, because it
-has no drive to pay for it, has nothing to read there. Its frame learns the
-change only while the site and a page of Swarm ID are open at the same time,
-or at the next sign-in.
+has no drive to pay for it, has nothing to read there. A page of Swarm ID that
+is open answers every context joining the account's room with the account as
+it stands, so a frame loaded while one is open, a site reloaded right after the
+change included, takes the link from that answer. With no page of Swarm ID
+open, such an account's frame learns the change at the next sign-in.
 
 Every connected site receives the same link. It names no site, unlike a chat
 binding ([Chat-Binding.md](Chat-Binding.md)), because what it says is true of
