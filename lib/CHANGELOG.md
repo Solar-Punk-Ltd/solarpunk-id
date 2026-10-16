@@ -40,6 +40,12 @@
   their gateway sees the lookup. Anything that goes wrong answers undefined. Answers are kept for
   ten minutes, and a failed read for 30 seconds. The library now depends on `viem`.
 
+### Fixed
+
+- **ui:** the wallet picker contacts no host of its own. It no longer fetches the Inter font
+  from rsms.me and draws in the app's font instead, and it no longer looks up each connected
+  wallet's ENS name at cloudflare-eth.com. Both told a third party who opened Swarm ID.
+
 ## 0.9.1
 
 ### Fixed
