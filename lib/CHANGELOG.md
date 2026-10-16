@@ -28,6 +28,8 @@
   messages already sent keep the name (docs/Wallet-Link.md).
 - **lib:** while the setting is on, `connectionInfo.identity.walletLink` carries the link as
   `{ message, walletSignature, accountSignature }`. While it is off, a site learns no wallet.
+  Turning it off or on reaches a signed-in site at once as a `connectionInfoChanged`, and a
+  site that was closed meanwhile on its next load, from what the account published.
 - **lib:** `verifyWalletLink(link, { account })` checks a link strictly and returns the account,
   wallet and date it names, or undefined. `buildWalletLinkMessage`, `parseWalletLinkMessage`,
   `WALLET_LINK_TITLE` and `WALLET_LINK_STATEMENT` give the exact format.

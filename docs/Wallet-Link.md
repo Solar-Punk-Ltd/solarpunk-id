@@ -55,6 +55,25 @@ the frame serves (`verifyWalletLink`), so a link another account signed never
 reaches a site as this one's. While the setting is off, `identity.walletLink`
 is absent and the site learns no wallet at all.
 
+A site that is signed in hears of a change at once. Turning the setting off
+or on in Swarm ID reaches every open frame of the account, over the account
+bus for a frame in its own storage partition and through a storage event for
+one that shares Swarm ID's storage ([Account-Bus.md](Account-Bus.md)). The
+frame folds it in on the link's own clock and sends the site a
+`connectionInfoChanged` whose `identity.walletLink` is gone or new. A site
+that puts the link in what it publishes reads it from the latest
+`ConnectionInfo`, never from the one it had at sign-in.
+
+A partitioned frame keeps what it folded across the site's reloads. The bus
+keeps no mailbox, though, so a change made while no page of the site was open
+reaches its frame only through what the account published. On its next load
+the frame reads the link the account published, beside its check for a
+session ended while it was closed, and takes it when its clock is newer
+(`readPublishedWalletLink`). An account that has never published, because it
+has no drive to pay for it, has nothing to read there. Its frame learns the
+change only while the site and a page of Swarm ID are open at the same time,
+or at the next sign-in.
+
 Every connected site receives the same link. It names no site, unlike a chat
 binding ([Chat-Binding.md](Chat-Binding.md)), because what it says is true of
 the account on every site.

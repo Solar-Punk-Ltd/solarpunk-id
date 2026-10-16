@@ -254,7 +254,9 @@ With the bus in place the partitioned iframe is a first-class writer:
   unpartitioned path enforces out of shared storage, 7 days by default, and a restored
   session reads the account's published state before its first write, to catch a revoke made
   while the tab was closed, which reaches it no other way ([Hardening](Hardening.md)). That read is a revocation check,
-  not a fold: everything else still arrives over the bus, and a fold that lands re-persists
+  not a fold, with one exception: the wallet link, which is taken when its own clock is newer
+  so a link turned off while the site was closed is not handed back to it
+  ([Wallet-Link.md](Wallet-Link.md)). Everything else still arrives over the bus, and a fold that lands re-persists
   the record so the next reload does not undo it. The iframe keeps its own
   `swarm-id-device-id` and lease cache — it _is_ a device, named after the dApp it belongs to
   in the roster (#643), and its liveness comes from presence like every other device's; nothing
@@ -516,7 +518,9 @@ Not yet written:
   a `disconnectedAt` newer than the connection the session came from (Disconnect). A **rotated
   signer key or site stamp changed on the Apps screen** made while the tab
   was closed is not adopted on restore;
-  the session comes up on the handed-over view and corrects at the next live overlap. Changes
+  the session comes up on the handed-over view and corrects at the next live overlap. The wallet
+  link is the one field the restore adopts, read beside the check from the same fold, because a
+  stale one publishes the person's wallet on the site's behalf. Changes
   that arrive while it IS live are folded and re-persisted, so they survive a reload.
 - **Network settings do not reach a partitioned session at all.** The Bee node and RPC URLs are
   browser-local (`swarm-id-network-settings`), not account state, so they ride the connect
