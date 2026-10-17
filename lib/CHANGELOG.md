@@ -29,7 +29,10 @@
 - **lib:** while the setting is on, `connectionInfo.identity.walletLink` carries the link as
   `{ message, walletSignature, accountSignature }`. While it is off, a site learns no wallet.
   Turning it off or on reaches a signed-in site at once as a `connectionInfoChanged`, and a
-  site that was closed meanwhile on its next load, from what the account published.
+  site that was closed meanwhile on its next load, from what the account published. A site
+  loaded again holds its saved link back until the published state, an open page of Swarm ID
+  or a new sign-in confirms it, so an account with no drive, which publishes nothing, never
+  hands a site a link turned off while it was closed.
 - **lib:** `verifyWalletLink(link, { account })` checks a link strictly and returns the account,
   wallet and date it names, or undefined. `buildWalletLinkMessage`, `parseWalletLinkMessage`,
   `WALLET_LINK_TITLE` and `WALLET_LINK_STATEMENT` give the exact format.
