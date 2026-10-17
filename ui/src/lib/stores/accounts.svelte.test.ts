@@ -375,6 +375,77 @@ describe('Account.signOut storage-warning remnant', () => {
   })
 })
 
+describe('Account.setWalletLink', () => {
+  // The shape is all the store checks: the link is signed and checked where it
+  // is made, so placeholder signatures stand in for one here.
+  const LINK = {
+    message: 'Swarm ID wallet link v1',
+    walletSignature: `0x${'11'.repeat(65)}`,
+    accountSignature: `0x${'22'.repeat(65)}`,
+  }
+
+  it('keeps the link on its own clock and leaves the other settings and their clock alone', () => {
+    const account = new Account(
+      { ...signedInRecord(), settings: { appSessionDuration: 5 }, settingsAt: 3 },
+      noCommit,
+    )
+    account.setWalletLink(LINK)
+    expect(account.walletLink).toEqual(LINK)
+    expect(account.walletLinkAt).toEqual(expect.any(Number))
+    expect(account.settings).toEqual({ appSessionDuration: 5 })
+    expect(account.settingsAt).toBe(3)
+    const rehydrated = new Account(account.toRecord(), noCommit)
+    expect(rehydrated.walletLink).toEqual(LINK)
+    expect(rehydrated.walletLinkAt).toBe(account.walletLinkAt)
+  })
+
+  // Turning the setting off must reach the other devices as a newer value,
+  // not as a field that is merely missing.
+  it('removes the link on a newer clock', () => {
+    const account = new Account(
+      { ...signedInRecord(), walletLink: LINK, walletLinkAt: 1 },
+      noCommit,
+    )
+    account.setWalletLink(undefined)
+    expect(account.walletLink).toBeUndefined()
+    expect(account.walletLinkAt).toBeGreaterThan(1)
+  })
+
+  // Settings were one last-writer-wins value, so another device's later
+  // session-duration edit, made while it still held the link, brought it back.
+  it('stays off when another device with a later settings clock changes the session duration', () => {
+    const account = new Account(
+      {
+        ...signedInRecord(),
+        settings: { appSessionDuration: 5 },
+        settingsAt: 1,
+        walletLink: LINK,
+        walletLinkAt: 1,
+      },
+      noCommit,
+    )
+    account.setWalletLink(undefined)
+    const turnedOffAt = account.walletLinkAt ?? 0
+    account.applyRefreshed({
+      settings: { appSessionDuration: 9 },
+      settingsAt: turnedOffAt + 1000,
+      walletLink: LINK,
+      walletLinkAt: 1,
+    })
+    expect(account.walletLink).toBeUndefined()
+    expect(account.walletLinkAt).toBe(turnedOffAt)
+    expect(account.settings).toEqual({ appSessionDuration: 9 })
+    expect(account.settingsAt).toBe(turnedOffAt + 1000)
+  })
+
+  it('takes a link a peer turned on later', () => {
+    const account = new Account({ ...signedInRecord(), walletLinkAt: 1 }, noCommit)
+    account.applyRefreshed({ walletLink: LINK, walletLinkAt: 2 })
+    expect(account.walletLink).toEqual(LINK)
+    expect(account.walletLinkAt).toBe(2)
+  })
+})
+
 describe('Account.setAppStamp', () => {
   const APP_URL = 'https://app.example.com'
   const BATCH_HEX = 'c'.repeat(64)
@@ -407,7 +478,7 @@ describe('Account.setAppStamp', () => {
     expect(rehydrated.connectedApps[0].postageStampBatchID).toBe(NO_POSTAGE_STAMP)
   })
 
-  it('clears the pointer back to the account default', () => {
+  it('clears the pointer, which leaves the site with no drive', () => {
     const account = accountWithApp()
     account.setAppStamp(APP_URL, new BatchId(BATCH_HEX))
     account.setAppStamp(APP_URL, undefined)
@@ -488,8 +559,8 @@ describe('Account.confirmAppStamp', () => {
   })
 })
 
-// A site the person disconnects or removes comes back on the account default
-// or on what is picked in the connect window, never on a drive chosen before.
+// A site the person disconnects or removes comes back with no drive until one
+// is picked in the connect window, never on a drive chosen before.
 // The cleared choice carries its own fresh clock, so it wins over an older
 // choice merging in from another device.
 describe('disconnecting a site forgets the drive chosen for it', () => {

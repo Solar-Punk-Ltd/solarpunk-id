@@ -39,8 +39,8 @@ export type {
   DeviceStateSnapshot,
   DeviceStateView,
   FoldedAccount,
-  AccountSettings,
 } from "./device-state"
+export type { AccountSettings } from "../schemas"
 export {
   rosterTopic,
   readRoster,

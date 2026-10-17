@@ -18,10 +18,8 @@
  */
 
 import { PrivateKey } from "@ethersphere/bee-js"
-import { secp256k1 } from "@noble/curves/secp256k1"
-import { keccak_256 } from "@noble/hashes/sha3"
-import { hexToUint8Array, uint8ArrayToHex } from "./hex"
 import { deriveChatKey, deriveSecretSync } from "./key-derivation"
+import { personalSign, recoverPersonalSigner } from "./personal-sign"
 
 /** The first line, which also versions the format. */
 export const CHAT_BINDING_TITLE = "Swarm ID chat binding v1"
@@ -32,18 +30,10 @@ const DATE_PREFIX = "Date: "
 const LINE_SEPARATOR = "\n"
 const LINE_COUNT = 4
 
-const PERSONAL_MESSAGE_PREFIX = "\x19Ethereum Signed Message:\n"
-/** EIP-191 signatures carry the recovery id offset by this. */
-const RECOVERY_OFFSET = 27
-const SIGNATURE_HEX_PATTERN = /^0x[0-9a-fA-F]{130}$/
-const COMPACT_SIGNATURE_HEX_LENGTH = 128
-const ADDRESS_BYTES = 20
-const UNCOMPRESSED_PREFIX_BYTES = 1
 const CHAT_ADDRESS_PATTERN = /^0x[0-9a-f]{40}$/
 const ADDRESS_INPUT_PATTERN = /^(0x)?[0-9a-fA-F]{40}$/
 /** `Date.prototype.toISOString` exactly: UTC, milliseconds, a `Z`. */
 const ISO_UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
-const HEX_RADIX = 16
 /**
  * A host a DNS name can spell: labels of letters, digits and hyphens, in
  * punycode form, joined by single dots. The URL parser lets `*` and `_`
@@ -210,23 +200,6 @@ export function parseChatBindingMessage(
   return { site, chatAddress, date }
 }
 
-/** The EIP-191 version 0x45 digest `personal_sign` signs. */
-function personalMessageHash(message: string): Uint8Array {
-  const body = new TextEncoder().encode(message)
-  const prefix = new TextEncoder().encode(
-    `${PERSONAL_MESSAGE_PREFIX}${body.length}`,
-  )
-  const whole = new Uint8Array(prefix.length + body.length)
-  whole.set(prefix)
-  whole.set(body, prefix.length)
-  return keccak_256(whole)
-}
-
-function addressOfPublicKey(uncompressed: Uint8Array): string {
-  const hash = keccak_256(uncompressed.slice(UNCOMPRESSED_PREFIX_BYTES))
-  return `0x${uint8ArrayToHex(hash.slice(-ADDRESS_BYTES))}`
-}
-
 /**
  * The chat address a site's binding names: the address of the site's chat key
  * (`deriveChatKey`), bare lower-case hex. The one place that says which key a
@@ -256,15 +229,7 @@ export function createChatBinding(
   requireSite(site, options)
   const chatAddress = siteChatAddress(deriveSecretSync(accountKey, site))
   const message = buildChatBindingMessage({ site, chatAddress, date }, options)
-  const signed = secp256k1.sign(
-    personalMessageHash(message),
-    hexToUint8Array(accountKey),
-  )
-  const recovery = (signed.recovery + RECOVERY_OFFSET).toString(HEX_RADIX)
-  return {
-    message,
-    signature: `0x${signed.toCompactHex()}${recovery}`,
-  }
+  return { message, signature: personalSign(message, accountKey) }
 }
 
 /**
@@ -279,35 +244,11 @@ export function verifyChatBinding(
   options: SiteOriginOptions = {},
 ): VerifiedChatBinding {
   const fields = parseChatBindingMessage(binding.message, options)
-  if (!SIGNATURE_HEX_PATTERN.test(binding.signature)) {
-    throw new Error("Chat binding signature is not 65 bytes of 0x hex.")
-  }
-  const compact = binding.signature.slice(2, 2 + COMPACT_SIGNATURE_HEX_LENGTH)
-  const recovery =
-    parseInt(
-      binding.signature.slice(2 + COMPACT_SIGNATURE_HEX_LENGTH),
-      HEX_RADIX,
-    ) - RECOVERY_OFFSET
-  if (recovery !== 0 && recovery !== 1) {
-    throw new Error(
-      "Chat binding signature has a recovery byte other than 27 or 28.",
-    )
-  }
-  let signer: string
-  try {
-    const signature = secp256k1.Signature.fromCompact(compact)
-    if (signature.hasHighS()) {
-      throw new Error("high s")
-    }
-    const point = signature
-      .addRecoveryBit(recovery)
-      .recoverPublicKey(personalMessageHash(binding.message))
-    signer = addressOfPublicKey(point.toRawBytes(false))
-  } catch (error) {
-    throw new Error(
-      `Chat binding signature does not recover a signer: ${String(error)}`,
-    )
-  }
+  const signer = recoverPersonalSigner(
+    binding.message,
+    binding.signature,
+    "Chat binding signature",
+  )
   return { signer, ...fields }
 }
 

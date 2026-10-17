@@ -50,6 +50,22 @@ starts on is read from the account's own record for that site, and nothing in
 the window's link or from the site can name a drive, preselect one or skip
 the question.
 
+A site spends only the drive the person picked for it (Levi's ruling D4,
+2026-10-16). The account default never stands in for a missing pick: a site
+with no pick, or whose picked drive is gone, resolves no stamp and reports
+`no-stamp`. Without this, a drive bought after the site signed in became the
+account default and the site stamped with it unasked, and removing the picked
+drive moved the site onto the default. The connect window offers the default
+to a site that has none, and only the person's confirm makes it the site's
+drive, stored by its batch so a later change of default does not move the site.
+
+Swarm ID's own account records written from a site's frame (the device-state
+feed, the roster, the lock and the partition lease, through the coordinator built
+on the site's resolved stamp) are paid from the drive the person picked for that
+site (Levi's ruling A, 2026-10-16). A site with no pick writes none, and Swarm
+ID's own window pays from the account's drives as before. Not done yet, follow-up
+B: housekeeping on the account default through its own coordinator.
+
 Signing in gives the site no stamp. Every connect, first or not, marks the
 site's entry `stampPending`, and the handover that signs a frame kept apart in
 says `stampPending` and carries no stamp at all, signer key included. While it
@@ -96,7 +112,9 @@ message, and the window cannot tell.
   `lib/src/swarm-id-proxy-partition.test.ts` ("a stamp withheld until the
   person confirms it", "a stamp picked in the connect window after the
   handover") and the browser journeys `ui/tests/connect-drive-picker.test.ts`
-  and `ui/tests/connect-drive-picker-shared.test.ts`.
+  and `ui/tests/connect-drive-picker-shared.test.ts`. The default never standing
+  in: `lib/src/utils/postage-stamp-association.test.ts`, `ui/src/lib/app-stamp.test.ts`
+  and `ui/tests/drive-needs-pick.test.ts`.
 
 ## Keys are sealed at rest
 

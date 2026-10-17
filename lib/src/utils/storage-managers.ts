@@ -119,9 +119,11 @@ export function serializeSyncedAccount(
     ),
     postageStamps: data.postageStamps.map(serializePostageStamp),
     settings: data.settings,
+    walletLink: data.walletLink,
     accountNameAt: data.accountNameAt,
     defaultStampAt: data.defaultStampAt,
     settingsAt: data.settingsAt,
+    walletLinkAt: data.walletLinkAt,
     lastModified: data.lastModified,
     partitionCount: data.partitionCount,
   }

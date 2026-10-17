@@ -26,3 +26,6 @@ allowBuilds:
 # and a devDependency that never ships. Delete once the release has aged out.
 minimumReleaseAgeExclude:
   - '@snaha/bee-compose@0.3.0'
+
+patchedDependencies:
+  '@web3-onboard/core@2.24.1': patches/@web3-onboard__core@2.24.1.patch

@@ -517,6 +517,7 @@ device's full current view (`DeviceStateSnapshotSchemaV1`):
   accountName: { value, at },                             // scalars carry their own clock
   defaultPostageStampBatchID: { value, at },
   settings: { value, at },
+  walletLink: { value, at },                              // apart from settings, docs/Wallet-Link.md
   accountPublicKey, accountCreatedAt, partitionCount }    // immutables, so a fold needs no shared doc
 ```
 

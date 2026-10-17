@@ -16,6 +16,7 @@ import {
   PrivateKey as BeePrivateKey,
 } from "@ethersphere/bee-js"
 import { isBeeApiUrl, isHttpUrl } from "./utils/url"
+import { WALLET_LINK_SIGNATURE_PATTERN } from "./utils/wallet-link"
 
 // ============================================================================
 // Network Settings Constants
@@ -144,6 +145,41 @@ export const ChatBindingSchema = z.object({
 })
 
 // ============================================================================
+// Wallet Link and Account Settings Schemas
+// ============================================================================
+
+/**
+ * Longer than any wallet link message can be: five lines, 258 characters,
+ * around two addresses and a date. A bound on what is stored and carried, not
+ * a check of the format, which `verifyWalletLink` does.
+ */
+export const WALLET_LINK_MAX_LENGTH = 320
+
+/**
+ * The account's and its wallet's statement that they belong together
+ * (`utils/wallet-link.ts`, docs/Wallet-Link.md). Kept in the account's synced
+ * settings while the person has "Show my ENS name on sites" on, and shared
+ * with sites in the connection identity.
+ */
+export const WalletLinkSchema = z.object({
+  message: z.string().max(WALLET_LINK_MAX_LENGTH),
+  walletSignature: z.string().regex(WALLET_LINK_SIGNATURE_PATTERN),
+  accountSignature: z.string().regex(WALLET_LINK_SIGNATURE_PATTERN),
+})
+
+/**
+ * The account's synced settings, one shape for the account record, the state
+ * snapshot and the device feed, so a setting one of them does not name is
+ * never stripped on the way to another device. The whole object is one
+ * last-writer-wins field (`settingsAt`). The wallet link is not in it: it
+ * has a clock of its own (`walletLinkAt`), so another device's settings edit
+ * can never bring back a link that was turned off.
+ */
+export const AccountSettingsSchema = z.object({
+  appSessionDuration: z.number().optional(),
+})
+
+// ============================================================================
 // Connected App Schema
 // ============================================================================
 
@@ -164,9 +200,10 @@ export const ConnectedAppSchemaV1 = z.object({
   appDescription: z.string().optional(),
   connectedUntil: z.number().optional(),
   appSecret: z.string().optional(),
-  // The stamp the person chose for this app in Swarm ID. Absent → the account
-  // default (`account.defaultPostageStampBatchID`) pays for this app's uploads.
-  // `NO_POSTAGE_STAMP` → none does, and only a gateway the app names can pay.
+  // The stamp the person chose for this app in Swarm ID, and the only one the
+  // app may spend. Absent means the person has not picked one yet, and the
+  // account default does not stand in for it. `NO_POSTAGE_STAMP` means the
+  // person chose none. Either way only a gateway the app names can pay.
   postageStampBatchID: z
     .union([z.literal(NO_POSTAGE_STAMP), StoredBatchId])
     .optional(),
@@ -332,11 +369,9 @@ export const SyncedAccountSchemaV1 = z.object({
   connectedApps: z.array(ConnectedAppSchemaV1).default([]),
   postageStamps: z.array(PostageStampSchemaV1).default([]),
   // Per-account settings (was identity.settings).
-  settings: z
-    .object({
-      appSessionDuration: z.number().optional(),
-    })
-    .optional(),
+  settings: AccountSettingsSchema.optional(),
+  // The wallet link while "Show my ENS name on sites" is on (docs/Wallet-Link.md).
+  walletLink: WalletLinkSchema.optional(),
   // Per-field LWW clocks for the scalar account fields, so a concurrent change to
   // a *different* scalar on another device is not dropped wholesale, and a peer's
   // change propagates on refresh. Absent → fall back to the account's `createdAt`,
@@ -345,6 +380,7 @@ export const SyncedAccountSchemaV1 = z.object({
   accountNameAt: z.number().optional(),
   defaultStampAt: z.number().optional(),
   settingsAt: z.number().optional(),
+  walletLinkAt: z.number().optional(),
   // Last-writer-wins clock for cross-device metadata merge (set on any change).
   lastModified: z.number().optional(),
   /**
@@ -432,15 +468,13 @@ export const AccountMetadataSchemaV1 = z.object({
   // App-facing public key (compressed secp256k1 hex). Mirrors account.publicKey.
   publicKey: CompressedPublicKeySchema,
   // Per-account settings (was identity.settings).
-  settings: z
-    .object({
-      appSessionDuration: z.number().optional(),
-    })
-    .optional(),
+  settings: AccountSettingsSchema.optional(),
+  walletLink: WalletLinkSchema.optional(),
   // Per-field LWW clocks for the scalar fields (see `SyncedAccountSchemaV1`).
   accountNameAt: z.number().optional(),
   defaultStampAt: z.number().optional(),
   settingsAt: z.number().optional(),
+  walletLinkAt: z.number().optional(),
   createdAt: z.number(),
   lastModified: z.number(),
   devices: z.array(DeviceSchemaV1).default([]),
@@ -485,6 +519,7 @@ export type SignedOutAccount = z.infer<typeof SignedOutAccountSchemaV1>
 /** The local (on-device) account record: `SignedInAccount | SignedOutAccount`. */
 export type Account = z.infer<typeof LocalAccountSchemaV1>
 export type ConnectedApp = z.infer<typeof ConnectedAppSchemaV1>
+export type AccountSettings = z.infer<typeof AccountSettingsSchema>
 export type PostageStamp = z.infer<typeof PostageStampSchemaV1>
 export type AccountMetadata = z.infer<typeof AccountMetadataSchemaV1>
 export type AccountStateSnapshot = z.infer<typeof AccountStateSnapshotSchemaV1>

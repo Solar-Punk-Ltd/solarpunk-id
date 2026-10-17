@@ -1,9 +1,11 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 import { BatchId, EthAddress } from '@ethersphere/bee-js'
+import type { WalletLink } from '@solarpunkltd/swarm-id'
 import {
   type AccessMethod,
   type Account as AccountRecord,
+  type AccountSettings,
   type ConnectedApp,
   type Device,
   type LocalVault,
@@ -21,8 +23,6 @@ import { isCleanSite, requireCleanSite } from '$lib/accepted-site'
 import { drivesNeedingAttention, soonestDriveExpiry } from '$lib/drives'
 import { daysToMs } from '$lib/duration'
 import { toastStore } from '$lib/stores/toast.svelte'
-
-type AccountSettings = { appSessionDuration?: number }
 
 /**
  * The device-local tail of the account record, mirroring the lib's `Account`
@@ -69,7 +69,7 @@ type DeviceAuth =
  * the persisted collection and its mutations are never dropped.
  *
  * Scalar fields each carry a per-field last-writer-wins clock
- * (`accountNameAt` / `defaultStampAt` / `settingsAt`) so concurrent edits to
+ * (`accountNameAt` / `defaultStampAt` / `settingsAt` / `walletLinkAt`) so concurrent edits to
  * different scalars on different devices converge instead of clobbering. A
  * mutator that changes a scalar MUST stamp the matching clock; the fold folds
  * them by LWW (`applyRefreshed`).
@@ -97,6 +97,7 @@ export class Account {
     vault: { access: { type: 'password', kdfSalt: '', kdfIterations: 0 }, encryptedSeed: '' },
   })
   settings = $state<AccountSettings | undefined>(undefined)
+  walletLink = $state<WalletLink | undefined>(undefined)
   defaultPostageStampBatchID = $state<BatchId | undefined>(undefined)
   devices = $state<Device[]>([])
   connectedApps = $state<ConnectedApp[]>([])
@@ -104,6 +105,7 @@ export class Account {
   accountNameAt = $state<number | undefined>(undefined)
   defaultStampAt = $state<number | undefined>(undefined)
   settingsAt = $state<number | undefined>(undefined)
+  walletLinkAt = $state<number | undefined>(undefined)
   lastModified = $state<number | undefined>(undefined)
   partitionCount = $state<number | undefined>(undefined)
   // Persist-and-publish this account's change, bound to `this` in the ctor so
@@ -149,6 +151,7 @@ export class Account {
     this.derivationKey = record.derivationKey
     this.publicKey = record.publicKey
     this.settings = record.settings
+    this.walletLink = record.walletLink
     this.defaultPostageStampBatchID = record.defaultPostageStampBatchID
     this.devices = record.devices
     this.connectedApps = record.connectedApps
@@ -156,6 +159,7 @@ export class Account {
     this.accountNameAt = record.accountNameAt
     this.defaultStampAt = record.defaultStampAt
     this.settingsAt = record.settingsAt
+    this.walletLinkAt = record.walletLinkAt
     this.lastModified = record.lastModified
     this.partitionCount = record.partitionCount
   }
@@ -169,6 +173,7 @@ export class Account {
     this.derivationKey = ''
     this.publicKey = ''
     this.settings = undefined
+    this.walletLink = undefined
     this.defaultPostageStampBatchID = undefined
     this.devices = []
     this.connectedApps = []
@@ -176,6 +181,7 @@ export class Account {
     this.accountNameAt = undefined
     this.defaultStampAt = undefined
     this.settingsAt = undefined
+    this.walletLinkAt = undefined
     this.lastModified = undefined
     this.partitionCount = undefined
   }
@@ -219,6 +225,7 @@ export class Account {
       derivationKey: this.derivationKey,
       publicKey: this.publicKey,
       settings: this.settings,
+      walletLink: this.walletLink,
       defaultPostageStampBatchID: this.defaultPostageStampBatchID,
       devices: this.devices,
       connectedApps: this.connectedApps,
@@ -226,6 +233,7 @@ export class Account {
       accountNameAt: this.accountNameAt,
       defaultStampAt: this.defaultStampAt,
       settingsAt: this.settingsAt,
+      walletLinkAt: this.walletLinkAt,
       lastModified: this.lastModified,
       partitionCount: this.partitionCount,
     }
@@ -343,6 +351,20 @@ export class Account {
     this.#commit({ skipSync: true })
   }
 
+  /**
+   * Keep or remove the wallet link (docs/Wallet-Link.md) that "Show my ENS
+   * name on sites" shares. On its own clock, so a removal reaches the other
+   * devices as a newer value rather than a missing field, and no other
+   * device's settings edit can bring the link back.
+   */
+  setWalletLink(walletLink: WalletLink | undefined) {
+    const now = Date.now()
+    this.walletLink = walletLink
+    this.walletLinkAt = now
+    this.lastModified = now
+    this.#commit()
+  }
+
   /** How long app connections stay valid, set in days (stored as ms). */
   setAppConnectionDays(days: number) {
     const now = Date.now()
@@ -380,8 +402,8 @@ export class Account {
   }
 
   /**
-   * Point an app at a specific drive, at no drive with `NO_POSTAGE_STAMP`, or
-   * back at the account default with `undefined`. The choice carries through the cross-device merge on its OWN
+   * Point an app at a specific drive, or at no drive with `NO_POSTAGE_STAMP`.
+   * The choice carries through the cross-device merge on its OWN
    * clock: it says nothing about whether the app is still connected, and a
    * clock that ranked the whole entry let this edit outrank a revoke made on
    * another device (#681). No-op when the app has no entry (nothing to point)
@@ -451,7 +473,8 @@ export class Account {
 
   /**
    * Add or replace a stamp (deduped by batch id). The first stamp added becomes
-   * the account default so uploads have something to spend against. Re-adding a
+   * the account default, the drive the connect window offers a site that has
+   * none. No site spends it until the person picks it there. Re-adding a
    * previously removed batch revives it (a fresh `createdAt` beats the old
    * tombstone on merge).
    */
@@ -589,6 +612,8 @@ export class Account {
     defaultStampAt?: number
     settings?: AccountSettings | undefined
     settingsAt?: number
+    walletLink?: WalletLink | undefined
+    walletLinkAt?: number
   }) {
     if (fields.devices) this.devices = fields.devices
     if (fields.connectedApps) this.connectedApps = fields.connectedApps
@@ -615,6 +640,13 @@ export class Account {
       this.settings = fields.settings
       this.settingsAt = fields.settingsAt
     }
+    if (
+      fields.walletLinkAt !== undefined &&
+      fields.walletLinkAt > (this.walletLinkAt ?? this.createdAt)
+    ) {
+      this.walletLink = fields.walletLink
+      this.walletLinkAt = fields.walletLinkAt
+    }
     this.#commit({ skipSync: true })
   }
 }
@@ -638,7 +670,8 @@ function revoked(app: ConnectedApp, tombstone: boolean): ConnectedApp {
     disconnectedAt: now,
     revokedAt: tombstone ? now : app.revokedAt,
     // The drive chosen for the site goes with the connection, so a reconnect
-    // starts on the account default or on what the connect window is told.
+    // leaves the site with no drive until the person picks one in the connect
+    // window.
     // Its own clock moves too, or an older choice on another device would win
     // the merge and bring it back.
     postageStampBatchID: undefined,

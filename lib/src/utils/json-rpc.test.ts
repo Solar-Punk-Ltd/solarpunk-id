@@ -144,6 +144,64 @@ describe("jsonRpcCall", () => {
     )
   })
 
+  describe("with maxBodyBytes", () => {
+    const CHUNK_BYTES = 64 * 1024
+    const CHUNKS = 16
+
+    /** A real body of `CHUNKS` chunks of valid JSON, counting what was read. */
+    function streamedResponse(): { response: Response; pulled: () => number } {
+      const text = JSON.stringify({
+        result: "0x01",
+        padding: "x".repeat(CHUNK_BYTES * CHUNKS),
+      })
+      const bytes = new TextEncoder().encode(text)
+      let offset = 0
+      let pulls = 0
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulls += 1
+          if (offset >= bytes.length) {
+            controller.close()
+            return
+          }
+          controller.enqueue(bytes.slice(offset, offset + CHUNK_BYTES))
+          offset += CHUNK_BYTES
+        },
+      })
+      return {
+        response: new Response(body, { status: 200 }),
+        pulled: () => pulls,
+      }
+    }
+
+    it("reads a body within the bound", async () => {
+      fetchSpy.mockResolvedValue(
+        new Response(JSON.stringify({ result: "0x64" }), { status: 200 }),
+      )
+      await expect(
+        jsonRpcCall(RPC_URL, "eth_call", [], {
+          ...OPTIONS,
+          maxBodyBytes: 1024,
+        }),
+      ).resolves.toBe("0x64")
+    })
+
+    it("refuses a longer body before parsing it, and stops reading it", async () => {
+      const { response, pulled } = streamedResponse()
+      fetchSpy.mockResolvedValue(response)
+      await expect(
+        jsonRpcCall(RPC_URL, "eth_call", [], {
+          ...OPTIONS,
+          label: "The ENS endpoint",
+          maxBodyBytes: CHUNK_BYTES,
+        }),
+      ).rejects.toThrow(
+        `The ENS endpoint answered eth_call with a body longer than ${CHUNK_BYTES} bytes.`,
+      )
+      expect(pulled()).toBeLessThan(CHUNKS)
+    })
+  })
+
   // A captive portal or a misconfigured proxy answers 200 with HTML.
   it("names the endpoint when the body is not JSON", async () => {
     fetchSpy.mockResolvedValue({

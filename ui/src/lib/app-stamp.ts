@@ -3,7 +3,9 @@
 /**
  * The drive (postage stamp) a connected site uses, as the Apps screen shows
  * and changes it. What the site's frame spends is decided by the library's
- * `resolveStampForApp`, so the screen reads the same rule rather than its own.
+ * `resolveStampForApp`, so the screen reads the same rule rather than its own:
+ * the drive the person picked for the site, and never the account default in
+ * its place (Levi's ruling D4, 2026-10-16).
  */
 import { BatchId } from '@ethersphere/bee-js'
 import {
@@ -16,7 +18,7 @@ import {
 import type { SelectOption } from '$lib/components/ui/select'
 import { describeDrive } from '$lib/drives'
 
-/** What the Apps screen stores for a site: its own drive, none, or `undefined` to follow the account default */
+/** What a pick stores for a site: its own drive, or none */
 type AppStampChoice = ConnectedApp['postageStampBatchID']
 
 type AppStampPointer = Pick<ConnectedApp, 'postageStampBatchID'>
@@ -32,7 +34,7 @@ interface AccountDrives {
 }
 
 function resolvedDrive(app: AppStampPointer, account: AccountDrives): PostageStamp | undefined {
-  return resolveStampForApp(app, account, account.stamps)
+  return resolveStampForApp(app, account.stamps)
 }
 
 /** The select value for the drive the site uses, or `NO_POSTAGE_STAMP` when it has none */
@@ -41,13 +43,32 @@ export function appStampValue(app: AppStampPointer, account: AccountDrives): str
 }
 
 /**
- * The choice to store for a select value. Picking the account default stores
- * "follow the default", as the connect window's drive picker does, so the site
- * moves with the default when the person changes it.
+ * The drive the connect window's picker starts on. A site with a live drive of
+ * its own starts there, and a site set to no drive stays on none. A site with
+ * no pick, or whose drive is gone, is offered the account default when it has
+ * not expired, and only the person's "Go to app" makes it the site's drive.
  */
-export function appStampChoice(value: string, account: AccountDrives): AppStampChoice {
+export function connectPickerStart(
+  app: AppStampPointer,
+  account: AccountDrives,
+  now = Date.now(),
+): string {
+  const own = resolvedDrive(app, account)
+  if (own) return own.batchID.toHex()
+  if (app.postageStampBatchID === NO_POSTAGE_STAMP) return NO_POSTAGE_STAMP
+  const fallback = account.defaultPostageStampBatchID
+  const offered = fallback && account.stamps.find((drive) => drive.batchID.equals(fallback))
+  if (!offered || describeDrive(offered, now).status === 'expired') return NO_POSTAGE_STAMP
+  return offered.batchID.toHex()
+}
+
+/**
+ * The choice to store for a select value. A drive is stored by its batch,
+ * the account default included, so the site keeps the drive it was given
+ * when the default later moves.
+ */
+export function appStampChoice(value: string): AppStampChoice {
   if (value === NO_POSTAGE_STAMP) return NO_POSTAGE_STAMP
-  if (account.defaultPostageStampBatchID?.toHex() === value) return undefined
   return new BatchId(value)
 }
 

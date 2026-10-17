@@ -5,81 +5,60 @@ import {
   NO_POSTAGE_STAMP,
   type ConnectedApp,
   type PostageStamp,
-  type SignedInAccount,
 } from "../schemas"
 
 /**
- * Resolve which postage stamp an app should upload with.
+ * Resolve which postage stamp an app uploads with: the one the person picked
+ * for it (`postageStampBatchID`), and nothing else.
  *
- * An app may carry its own batch override (`postageStampBatchID`); otherwise it
- * falls back to the account's default stamp. The account owns the stamp set, so
- * these pointers are the single source of truth. An app set to
- * `NO_POSTAGE_STAMP` resolves to no stamp, the default included.
+ * The account default is never a fallback (Levi's ruling D4, 2026-10-16). A
+ * site with no pick, a site set to `NO_POSTAGE_STAMP`, and a site whose
+ * picked drive is gone all resolve to no stamp, and the person picks one in
+ * Swarm ID. Falling back let a drive bought after the site signed in, or the
+ * default left after the picked drive was removed, pay for the site's
+ * uploads without the person choosing it.
  *
- * The lookup is existence-checked: a pointer whose stamp is missing (e.g. a
- * removed or replaced batch) is skipped so resolution falls through to the next
- * candidate instead of failing.
+ * A deleted stamp (tombstone) resolves to nothing. An EXPIRED one still
+ * resolves: it can be renewed, and the session reports it as expired (#745).
  *
  * Paired with `stampsReachableByApp` below, which decides what a partitioned
- * session may HOLD while this decides what it SPENDS — over the same two
- * pointers, and deliberately differing on tombstones: this one skips them (a
- * deleted stamp cannot be spent), that one keeps them (a session learns its
- * stamp is deleted no other way). Change the pointer rule in one and the other
- * has to follow, or a session holds a stamp it cannot resolve, or resolves one
- * it was never handed.
+ * session may HOLD while this decides what it SPENDS, over the same pointer,
+ * and deliberately differing on tombstones: this one skips them (a deleted
+ * stamp cannot be spent), that one keeps them (a session learns its stamp is
+ * deleted no other way). Change the pointer rule in one and the other has to
+ * follow, or a session holds a stamp it cannot resolve, or resolves one it
+ * was never handed.
  */
 export function resolveStampForApp(
   app: Pick<ConnectedApp, "postageStampBatchID">,
-  account: Pick<SignedInAccount, "defaultPostageStampBatchID">,
   stamps: PostageStamp[],
 ): PostageStamp | undefined {
-  if (app.postageStampBatchID === NO_POSTAGE_STAMP) return undefined
-  const candidates = [
-    app.postageStampBatchID,
-    account.defaultPostageStampBatchID,
-  ]
-  for (const batchId of candidates) {
-    if (!batchId) continue
-    // Skip deleted stamps (tombstones): a deleted default/override must fall
-    // through to the next candidate, same as a missing one. An EXPIRED stamp
-    // deliberately does not: it can be renewed, and falling through would
-    // silently charge a drive the user never picked for this app (#745).
-    const stamp = stamps.find((s) => !s.deletedAt && s.batchID.equals(batchId))
-    if (stamp) return stamp
-  }
-  return undefined
+  const picked = app.postageStampBatchID
+  if (!picked || picked === NO_POSTAGE_STAMP) return undefined
+  return stamps.find((s) => !s.deletedAt && s.batchID.equals(picked))
 }
 
 /**
- * The stamps a connected app's session can ever reach: the ones its pointers
- * name — its own batch override, and the account default it falls through to.
+ * The stamps a connected app's session can ever reach: the one the person
+ * picked for it, and none while that pick waits for the person to confirm it.
  *
  * This is what a PARTITIONED session is handed and allowed to keep (#578). It
  * holds its account view in memory, in a context embedded by an arbitrary dApp
- * page, and it can only ever spend the stamp `resolveStampForApp` picks — so
+ * page, and it can only ever spend the stamp `resolveStampForApp` picks, so
  * the rest of the collection is signer keys it has no use for. Least privilege
  * rather than a broken boundary: an unpartitioned proxy reads the same material
  * out of shared storage, but it does not have to be handed it.
  *
- * BOTH pointers, not just the winner: the default is the fallthrough
- * `resolveStampForApp` takes when the override's stamp is gone, so shipping
- * only the override would turn a recoverable stale pointer into a session that
- * cannot upload at all. Tombstones its pointers still name are kept too — a
- * tombstone is how the session learns the stamp it was spending is deleted.
+ * A tombstone the pointer still names is kept: a tombstone is how the session
+ * learns the stamp it was spending is deleted.
  */
 export function stampsReachableByApp(
   app: Pick<ConnectedApp, "postageStampBatchID" | "stampPending">,
-  account: Pick<SignedInAccount, "defaultPostageStampBatchID">,
   stamps: PostageStamp[],
 ): PostageStamp[] {
-  if (app.stampPending || app.postageStampBatchID === NO_POSTAGE_STAMP) {
+  const picked = app.postageStampBatchID
+  if (app.stampPending || !picked || picked === NO_POSTAGE_STAMP) {
     return []
   }
-  const reachable = [
-    app.postageStampBatchID,
-    account.defaultPostageStampBatchID,
-  ]
-    .filter((batchId) => batchId !== undefined)
-    .map((batchId) => batchId.toHex())
-  return stamps.filter((stamp) => reachable.includes(stamp.batchID.toHex()))
+  return stamps.filter((stamp) => stamp.batchID.equals(picked))
 }

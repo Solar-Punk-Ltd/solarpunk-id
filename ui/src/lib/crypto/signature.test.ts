@@ -7,10 +7,11 @@ import {
   encryptSeed,
   randomSalt,
 } from '@solarpunkltd/swarm-id/internal'
+import { recoverMessageAddress } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, it } from 'vitest'
 
-import { canonicalSignature } from './signature'
+import { canonicalSignature, lowSSignature } from './signature'
 
 /**
  * Golden vectors, not a re-derivation: these bytes are what the seed vaults on
@@ -97,5 +98,40 @@ describe('canonicalSignature seals the vault', () => {
     expect(
       await decryptSeed(payload, await deriveKeyFromSignature(hexToUint8Array(reSignature), salt)),
     ).toEqual(entropy)
+  })
+})
+
+describe('lowSSignature', () => {
+  /** Order of the secp256k1 group. */
+  const N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n
+  const HIGH_S = (N - BigInt(`0x${S}`)).toString(16).padStart(64, '0')
+
+  it('leaves a low-s signature as it is', () => {
+    expect(lowSSignature(CANONICAL_1C)).toBe(CANONICAL_1C)
+    expect(lowSSignature(CANONICAL_1B)).toBe(CANONICAL_1B)
+  })
+
+  it.each([
+    ['v 28', `0x${R}${HIGH_S}1c`, CANONICAL_1B],
+    ['v 27', `0x${R}${HIGH_S}1b`, CANONICAL_1C],
+  ])('takes s to the low half and flips %s', (_label, input, expected) => {
+    expect(lowSSignature(input as `0x${string}`)).toBe(expected)
+  })
+
+  it('signs for the same address either way', async () => {
+    const key = generatePrivateKey()
+    const signer = privateKeyToAccount(key)
+    const message = 'Swarm ID wallet link v1'
+    const signature = await signer.signMessage({ message })
+    const { r, s, v } = {
+      r: signature.slice(2, 66),
+      s: signature.slice(66, 130),
+      v: Number.parseInt(signature.slice(130), 16),
+    }
+    const high = `0x${r}${(N - BigInt(`0x${s}`)).toString(16).padStart(64, '0')}${(v === 27 ? 28 : 27).toString(16)}`
+    expect(lowSSignature(high as `0x${string}`)).toBe(signature)
+    await expect(
+      recoverMessageAddress({ message, signature: lowSSignature(high as `0x${string}`) }),
+    ).resolves.toBe(signer.address)
   })
 })

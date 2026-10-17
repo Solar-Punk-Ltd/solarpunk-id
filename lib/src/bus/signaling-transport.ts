@@ -81,6 +81,7 @@ export class SignalingTransport implements BusTransport {
   private peers = new Map<string, PeerState>()
   private handlers = new Set<(raw: unknown, from?: string) => void>()
   private peerLeftHandlers = new Set<(peerId: string) => void>()
+  private peerJoinedHandlers = new Set<(peerId: string) => void>()
   private closed = false
   private reconnectDelayMs = RECONNECT_BASE_DELAY_MS
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined
@@ -116,6 +117,11 @@ export class SignalingTransport implements BusTransport {
     return () => this.peerLeftHandlers.delete(handler)
   }
 
+  onPeerJoined(handler: (peerId: string) => void): () => void {
+    this.peerJoinedHandlers.add(handler)
+    return () => this.peerJoinedHandlers.delete(handler)
+  }
+
   /**
    * Stops reconnecting at once, but lets in-flight publishes reach the wire
    * first: `deliver` awaits envelope encryption, and callers announce a
@@ -144,6 +150,7 @@ export class SignalingTransport implements BusTransport {
     // dropped rather than fired: the tracker ages the room out, and a
     // reconnect relearns it from the peers' own beats.
     this.peerLeftHandlers.clear()
+    this.peerJoinedHandlers.clear()
     for (const peer of this.peers.values()) {
       peer.connection?.close()
     }
@@ -280,6 +287,9 @@ export class SignalingTransport implements BusTransport {
       case "peer-joined":
         // The joiner initiates; we just track it.
         this.peers.set(message.peerId, newPeerState())
+        for (const handler of this.peerJoinedHandlers) {
+          handler(message.peerId)
+        }
         return
       case "peer-left": {
         const peer = this.peers.get(message.peerId)

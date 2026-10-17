@@ -91,25 +91,24 @@ const batchIds = (payload: Record<string, unknown>): string[] =>
   (payload.postageStamps as { batchID: string }[]).map((s) => s.batchID)
 
 describe('partitionHandoverAccount', () => {
-  it('hands over only the stamps this app can spend', () => {
+  // A site spends only the drive the person picked for it (D4, 2026-10-16),
+  // so the account default is not handed over beside it.
+  it("hands over only the site's own pick", () => {
     const payload = partitionHandoverAccount(makeAccount(new BatchId(APP_BATCH)), APP_ORIGIN)
 
-    expect(batchIds(payload).sort()).toEqual([APP_BATCH, DEFAULT_BATCH].sort())
-    expect(batchIds(payload)).not.toContain(UNRELATED_BATCH)
+    expect(batchIds(payload)).toEqual([APP_BATCH])
   })
 
-  it('hands over only the default when the app has no override', () => {
+  it('hands over no stamp for a site with no pick, though the account has a default', () => {
     const payload = partitionHandoverAccount(makeAccount(), APP_ORIGIN)
 
-    expect(batchIds(payload)).toEqual([DEFAULT_BATCH])
+    expect(batchIds(payload)).toEqual([])
   })
 
-  // An app connecting for the first time has no `connectedApps` entry yet — the
-  // account default is the whole answer, and nothing else may ride along.
-  it('hands over only the default for an app with no entry yet', () => {
+  it('hands over no stamp for a site with no entry yet', () => {
     const payload = partitionHandoverAccount(makeAccount(), 'https://other.example.com')
 
-    expect(batchIds(payload)).toEqual([DEFAULT_BATCH])
+    expect(batchIds(payload)).toEqual([])
   })
 
   // Everything else the synced projection carries is still needed: the topic

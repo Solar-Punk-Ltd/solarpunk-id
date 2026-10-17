@@ -20,6 +20,9 @@ import { buildChatBindingMessage } from "./utils/chat-binding"
 import type { ChatBinding } from "./utils/chat-binding"
 import { hexToUint8Array } from "./utils/hex"
 import { deriveSecretSync } from "./utils/key-derivation"
+import { personalSign } from "./utils/personal-sign"
+import { buildWalletLinkMessage } from "./utils/wallet-link"
+import type { WalletLink } from "./utils/wallet-link"
 
 export const TEST_ETH_ADDRESS_HEX = "a".repeat(40)
 export const TEST_ETH_ADDRESS_2_HEX = "b".repeat(40)
@@ -174,5 +177,29 @@ export function allowingSites(...origins: string[]): SiteAllowList {
             reason: "not-listed",
             message: `${origin} is not on the test allow list.`,
           },
+  }
+}
+
+/** Throwaway keys for wallet link tests: an account key and a wallet key. */
+export const TEST_LINK_ACCOUNT_KEY_HEX = "ab".repeat(32)
+export const TEST_LINK_WALLET_KEY_HEX = "cd".repeat(32)
+
+/**
+ * A wallet link both keys signed, as the identity UI stores one in the
+ * account's settings. The account address it names is that of `accountKey`.
+ */
+export function signedWalletLink(
+  accountKey = TEST_LINK_ACCOUNT_KEY_HEX,
+  walletKey = TEST_LINK_WALLET_KEY_HEX,
+): WalletLink {
+  const message = buildWalletLinkMessage({
+    account: new PrivateKey(accountKey).publicKey().address().toHex(),
+    wallet: new PrivateKey(walletKey).publicKey().address().toHex(),
+    date: new Date("2026-10-15T12:00:00.000Z"),
+  })
+  return {
+    message,
+    walletSignature: personalSign(message, walletKey),
+    accountSignature: personalSign(message, accountKey),
   }
 }

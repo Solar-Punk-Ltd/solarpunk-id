@@ -14,6 +14,7 @@ import {
 import { mergeSnapshotWithRemote } from "./merge-snapshot"
 import type { AccountStateSnapshot } from "../utils/account-state-snapshot"
 import type { ConnectedApp, Device, PostageStamp } from "../schemas"
+import { signedWalletLink } from "../test-fixtures"
 
 const ACCOUNT_ID = "aa".repeat(20)
 // Compressed secp256k1 public key (prefix byte + 32 bytes = 66 bare hex chars).
@@ -62,6 +63,7 @@ function makeView(overrides: Partial<DeviceStateView> = {}): DeviceStateView {
     accountName: { value: "acct", at: 1 },
     defaultPostageStampBatchID: { value: undefined, at: 1 },
     settings: { value: undefined, at: 1 },
+    walletLink: { value: undefined, at: 1 },
     accountPublicKey: TEST_ACCOUNT_PUBLIC_KEY,
     accountCreatedAt: 1_000_000,
     partitionCount: 2,
@@ -106,6 +108,35 @@ describe("device-state serialization", () => {
     expect(back.connectedApps[0].revokedAt).toBe(5)
     expect(back.accountName).toEqual({ value: "my account", at: 9 })
   })
+
+  // Another device must get the wallet link back whole from this device's
+  // feed, on its own clock.
+  it("carries the wallet link on its own clock", () => {
+    const walletLink = signedWalletLink()
+    const view = makeView({
+      settings: { value: { appSessionDuration: 3600 }, at: 9 },
+      walletLink: { value: walletLink, at: 7 },
+    })
+    const bytes = new TextEncoder().encode(
+      JSON.stringify(serializeDeviceState(ACCOUNT_ID, "dev-1", view)),
+    )
+    const back = deserializeDeviceState(bytes)
+    expect(back.settings).toEqual({
+      value: { appSessionDuration: 3600 },
+      at: 9,
+    })
+    expect(back.walletLink).toEqual({ value: walletLink, at: 7 })
+  })
+
+  it("reads a feed written before the wallet link had a clock as never edited", () => {
+    const { walletLink: _walletLink, ...older } = serializeDeviceState(
+      ACCOUNT_ID,
+      "dev-1",
+      makeView(),
+    )
+    const bytes = new TextEncoder().encode(JSON.stringify(older))
+    expect(deserializeDeviceState(bytes).walletLink).toEqual({ at: 0 })
+  })
 })
 
 describe("accountStateToDeviceView — never-edited scalar clocks", () => {
@@ -141,6 +172,7 @@ describe("accountStateToDeviceView — never-edited scalar clocks", () => {
     expect(view.accountName.at).toBe(CREATED_AT)
     expect(view.defaultPostageStampBatchID.at).toBe(CREATED_AT)
     expect(view.settings.at).toBe(CREATED_AT)
+    expect(view.walletLink.at).toBe(CREATED_AT)
     // Regression guard: must NOT pick up the fresh publish-time `lastModified`,
     // which would let an unchanged default name clobber a peer's real rename.
     expect(view.accountName.at).not.toBe(1_700_000_999_000)
@@ -284,6 +316,34 @@ describe("foldAccount — per-field scalar LWW", () => {
     expect(folded.accountNameAt).toBe(10)
     expect(folded.defaultStampAt).toBe(10)
     expect(folded.settingsAt).toBe(1)
+  })
+
+  // Settings were one last-writer-wins value, so a device that never saw the
+  // link turned off brought it back with any later settings edit of its own.
+  it("keeps the wallet link off when another device later changes the session duration", () => {
+    const walletLink = signedWalletLink()
+    const turnedOffOnA = makeView({
+      settings: { value: { appSessionDuration: 3600 }, at: 5 },
+      walletLink: { value: undefined, at: 20 },
+    })
+    const durationOnB = makeView({
+      settings: { value: { appSessionDuration: 7200 }, at: 30 },
+      walletLink: { value: walletLink, at: 10 },
+    })
+    for (const views of [
+      [turnedOffOnA, durationOnB],
+      [durationOnB, turnedOffOnA],
+    ]) {
+      const folded = foldAccount(
+        views as unknown as DeviceStateSnapshot[],
+        [],
+        ACCOUNT_ID,
+      )
+      expect(folded.walletLink).toBeUndefined()
+      expect(folded.walletLinkAt).toBe(20)
+      expect(folded.settings).toEqual({ appSessionDuration: 7200 })
+      expect(folded.settingsAt).toBe(30)
+    }
   })
 
   // The bus fold (`deltaFoldView` in `swarm-id-proxy.ts`) reuses `foldAccount`

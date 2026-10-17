@@ -52,6 +52,13 @@ let presenceTimer: ReturnType<typeof setInterval> | undefined
 let unsubscribe: (() => void) | undefined
 /** Detaches the departure handler; same reason as the one above. */
 let unsubscribePeerLeft: (() => void) | undefined
+/** Detaches the arrival handler; same reason again. */
+let unsubscribePeerJoined: (() => void) | undefined
+/** The joined account as this tab last handed it over, at the join or a
+ *  publish since, which is what a peer joining the room is told. A peer's
+ *  change folded here is not in it, and need not be. That peer published it,
+ *  and every field folds on its own clock, so an older copy changes nothing. */
+let latest: SyncedAccount | undefined
 /** The account this tab is committed to, set the moment `join()` is called
  *  rather than when the transport comes up: a publish landing during the
  *  derivation belongs to this account and must be held, not dropped. */
@@ -75,6 +82,9 @@ function closeBus(): void {
   unsubscribe = undefined
   unsubscribePeerLeft?.()
   unsubscribePeerLeft = undefined
+  unsubscribePeerJoined?.()
+  unsubscribePeerJoined = undefined
+  latest = undefined
   bus?.close()
   bus = undefined
   joinedKey = undefined
@@ -109,6 +119,14 @@ async function attach(account: SyncedAccount, forGeneration: number): Promise<vo
   // this never publishes back.
   const deviceId = getOrCreateDeviceId()
   unsubscribePeerLeft = bus.onPeerLeft((peerId) => presence.forgetPeer(peerId))
+  // The room keeps no mailbox, so a context that joins after a change missed
+  // it. A site's frame restores the copy it stored, and a site loaded again
+  // right after "Show my ENS name on sites" was turned off would otherwise
+  // keep handing the site the wallet, since an account with no drive
+  // publishes nothing to Swarm that the frame could read instead.
+  unsubscribePeerJoined = bus.onPeerJoined(() => {
+    if (latest) accountBusStore.publish(latest)
+  })
   unsubscribe = bus.subscribe((message, from) => {
     if (message.type === 'presence') {
       // Our own id is this device's unpartitioned proxy, not a peer.
@@ -162,6 +180,7 @@ export const accountBusStore = {
     if (joinedKey === account.derivationKey) return
     closeBus()
     joinedKey = account.derivationKey
+    latest = account
     const forGeneration = ++generation
     attaching = attach(account, forGeneration).catch((error: unknown) => {
       console.error('[AccountBus] Failed to join the account room:', error)
@@ -200,6 +219,7 @@ export const accountBusStore = {
     // then dropped on its way out — losing a revoke rather than ignoring a
     // stranger.
     if (account.derivationKey !== joinedKey) return
+    latest = account
     pending = account
     if (publishTimer !== undefined) clearTimeout(publishTimer)
     publishTimer = setTimeout(() => {

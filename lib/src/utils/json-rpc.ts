@@ -34,6 +34,11 @@ export interface JsonRpcOptions {
    * RPC". Defaults to the endpoint's origin.
    */
   label?: string
+  /**
+   * The longest response body read, in bytes. A longer body is refused as it
+   * streams in, before anything parses it. Unset, the body is read whole.
+   */
+  maxBodyBytes?: number
 }
 
 /** One call in a batch. Ids are assigned by {@link jsonRpcBatch}. */
@@ -64,6 +69,46 @@ function defaultLabel(rpcUrl: string): string {
 /** Every member is optional, so being an object is the whole check. */
 function isEnvelope(value: unknown): value is JsonRpcEnvelope {
   return typeof value === "object" && value !== null
+}
+
+/** Thrown by {@link readBoundedText} so the caller can tell it from a transport failure. */
+class BodyTooLongError extends Error {}
+
+/**
+ * The body as text, reading no more than `maxBytes` of it. A body with no
+ * stream is empty.
+ * @throws {BodyTooLongError} as soon as the body passes `maxBytes`, after
+ *   cancelling the rest of it.
+ */
+async function readBoundedText(
+  response: Response,
+  maxBytes: number,
+): Promise<string> {
+  if (!response.body) {
+    return ""
+  }
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) {
+      break
+    }
+    total += value.byteLength
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined)
+      throw new BodyTooLongError()
+    }
+    chunks.push(value)
+  }
+  const whole = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    whole.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(whole)
 }
 
 function messageOf(cause: unknown): string {
@@ -163,9 +208,20 @@ async function postJsonRpc(
       )
     }
     checkStatus(response, subject, label)
+    const { maxBodyBytes } = options
     try {
-      return (await response.json()) as unknown
-    } catch {
+      if (maxBodyBytes === undefined) {
+        return (await response.json()) as unknown
+      }
+      return JSON.parse(
+        await readBoundedText(response, maxBodyBytes),
+      ) as unknown
+    } catch (error) {
+      if (error instanceof BodyTooLongError) {
+        throw new Error(
+          `${label} answered ${subject} with a body longer than ${maxBodyBytes} bytes.`,
+        )
+      }
       throw deadlineOr(
         `${label} answered ${subject} with a body that is not JSON.`,
       )

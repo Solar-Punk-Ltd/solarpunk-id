@@ -33,6 +33,14 @@ export function connectionInfoEqual(
     // derived from the id could change while the id stays put.
     a.identity?.avatar.source === b.identity?.avatar.source &&
     a.identity?.avatar.url === b.identity?.avatar.url &&
+    // "Show my ENS name on sites" turned off or on in Swarm ID changes only
+    // this field, and a site that is not told keeps putting the old link in
+    // its messages (docs/Wallet-Link.md).
+    a.identity?.walletLink?.message === b.identity?.walletLink?.message &&
+    a.identity?.walletLink?.walletSignature ===
+      b.identity?.walletLink?.walletSignature &&
+    a.identity?.walletLink?.accountSignature ===
+      b.identity?.walletLink?.accountSignature &&
     a.appKey?.address === b.appKey?.address &&
     a.appKey?.publicKey === b.appKey?.publicKey &&
     a.partition === b.partition &&

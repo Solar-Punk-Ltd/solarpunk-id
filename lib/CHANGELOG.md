@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.10.0
+
+### Breaking changes
+
+- **lib:** a site stamps only with the drive the person picked for it. The account default no
+  longer stands in for a missing pick, so a site with no pick, or whose picked drive is gone,
+  has no stamp and reports `uploadUnavailableReason: "no-stamp"` until the person picks one in
+  the connect window or on the Apps screen. Before, a drive bought after signing in became the
+  default and the site used it unasked, and removing the picked drive moved the site onto the
+  default. `resolveStampForApp(app, stamps)` and `stampsReachableByApp(app, stamps)` in
+  `@solarpunkltd/swarm-id/internal` no longer take the account.
+- **ui:** the connect window still starts its picker on the account default for a site with no
+  drive, and "Go to app" saves that drive as the site's. A drive picked on the Apps screen or in
+  the connect window is stored by its batch, the default included, so a later change of default
+  does not move the site.
+
+### Features
+
+- **lib:** Swarm ID's own account records written from a site's frame are paid from the drive the person picked for that site, and a site with no pick writes none (docs/Hardening.md).
+- **ui:** "Show my ENS name on sites", in the Account tab's Identity section, for an account
+  secured with an Ethereum wallet. Off by default. Turning it on asks the wallet to sign a wallet
+  link, a five-line "Swarm ID wallet link v1" statement that says in plain words what it does and
+  names the account and the wallet, which the account's own key countersigns. It is kept in the
+  account's synced state on a clock of its own, so every device has it and no settings edit on
+  another device brings it back once it is off. A smart-contract wallet cannot turn it on. Turning it off stops sites receiving it, and
+  messages already sent keep the name (docs/Wallet-Link.md).
+- **lib:** while the setting is on, `connectionInfo.identity.walletLink` carries the link as
+  `{ message, walletSignature, accountSignature }`. While it is off, a site learns no wallet.
+  Turning it off or on reaches a signed-in site at once as a `connectionInfoChanged`, and a
+  site that was closed meanwhile on its next load, from what the account published. A site
+  loaded again holds its saved link back until the published state, an open page of Swarm ID
+  or a new sign-in confirms it, so an account with no drive, which publishes nothing, never
+  hands a site a link turned off while it was closed.
+- **lib:** `verifyWalletLink(link, { account })` checks a link strictly and returns the account,
+  wallet and date it names, or undefined. `buildWalletLinkMessage`, `parseWalletLinkMessage`,
+  `WALLET_LINK_TITLE` and `WALLET_LINK_STATEMENT` give the exact format.
+- **lib:** `resolveVerifiedEnsName(wallet, { rpcUrl, timeoutMs })` answers a wallet's ENS name
+  when ENS's Universal Resolver, read through viem's `getEnsName` over the mainnet endpoint you
+  name, finds a primary name whose address record names the wallet back, and the name is already
+  ENSIP-15 normalised. Names behind CCIP-read, wildcard and ENSIP-19 resolvers are read too, and
+  their gateway sees the lookup. Anything that goes wrong answers undefined. Answers are kept for
+  ten minutes, and a failed read for 30 seconds. The library now depends on `viem`.
+
+### Fixed
+
+- **ui:** the wallet picker contacts no host of its own. It no longer fetches the Inter font
+  from rsms.me and draws in the app's font instead, and it no longer looks up each connected
+  wallet's ENS name at cloudflare-eth.com. Both told a third party who opened Swarm ID.
+
+## 0.9.1
+
+### Fixed
+
+- **ui:** every Swarm ID page, the connect window included, starts in the person's theme with a
+  Swarm loader while it loads from Swarm, instead of a blank white page for several seconds. The
+  theme is the stored choice, else the system's. The loader's pulse stops when motion is reduced,
+  and the hidden frame and the button frame a site embeds never show it.
+
 ## 0.9.0
 
 ### Breaking changes

@@ -153,7 +153,10 @@ newcomer                         signaling server                       existing
   so a teardown announcement made in the closing tick still reaches the wire.
 - **No mailbox.** A message reaches the peers that are in the room right now. That is the
   whole design: the bus makes live peers converge fast; it does not carry anything to a
-  context that is closed (see Known gaps).
+  context that is closed (see Known gaps). What a newcomer missed while it was closed it
+  hears from a SwarmID tab that is open: the tab answers every `peer-joined` with the
+  account's `account-delta`, debounced like any other publish, and the newcomer folds it on
+  the per-field clocks, so an answer it did not need changes nothing.
 
 Server limits (`signaling/src/server.ts`, all deliberately global rather than per-IP because
 the service sits behind the platform ingress): 500 connections, 200 rooms, 24 peers per room, a
@@ -218,9 +221,10 @@ With the bus in place the partitioned iframe is a first-class writer:
   encrypted on-Swarm account state contains the `derivationKey` anyway, so holding the derived
   keys is equivalent — derived-only would be defense-in-depth theater.)
 - **What the partitioned session is allowed to hold** (#578). The stamp collection is narrowed
-  to the batches this app's own pointers name — its `postageStampBatchID` override and the
-  account default it falls through to (`stampsReachableByApp`), nothing for an app set to no
-  stamp (`"none"`) or still waiting for the person to confirm its drive (`stampPending`) — at the handover AND after
+  to the one batch the person picked for this app, its `postageStampBatchID`
+  (`stampsReachableByApp`). The account default is never added beside it. Nothing is held for
+  an app with no pick, one set to no stamp (`"none"`), or one still waiting for the person to
+  confirm its drive (`stampPending`). This holds at the handover AND after
   every `account-delta` fold, since the publisher is an unpartitioned context that sends the
   whole collection. A session can only ever spend the stamp `resolveStampForApp` picks, so
   every other signer key it held was exposure with no use.
@@ -253,7 +257,11 @@ With the bus in place the partitioned iframe is a first-class writer:
   unpartitioned path enforces out of shared storage, 7 days by default, and a restored
   session reads the account's published state before its first write, to catch a revoke made
   while the tab was closed, which reaches it no other way ([Hardening](Hardening.md)). That read is a revocation check,
-  not a fold: everything else still arrives over the bus, and a fold that lands re-persists
+  not a fold, with one exception: the wallet link, which is taken when its own clock is newer
+  so a link turned off while the site was closed is not handed back to it. Until that read, a
+  peer's `account-delta` or a new handover confirms the restored link, the frame keeps it out of
+  the site's identity, so an account with no drive, which publishes nothing to read, never hands
+  back a link it cannot confirm ([Wallet-Link.md](Wallet-Link.md)). Everything else still arrives over the bus, and a fold that lands re-persists
   the record so the next reload does not undo it. The iframe keeps its own
   `swarm-id-device-id` and lease cache — it _is_ a device, named after the dApp it belongs to
   in the roster (#643), and its liveness comes from presence like every other device's; nothing
@@ -267,7 +275,7 @@ With the bus in place the partitioned iframe is a first-class writer:
   context's own feed and cannot be deleted by their absence here. What it does hold cannot
   revive anything either — collections merge per entry on tombstone clocks, so a peer's
   `revokedAt` / `deletedAt` beats the connect-time copy, and the scalars ride per-field clocks
-  (`accountNameAt`, `defaultStampAt`, `settingsAt`), so a stale rename loses rather than
+  (`accountNameAt`, `defaultStampAt`, `settingsAt`, `walletLinkAt`), so a stale rename loses rather than
   clobbers. Pinned by tests in `lib/src/sync/device-state.test.ts` ("a stale, narrowed
   publisher"). Since #568 the view is not frozen for the session either: a delta that lands
   folds in and is re-persisted, so what it publishes is the handover plus every overlap since.
@@ -513,9 +521,12 @@ Not yet written:
   its roster is empty and allows it ([Hardening](Hardening.md)).
 - That check asks only whether the connection ENDED — a missing entry, a `revokedAt` (Remove), or
   a `disconnectedAt` newer than the connection the session came from (Disconnect). A **rotated
-  signer key, moved default stamp or site stamp changed on the Apps screen** made while the tab
+  signer key or site stamp changed on the Apps screen** made while the tab
   was closed is not adopted on restore;
-  the session comes up on the handed-over view and corrects at the next live overlap. Changes
+  the session comes up on the handed-over view and corrects at the next live overlap. The wallet
+  link is the one field the restore adopts, read beside the check from the same fold, because a
+  stale one publishes the person's wallet on the site's behalf, and it is held back until
+  something confirms it. Changes
   that arrive while it IS live are folded and re-persisted, so they survive a reload.
 - **Network settings do not reach a partitioned session at all.** The Bee node and RPC URLs are
   browser-local (`swarm-id-network-settings`), not account state, so they ride the connect

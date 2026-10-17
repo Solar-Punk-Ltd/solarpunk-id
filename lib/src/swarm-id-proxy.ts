@@ -153,6 +153,10 @@ import type { DeviceStateSnapshot } from "./sync"
 import { mergeDevicesList } from "./sync/merge-snapshot"
 import { checkRestoredSession, type SessionVerdict } from "./sync/session-check"
 import {
+  readPublishedWalletLink,
+  type PublishedWalletLink,
+} from "./sync/published-wallet-link"
+import {
   accountDeltaFromSnapshot,
   restoreLocalSessionFields,
 } from "./bus/account-delta"
@@ -198,6 +202,7 @@ import {
   siteChatAddress,
 } from "./utils/chat-binding"
 import type { ChatBinding } from "./utils/chat-binding"
+import { verifyWalletLink } from "./utils/wallet-link"
 import {
   activeDeviceIds,
   KNOWN_DEVICE_MAX_AGE_MS,
@@ -439,6 +444,12 @@ export class SwarmIdProxy {
    * first-class writer despite the partition (docs/Account-Bus.md, phase 3).
    */
   private partitionAccount: SignedInAccount | undefined
+  /**
+   * Set while a restored session's saved wallet link is unconfirmed, and kept
+   * out of the identity until then (docs/Wallet-Link.md). Cleared by the
+   * account's published state, a peer's `account-delta` or a new handover.
+   */
+  private walletLinkUnconfirmed = false
   /** Account-derived topic the attached bus transports share; undefined when
    *  none are attached. */
   private busTopic: string | undefined
@@ -859,8 +870,8 @@ export class SwarmIdProxy {
         // New connection, or the connected account / secret changed.
         await this.authenticateFromStorage(app)
       } else {
-        // Same connection — related metadata (default stamp, per-app batch
-        // override, rename) may have changed. A partitioned session skips this
+        // Same connection. Related metadata (the site's picked stamp, a
+        // rename) may have changed. A partitioned session skips this
         // for a storage event, whose account document it cannot read; after a
         // bus fold it must NOT skip it, because the hydrated view it just
         // folded into is exactly what the refresh reads (the same call
@@ -1094,6 +1105,7 @@ export class SwarmIdProxy {
 
   /** Authenticate in storage-partitioned mode from a checked handover */
   private async adoptHandover(data: AuthData): Promise<void> {
+    this.walletLinkUnconfirmed = false
     this.appSecret = data.secret
     this.chatBinding = this.acceptHandedOverChatBinding(data)
     this.authenticated = true
@@ -1207,7 +1219,7 @@ export class SwarmIdProxy {
    * Re-persist the stored session's account view after a live fold moved it.
    *
    * Without this the record is frozen at the handover: a rotated signer key or
-   * a moved default stamp arrives over the bus, updates `partitionAccount`, and
+   * a moved pick for this site arrives over the bus, updates `partitionAccount`, and
    * then a reload resurrects the pre-fold copy and uploads with it until the
    * next live overlap.
    *
@@ -2002,11 +2014,11 @@ export class SwarmIdProxy {
       // The shared fold, not a second set of rules: `foldAccount` merges the
       // collections per `appUrl` / `batchID` on their tombstone clocks AND
       // every scalar on its own per-field clock, exactly as the Swarm read
-      // path does. The metadata is not optional here — a moved default stamp
-      // arrives as "old one tombstoned, new one added, pointer moved", so
-      // folding the collections alone leaves the pointer on the tombstone,
-      // `resolveStampForApp` resolves nothing, and the session cannot upload
-      // for the page's life with the replacement key already in hand.
+      // path does. A replaced drive for this site arrives as "old one
+      // tombstoned, new one added, the site's pick moved", and the pick rides
+      // its own clock on the site's entry, so folding only the stamp
+      // collection would leave the pick on the tombstone and the session
+      // unable to upload with the replacement key already in hand.
       // Local view first, so a tie on a collection entry keeps ours.
       const folded = foldAccount(
         [
@@ -2048,23 +2060,22 @@ export class SwarmIdProxy {
         // still runs, because the session must hear about ITS stamp — a
         // rotated signer key, a tombstone — and LWW is what tells it.
         //
-        // Narrowed by the pointers the fold just decided, never the pre-fold
-        // ones: one delta can carry both a re-pointed app (or a moved account
-        // default) and the stamp it now names, and filtering by the old
-        // pointers drops the stamp while keeping the pointer —
-        // `resolveStampForApp` then falls through, and the session spends the
-        // wrong batch or nothing at all, with nothing to correct it until some
+        // Narrowed by the pick the fold just decided, never the pre-fold
+        // one: one delta can carry both a re-pointed app and the stamp it now
+        // names, and filtering by the old pick drops the stamp while keeping
+        // the pointer. `resolveStampForApp` then resolves nothing, and the
+        // session cannot upload with nothing to correct it until some
         // unrelated change publishes again.
         postageStamps: stampsReachableByApp(
           connectedApps.find((app) => app.appUrl === connection.app.appUrl) ??
             connection.app,
-          foldedAccount,
           foldedAccount.postageStamps,
         ),
       }
       // The stored session goes with it, or the next reload undoes this fold
       // (#636 review).
       this.refreshStoredPartitionAccount()
+      this.walletLinkUnconfirmed = false
     }
 
     // On the reconcile queue, not beside it: this runs the same stamper rebind
@@ -2894,11 +2905,21 @@ export class SwarmIdProxy {
       // it as 0 for exactly that reason.
       connectedAt,
     })
+    // Started beside the check, whose Swarm read it shares.
+    const accountId = data.account.id.toHex()
+    const publishedWalletLink = readPublishedWalletLink({
+      bee: this.accountBee,
+      derivationKey: data.account.derivationKey,
+      accountId,
+    })
     this.appSecret = data.secret
     this.chatBinding = this.acceptHandedOverChatBinding(data)
     this.authenticated = true
     this.storagePartitioned = true
     this.deviceId = getOrCreateDeviceId()
+    // Saved before any change made while no page of the site was open, which
+    // an account with no drive publishes nowhere this frame can read.
+    this.walletLinkUnconfirmed = true
 
     await this.hydratePartitionAccount(
       data.account,
@@ -2911,6 +2932,40 @@ export class SwarmIdProxy {
       data.stampPending,
     )
 
+    this.emitConnectionInfoIfChanged()
+    void publishedWalletLink.then((published) =>
+      this.foldPublishedWalletLink(accountId, published),
+    )
+  }
+
+  /**
+   * Take the wallet link the account published when it is newer than the
+   * restored copy, and tell the site (docs/Wallet-Link.md).
+   *
+   * The bus carries a change of "Show my ENS name on sites" to a frame that is
+   * open, and keeps no mailbox. Turned off while no page of the site was open,
+   * the restored copy would go on handing the site the withdrawn wallet, so
+   * the published state decides on the link's own clock. Only the link: the
+   * rest of the published account still arrives over the bus.
+   *
+   * Nothing published, or nothing read, confirms nothing, so the restored link
+   * stays held back.
+   */
+  private foldPublishedWalletLink(
+    accountId: string,
+    published: PublishedWalletLink | undefined,
+  ): void {
+    const account = this.partitionAccount
+    if (!published || !account || account.id.toHex() !== accountId) return
+    this.walletLinkUnconfirmed = false
+    if (published.walletLinkAt > (account.walletLinkAt ?? account.createdAt)) {
+      this.partitionAccount = {
+        ...account,
+        walletLink: published.walletLink,
+        walletLinkAt: published.walletLinkAt,
+      }
+      this.refreshStoredPartitionAccount()
+    }
     this.emitConnectionInfoIfChanged()
   }
 
@@ -3007,10 +3062,7 @@ export class SwarmIdProxy {
         return undefined
       }
 
-      // Resolve the stamp this app should use: its per-app override if set,
-      // otherwise the account default — skipping a pointer whose stamp is
-      // missing so a stale pointer falls through instead of failing.
-      return resolveStampForApp(app, account, account.postageStamps)
+      return resolveStampForApp(app, account.postageStamps)
     } catch (error) {
       console.error("[Proxy] Error looking up postage stamp:", error)
       return undefined
@@ -3210,10 +3262,11 @@ export class SwarmIdProxy {
    * `buildAccountStateSnapshotForPublish` below — reusing that one would cost
    * two key derivations to send a bus message.
    *
-   * `requireDefaultStamp` is the FEED path's precondition, not the snapshot's:
-   * that write is paid for by the default stamp, while a bus message costs
-   * nothing to send and `metadata.defaultPostageStampBatchID` is optional on
-   * the wire. An account with no drives is a supported connected state, and
+   * `requireDefaultStamp` is the FEED path's precondition, not the snapshot's.
+   * That write is paid from the drive the person picked for this site, through
+   * the coordinator built on the site's resolved stamp, and not from the
+   * account default this flag checks. A bus message costs nothing to send and
+   * `metadata.defaultPostageStampBatchID` is optional on the wire. An account with no drives is a supported connected state, and
    * gating the delta on a stamp is how such an account's revokes never reach
    * its partitioned sessions at all.
    */
@@ -3341,7 +3394,9 @@ export class SwarmIdProxy {
    * and to the shared feed via the coordinator (same write lock + held
    * partition). The feed write needs a partition; the bus message does not, so
    * it goes out first and a read-only session still relays to peers that
-   * cannot see storage at all. Single-device accounts' feeds are published by
+   * cannot see storage at all. The feed write is paid from the site's picked
+   * drive, through the coordinator, and a site with no pick has no coordinator
+   * and writes none. Single-device accounts' feeds are published by
    * the SwarmID UI. Re-arms if a publish is already in flight so the latest
    * state still lands.
    */
@@ -3626,6 +3681,7 @@ export class SwarmIdProxy {
     // expiry the reconcile noticed — so the stored copy goes with it, or the
     // next load would bring it back (#635).
     this.clearPartitionSession()
+    this.walletLinkUnconfirmed = false
 
     // Clear stamper state from localStorage
     const stamperKey = `swarm-stamper-${this.parentOrigin}-${this.postageBatchId}`
@@ -3882,6 +3938,7 @@ export class SwarmIdProxy {
           const { account } = connection
           const { sharingPublicKey, postageSignerAddress } =
             this.identityKeysFor(account.derivationKey)
+          const { walletLink } = account
           identity = {
             id: account.id.toHex(),
             name: account.name,
@@ -3890,6 +3947,12 @@ export class SwarmIdProxy {
             sharingPublicKey,
             postageSignerAddress,
             avatar: generatedAvatar(account.id.toHex()),
+            walletLink:
+              !this.walletLinkUnconfirmed &&
+              walletLink &&
+              verifyWalletLink(walletLink, { account: account.id.toHex() })
+                ? walletLink
+                : undefined,
           }
         }
       } catch (error) {
