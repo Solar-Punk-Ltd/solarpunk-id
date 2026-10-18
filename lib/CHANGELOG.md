@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.10.3
+
+### Fixes
+
+- **lib:** a site's frame claims its share of the drive on the public gateway while it is also syncing the
+  account, so a message on the person's own stamp goes out. The public gateway, the default, speaks HTTP/1.1,
+  so a browser sends it at most six requests at a time and holds the rest back, and it takes 2.8 to 5.7 s to
+  say a chunk is missing. A claim makes a dozen reads at once, and the device list and the other devices'
+  states were being read beside it, so the claim's reads waited in the browser's queue while their time
+  limits ran. They came back as timed out, the frame went read-only, and the message stayed at Sending. In a
+  live run the frame sent 344 requests to the gateway and 125 got no answer. The frame now sends at most five
+  reads to a gateway at once (`GATEWAY_READS_IN_FLIGHT`), the claim's first, and a read's limit starts when
+  it is sent. Writes keep the sixth connection. Against a simulated gateway that answers a miss in 2.7 to
+  5 s, with a dozen devices' states read at the same time, the claim takes about 9 to 13 s on an account
+  with no other active device and about 29 to 38 s with one to three, 12 s of which is the watch for a
+  rival's intent that a contested claim always has. Before, it went read-only in the same simulation.
+
 ## 0.10.2
 
 ### Fixes
