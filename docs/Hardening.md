@@ -214,12 +214,14 @@ A removal also keeps the sign-in time it saw, so an entry marked ended that
 carries this session's own sign-in time ends it, whatever the removing
 device's clock said. Before
 0.10.4 an old removal and a site not listed both read as ended, and since the
-connect window closes before its save runs, an account with a drive was
+connect window closes before its save lands, an account with a drive was
 signed out of a site on every reload.
 
-The connect window closes without saving to Swarm. A changed drive pick is
-stored locally and queues a save behind the 2 s debounce, which the closing
-window outruns. 0.10.4 had it save the sign-in
+"Go to app" closes the connect window without waiting for a save to Swarm.
+The sign-in itself queues a save behind the 2 s debounce when the account is
+picked, which starts while the done screen is open, and the close cuts it off
+when it has not landed. A changed drive pick queues another, which the closing
+window outruns. 0.10.4 had it wait for the save of the sign-in
 before closing, and that save claims a share of the same drive the site's
 frame claims at that moment to send with. On a slow gateway each claim's read
 of the other's intent timed out and counted as missing, so both won the same
