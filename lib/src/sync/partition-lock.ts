@@ -35,13 +35,15 @@ import {
   Bee,
   PrivateKey,
   type BatchId,
+  type BeeRequestOptions,
   type Stamper,
 } from "@ethersphere/bee-js"
 import { Binary } from "cafe-utility"
 import { downloadEncryptedSOC } from "../proxy/download-data"
 import { uploadSOC, type UploadTarget } from "../proxy/upload"
-import { sleep, withTimeout } from "../utils/promise"
+import { sleep } from "../utils/promise"
 import { SYNC_READ_TIMEOUT_MS } from "./timing-constants"
+import { withReadTimeout } from "./read-line"
 import { makePartitionLockIdentifier } from "../utils/lock-soc"
 import {
   PartitionLockPayloadSchemaV1,
@@ -161,6 +163,7 @@ export async function readPartitionLock(opts: {
   swarmEncryptionKey: Uint8Array
   batchId: BatchId
   partition: number
+  requestOptions?: BeeRequestOptions
 }): Promise<PartitionLockPayload | undefined> {
   const { bee, backupSigner, swarmEncryptionKey, batchId, partition } = opts
   const identifier = makePartitionLockIdentifier(batchId, partition)
@@ -171,6 +174,7 @@ export async function readPartitionLock(opts: {
       owner,
       identifier,
       swarmEncryptionKey,
+      opts.requestOptions,
     )
     const parsed = PartitionLockPayloadSchemaV1.safeParse(
       JSON.parse(new TextDecoder().decode(soc.payload)),
@@ -289,8 +293,10 @@ export async function acquirePartitionLock(opts: {
   const now = opts.now ?? Date.now
   const wait = opts.wait ?? sleep
   const readBounded = () =>
-    withTimeout(
-      readPartitionLock(opts),
+    withReadTimeout(
+      opts.bee,
+      "claim",
+      (requestOptions) => readPartitionLock({ ...opts, requestOptions }),
       opts.readTimeoutMs ?? SYNC_READ_TIMEOUT_MS,
       "lock read timed out",
     ).catch(() => undefined)

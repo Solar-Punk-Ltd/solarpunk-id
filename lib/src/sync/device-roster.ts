@@ -40,9 +40,9 @@ import {
 } from "../proxy/feeds/sequence"
 import { isStamperTarget, uploadData, type UploadTarget } from "../proxy/upload"
 import { downloadDataWithChunkAPI } from "../proxy/download-data"
-import { withTimeout } from "../utils/promise"
 import { isNotFoundError } from "../utils/bee-error"
 import { MISS_READ_TIMEOUT_MS } from "./timing-constants"
+import { withReadTimeout } from "./read-line"
 import { mergeDevicesList } from "./merge-snapshot"
 
 export const ROSTER_TOPIC_PREFIX = "swarm-id-roster-v1"
@@ -54,7 +54,7 @@ const MAX_ROSTER_SCAN = 256
 // How many roster indices to probe in parallel per round. The roster is small
 // and contiguous, so one window of this size usually resolves the whole scan in
 // a single round-trip instead of K+1 serial ones.
-const ROSTER_SCAN_WINDOW = 16
+export const ROSTER_SCAN_WINDOW = 16
 
 // How many indices to probe past a KNOWN roster length to detect new appends
 // (#400). Absent-slot probes are the expensive kind (Bee has no fast
@@ -175,8 +175,10 @@ async function probeSocSlot(opts: {
 }): Promise<Uint8Array | undefined | typeof ROSTER_READ_INCONCLUSIVE> {
   const url = `${opts.bee.url}/soc/${opts.owner.toHex()}/${opts.identifier.toHex()}`
   try {
-    const response = await withTimeout(
-      fetch(url),
+    const response = await withReadTimeout(
+      opts.bee,
+      "background",
+      ({ signal }) => fetch(url, { signal }),
       MISS_READ_TIMEOUT_MS,
       "roster /soc probe timed out",
     )
@@ -206,8 +208,13 @@ async function readRosterEntry(opts: {
   const identifier = rosterIdentifier(opts.topic, opts.index)
   let refBytes: Uint8Array
   try {
-    const soc = await withTimeout(
-      opts.bee.soc.makeReader(opts.owner).download(identifier),
+    const soc = await withReadTimeout(
+      opts.bee,
+      "background",
+      (requestOptions) =>
+        opts.bee.soc
+          .makeReader(opts.owner, requestOptions)
+          .download(identifier),
       MISS_READ_TIMEOUT_MS,
       "roster read timed out",
     )
@@ -234,8 +241,17 @@ async function readRosterEntry(opts: {
   // garbage blob (the SOC resolved) — a skippable hole `readRoster` folds around.
   let data: Uint8Array
   try {
-    data = await withTimeout(
-      downloadDataWithChunkAPI(opts.bee, new Reference(refBytes).toHex()),
+    data = await withReadTimeout(
+      opts.bee,
+      "background",
+      (requestOptions) =>
+        downloadDataWithChunkAPI(
+          opts.bee,
+          new Reference(refBytes).toHex(),
+          undefined,
+          undefined,
+          requestOptions,
+        ),
       MISS_READ_TIMEOUT_MS,
       "roster read timed out",
     )

@@ -174,14 +174,27 @@ lease (`LEASE_TTL_MS`) refreshed every 10 s (`LEASE_REFRESH_MS`). `PartitionLeas
   device's deterministic home offset. All four read channels (locks, presence, occupancy,
   plus a **speculative state-pointer read** for the home partition) fire **concurrently** —
   classification is ordered after the barrier — so a cold acquire pays ~one read-timeout,
-  not four stacked ones. Every lock read on the acquire path is timeout-bounded
-  (`SYNC_READ_TIMEOUT_MS`), and the claim (`acquirePartitionLock`) skips its pre-write
-  re-read (`skipInitialRead`) — the scan just did it. **Solo-clean fast path:** when no
+  not four stacked ones. Every read on the acquire path is timeout-bounded: the scan's lock
+  reads and the state pointer reads by `MISS_READ_TIMEOUT_MS` (8 s), the beacon reads and
+  `acquirePartitionLock`'s own reads by `SYNC_READ_TIMEOUT_MS` (2.5 s). The claim
+  (`acquirePartitionLock`) skips its pre-write re-read (`skipInitialRead`) — the scan just
+  did it. **Solo-clean fast path:** when no
   rival is known and no channel shows any trace of another device (no holder, no expired
   lock, no sentinel, no unreadable lock), the claim's guard window is skipped; the residual
   unknown-peer race stays backstopped by the refresh-tick displacement check. The claim-time
   presence/occupancy beacon publish is detached from the acquire (best-effort, ordered
   before the next `refresh()`/`release()`).
+- **Read line.** The lease's reads, the device roster's and the device-state folds' wait in
+  one line per gateway origin (`sync/read-line.ts`), at most `GATEWAY_READS_IN_FLIGHT` (5)
+  sent at once. A browser keeps six requests open to an HTTP/1.1 origin such as the public
+  gateway and queues the rest out of sight, and that gateway takes 2.8 to 5.7 s to answer a
+  miss, so a claim's reads behind a background fold used to sit in the browser's queue with
+  their limits running and came back timed out (measured 2026-10-18, the frame went
+  read-only). A read's limit now starts when it leaves the line, and a read that passes it
+  is aborted so its connection frees. Lease reads go before roster and fold reads, and one
+  of the five places is kept free of the latter. What a read's result means is unchanged.
+  Writes and the site's own content requests stay outside the line and use the sixth
+  connection.
 - **Intent round.** Only a _fresh_ claim of a free/expired slot _with a known rival_ runs
   the intent round (a short per-epoch announce + poll at `INTENT_GUARD_WINDOW_MS`) so two
   disjoint-gateway contenders agree on one winner before binding. A re-acquire of our own

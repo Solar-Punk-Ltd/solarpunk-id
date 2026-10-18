@@ -104,6 +104,11 @@ after 3.4 to 4.8 s and does not route `GET /soc` (measured 2026-10-18). With the
 roster read was inconclusive: `ensureInRoster` then skipped its append, so no device wrote its first entry,
 and signing in on another device failed with "roster scan inconclusive".
 
+The slot reads, like the device-state folds, wait in the gateway's read line (`sync/read-line.ts`) behind the
+partition lease's reads, at most five sent at once, and each read's limit counts from when it is sent. A
+browser keeps only six requests open to the public gateway, so without the line a scan's sixteen parallel
+slot reads waited in the browser's queue with their limits already running.
+
 `ensureInRoster` appends only when the device is absent or its `removedAt` state changed —
 keeping the roster a rare, membership-only write. (Replaced an earlier mutable registry doc that a caching
 gateway could clobber.)

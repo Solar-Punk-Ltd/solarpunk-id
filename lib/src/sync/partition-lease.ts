@@ -33,8 +33,8 @@ import {
   type Stamper,
 } from "@ethersphere/bee-js"
 import { uint8ArrayToHex } from "../utils/hex"
-import { withTimeout } from "../utils/promise"
 import { MISS_READ_TIMEOUT_MS } from "./timing-constants"
+import { withReadTimeout } from "./read-line"
 import { deriveSecret, BACKUP_KEY_LABEL } from "../utils/key-derivation"
 import {
   LEASE_TTL_MS,
@@ -352,14 +352,18 @@ export class PartitionLease {
     // `undefined` (clean 404) is genuinely absent and stays claimable.
     const locks = await Promise.all(
       Array.from({ length: partitionCount }, (_unused, p) =>
-        withTimeout(
-          readPartitionLock({
-            bee: this.opts.bee,
-            backupSigner: this.opts.backupSigner,
-            swarmEncryptionKey: this.opts.swarmEncryptionKey,
-            batchId: this.opts.batchId,
-            partition: p,
-          }),
+        withReadTimeout(
+          this.opts.bee,
+          "claim",
+          (requestOptions) =>
+            readPartitionLock({
+              bee: this.opts.bee,
+              backupSigner: this.opts.backupSigner,
+              swarmEncryptionKey: this.opts.swarmEncryptionKey,
+              batchId: this.opts.batchId,
+              partition: p,
+              requestOptions,
+            }),
           MISS_READ_TIMEOUT_MS,
           "lock read timed out",
         ).catch(() => {

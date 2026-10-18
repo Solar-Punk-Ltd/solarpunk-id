@@ -418,7 +418,9 @@ The reference orchestrator is `PartitionLease`. Constants:
 | `INTENT_EPOCH_MS`         | 30 000 ms  | Epoch of the intent and occupancy beacons.                                |
 | `INTENT_GUARD_WINDOW_MS`  | 12 000 ms  | How long a contender watches for rival intents before binding.            |
 | `STATE_POINTER_EPOCH_MS`  | 30 000 ms  | Rotation period of the state-pointer SOC.                                 |
-| `SYNC_READ_TIMEOUT_MS`    | 2 500 ms   | Bound on every lock, beacon, and roster read on the acquire path.         |
+| `SYNC_READ_TIMEOUT_MS`    | 2 500 ms   | Bound on the beacon reads and the lock protocol's own reads.              |
+| `MISS_READ_TIMEOUT_MS`    | 8 000 ms   | Bound on the reads whose miss is the answer: lock scan, pointer, roster.  |
+| `GATEWAY_READS_IN_FLIGHT` | 5          | Sync reads sent at once to one origin, each timed from when it is sent.   |
 | `PRESENCE_INTERVAL_MS`    | 20 000 ms  | Account-bus liveness message; feeds the rival set, not the lock.          |
 | `PRESENCE_MAX_AGE_MS`     | 180 000 ms | A device unheard this long leaves the rival set (three throttled beats).  |
 | `KNOWN_DEVICE_MAX_AGE_MS` | 30 min     | A device that signed in this recently counts as a rival even with no bus. |
