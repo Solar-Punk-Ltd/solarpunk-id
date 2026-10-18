@@ -2971,10 +2971,9 @@ export class SwarmIdProxy {
 
   /**
    * Ask the account's published state whether this restored session was ended
-   * while no page of the site was open. Ended means what it means
-   * everywhere else: the entry is gone, `revokedAt` (Remove), or a
-   * `disconnectedAt` newer than the connection this session came from
-   * (Disconnect, #667), with the rules in `sync/session-check.ts`.
+   * while no page of the site was open. Ended means a `revokedAt` (Remove) or
+   * a `disconnectedAt` (Disconnect, #667) newer than the connection this
+   * session came from, with the rules in `sync/session-check.ts`.
    *
    * Reads start at once. Writes wait on the answer (`ensureCanWrite`), and an
    * answer that could not be read keeps them refused: an unreachable Swarm

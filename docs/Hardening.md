@@ -208,7 +208,7 @@ the clock the account's merge ranks a site by, so a sign-in after an older
 removal wins here as it wins there. A site the published account does not
 list has had nothing saved about it, its end included, because a removal
 keeps the site's entry with its mark, and the session is allowed. Before
-0.10.4 both read as ended, and since the connect window closed before its
+0.10.4 an old removal and a site not listed both read as ended, and since the connect window closed before its
 save ran, an account with a drive was signed out of a site on every reload.
 The connect window now waits, up to 30 s, for that save before it closes
 (`saveNow` in `ui/src/lib/dev/sync-hooks.ts`).
