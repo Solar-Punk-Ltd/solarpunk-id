@@ -22,6 +22,9 @@
     the add-drive dialog.
   - the account has drives but no entry for the site: the plain confirmation,
     nothing in between.
+  "Go to app" waits for the sign-in to be saved to Swarm before it closes the
+  window, because a closed window runs no pending save, and up to
+  CONNECT_SAVE_WAIT_MS so a slow gateway cannot keep it open.
 -->
 <script lang="ts">
   import { onMount } from 'svelte'
@@ -43,6 +46,7 @@
   import { Button } from '$lib/components/ui/button'
   import { Select } from '$lib/components/ui/select'
   import { handOverPickedStamp } from '$lib/connect-handshake'
+  import { saveNow } from '$lib/dev/sync-hooks'
   import routes from '$lib/routes'
   import { accountsStore } from '$lib/stores/accounts.svelte'
   import { connectStore } from '$lib/stores/connect.svelte'
@@ -51,6 +55,7 @@
   import { truncateAddress } from '$lib/utils'
 
   const AVATAR_SIZE = 80
+  const CONNECT_SAVE_WAIT_MS = 30_000
 
   const account = $derived(
     sessionStore.currentAccountId ? accountsStore.get(sessionStore.currentAccountId) : undefined,
@@ -73,6 +78,7 @@
   let pickNotReached = $state(false)
 
   let addDriveOpen = $state(false)
+  let saving = $state(false)
 
   onMount(() => {
     if (!account || !request) {
@@ -93,6 +99,11 @@
         pickNotReached = true
         return
       }
+    }
+    if (account) {
+      saving = true
+      const answer = await saveNow(account.id.toHex(), CONNECT_SAVE_WAIT_MS)
+      if (answer === 'not-saved') console.warn('[connect] Closing before the sign-in was saved')
     }
     connectStore.clear()
     window.close()
@@ -142,9 +153,13 @@
             </p>
           {/if}
 
-          <Button class="w-full" onclick={goToApp}>
-            Go to app
-            <ArrowRight />
+          <Button class="w-full" onclick={goToApp} disabled={saving}>
+            {#if saving}
+              Saving your sign-in…
+            {:else}
+              Go to app
+              <ArrowRight />
+            {/if}
           </Button>
         </div>
 

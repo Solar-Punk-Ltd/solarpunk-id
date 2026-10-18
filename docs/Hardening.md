@@ -203,6 +203,16 @@ An account that has never published anything (it has no drive) cannot have
 published a revoke either. The check confirms that its roster is empty, as an
 answer rather than as a failed read, and allows the session.
 
+"Ended" means a removal or a disconnect newer than this session's sign-in,
+the clock the account's merge ranks a site by, so a sign-in after an older
+removal wins here as it wins there. A site the published account does not
+list has had nothing saved about it, its end included, because a removal
+keeps the site's entry with its mark, and the session is allowed. Before
+0.10.4 both read as ended, and since the connect window closed before its
+save ran, an account with a drive was signed out of a site on every reload.
+The connect window now waits, up to 30 s, for that save before it closes
+(`saveNow` in `ui/src/lib/dev/sync-hooks.ts`).
+
 A session the person connects in this load writes without the check.
 
 - Code: `lib/src/sync/session-check.ts` (`checkRestoredSession`), and
