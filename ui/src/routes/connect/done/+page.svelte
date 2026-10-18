@@ -107,6 +107,8 @@
     }
     connectStore.clear()
     window.close()
+    // A window the browser will not close, one opened as a tab, keeps its button.
+    saving = false
   }
 </script>
 
