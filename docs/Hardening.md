@@ -208,10 +208,16 @@ the clock the account's merge ranks a site by, so a sign-in after an older
 removal wins here as it wins there. A site the published account does not
 list has had nothing saved about it, its end included, because a removal
 keeps the site's entry with its mark, and the session is allowed. Before
-0.10.4 an old removal and a site not listed both read as ended, and since the connect window closed before its
-save ran, an account with a drive was signed out of a site on every reload.
-The connect window now waits, up to 30 s, for that save before it closes
-(`saveNow` in `ui/src/lib/dev/sync-hooks.ts`).
+0.10.4 an old removal and a site not listed both read as ended, and since the
+connect window closes before its save runs, an account with a drive was
+signed out of a site on every reload.
+
+The connect window writes nothing to Swarm. 0.10.4 had it save the sign-in
+before closing, and that save claims a share of the same drive the site's
+frame claims at that moment to send with. On a slow gateway each claim's read
+of the other's intent timed out and counted as missing, so both won the same
+share. A new sign-in reaches the account's saved state with its next save,
+and until then this check allows it.
 
 A session the person connects in this load writes without the check.
 

@@ -104,3 +104,25 @@ test('the connect window says so when the site it was opened from is gone', asyn
   ).toBeVisible()
   await goToApp(popup)
 })
+
+// "Go to app" ends the connect, and the window writes nothing to Swarm on its
+// way out. A save from here claims a share of the very drive the site's frame
+// is claiming at that moment to send with, and on a slow gateway both claims
+// read the other's intent as missing and both win (0.10.4, live, 2026-10-18).
+// The sign-in reaches the account's saved state with its next save instead.
+test('the connect window closes without saving the account to Swarm', async ({ page }) => {
+  await connectedOnDefault(page, demoOrigin!)
+  await expectProxyPartitioned(page)
+
+  const popup = await reopenSignedIn(page)
+  const savesStarted: string[] = []
+  popup.on('console', (message) => {
+    if (message.text().includes('Starting sync')) savesStarted.push(message.text())
+  })
+  await popup.getByRole('combobox', { name: 'Select drive' }).selectOption({ label: 'Chat' })
+  await popup.getByRole('button', { name: 'Go to app' }).click()
+
+  await expect.poll(() => popup.isClosed(), { timeout: 5000 }).toBe(true)
+  expect(savesStarted).toEqual([])
+  await expect.poll(() => lastStampNamed(page), { timeout: 15000 }).toBe(CHAT_BATCH)
+})
