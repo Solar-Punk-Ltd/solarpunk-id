@@ -1265,6 +1265,38 @@ describe("PartitionLease.acquire — legacy fall-through", () => {
   })
 })
 
+describe("PartitionLease.acquire — a slow gateway's miss is still a miss", () => {
+  /**
+   * The public gateway, Swarm ID's default, answers a missing chunk with Bee's
+   * own 404 only after 3.4 to 4.8 s (measured 2026-10-18). With the shared
+   * 2.5 s limit a fresh partition's lock and pointer reads both timed out, the
+   * frame went read-only, and a site's message on its own stamp never went out.
+   */
+  const SLOW_MISS_MS = 3_000
+
+  it("claims a fresh partition when every miss takes longer than the shared sync read limit", async () => {
+    const original = downloadData.downloadEncryptedSOC
+    const slowMiss = vi
+      .spyOn(downloadData, "downloadEncryptedSOC")
+      .mockImplementation((async (...args: Parameters<typeof original>) => {
+        try {
+          return await original(...args)
+        } catch (error) {
+          await new Promise((resolve) => setTimeout(resolve, SLOW_MISS_MS))
+          throw error
+        }
+      }) as typeof original)
+    try {
+      const lease = makeLease({ deviceId: DEVICE_A, bee: bee })
+      const result = await lease.acquire({ partitionCount: PARTITION_COUNT })
+      expect(result.isReadOnly).toBe(false)
+      expect(result.partition).toBe(0)
+    } finally {
+      slowMiss.mockRestore()
+    }
+  }, 60_000)
+})
+
 describe("PartitionLease.acquire — fresh scan", () => {
   it("picks partition 0 when no lock SOCs exist", async () => {
     const lease = makeLease({ deviceId: DEVICE_A, bee: bee })
