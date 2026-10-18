@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.4
+
+### Fixes
+
+- **lib:** a site stays signed in across a reload on an account with a drive. A reloaded site's frame asks the
+  account's saved state on Swarm whether the site was removed or signed out while no page of it was open. It
+  read any removal mark, however old, and a site the saved state did not list, as ended. A new sign-in is
+  saved to Swarm by the connect window, which closed before its save ran, so the saved state still carried the
+  site's earlier removal, or did not list it, and every reload signed the person out. The check now ends a
+  session only for a removal or a sign-out newer than its sign-in, the clock the account's merge already
+  ranks a site by, and a site the saved state does not list is allowed, because a removal keeps the entry.
+- **ui:** "Go to app" in the connect window saves the sign-in to Swarm before it closes the window, showing
+  "Saving your sign-in…", for up to 30 s, so the account's other devices and a reloaded site see the new
+  sign-in.
+
 ## 0.10.3
 
 ### Fixes

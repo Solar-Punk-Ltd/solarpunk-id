@@ -102,9 +102,53 @@ describe("checkRestoredSession", () => {
     expect(await check()).toBe("allowed")
   })
 
-  it("ends a session whose site the published account no longer has", async () => {
+  // A removal leaves its entry behind with the mark on it, so an account that
+  // does not list the site has not saved this sign-in yet, and cannot have
+  // saved its end either. The connect window saves it, and a window closed
+  // before that save landed must not cost the site its sign-in on reload.
+  it("allows a session whose site the published account has not saved yet", async () => {
     foldAccountFromSwarm.mockResolvedValue(published([]))
-    expect(await check()).toBe("ended")
+    expect(await check()).toBe("allowed")
+  })
+
+  // The account's merge ranks an entry on its newest mark, so a sign-in
+  // after a removal wins there, and the check reads the same clock.
+  it("allows a session that signed in again after an older removal", async () => {
+    foldAccountFromSwarm.mockResolvedValue(
+      published([
+        {
+          appUrl: SITE,
+          appName: "dApp",
+          lastConnectedAt: CONNECTED_AT - 2000,
+          disconnectedAt: CONNECTED_AT - 1000,
+          revokedAt: CONNECTED_AT - 1000,
+        },
+      ]),
+    )
+    expect(await check()).toBe("allowed")
+  })
+
+  it("ends a session removed after it signed in, also with no time of its own", async () => {
+    foldAccountFromSwarm.mockResolvedValue(
+      published([
+        {
+          appUrl: SITE,
+          appName: "dApp",
+          lastConnectedAt: 0,
+          revokedAt: 1,
+          disconnectedAt: 1,
+        },
+      ]),
+    )
+    expect(
+      await checkRestoredSession({
+        bee: {} as Bee,
+        derivationKey: "cd".repeat(32),
+        accountId: "b".repeat(40),
+        appOrigin: SITE,
+        connectedAt: undefined,
+      }),
+    ).toBe("ended")
   })
 
   // An account with no drive cannot publish, so it cannot have published a

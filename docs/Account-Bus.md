@@ -519,8 +519,9 @@ Not yet written:
   account, so an outage never lets a revoked session write. An account that has **never
   published** (no drive, so no feed) cannot have published a revoke either: the check confirms
   its roster is empty and allows it ([Hardening](Hardening.md)).
-- That check asks only whether the connection ENDED — a missing entry, a `revokedAt` (Remove), or
-  a `disconnectedAt` newer than the connection the session came from (Disconnect). A **rotated
+- That check asks only whether the connection ENDED: a `revokedAt` (Remove) or a `disconnectedAt`
+  (Disconnect) newer than the connection the session came from. A missing entry is a sign-in not
+  saved yet, since a removal keeps its entry. A **rotated
   signer key or site stamp changed on the Apps screen** made while the tab
   was closed is not adopted on restore;
   the session comes up on the handed-over view and corrects at the next live overlap. The wallet

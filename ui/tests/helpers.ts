@@ -94,12 +94,15 @@ export async function openConnectPopup(page: Page) {
  * can be gone before the click roundtrip returns, so tolerate that error and
  * assert the closure itself.
  */
+/** The connect window saves the sign-in before it closes, for up to 30 s. */
+const POPUP_CLOSE_TIMEOUT_MS = 35_000
+
 export async function goToApp(popup: Page) {
   await popup
     .getByRole('button', { name: 'Go to app' })
     .click()
     .catch(() => undefined)
-  await expect.poll(() => popup.isClosed()).toBe(true)
+  await expect.poll(() => popup.isClosed(), { timeout: POPUP_CLOSE_TIMEOUT_MS }).toBe(true)
 }
 
 /**
