@@ -22,6 +22,17 @@
 export const SYNC_READ_TIMEOUT_MS = 2500
 
 /**
+ * Client-side timeout for a single device-roster slot read. Longer than
+ * {@link SYNC_READ_TIMEOUT_MS}, because the roster is read through the account's
+ * gateway, by default the public one, and an empty roster can only be confirmed
+ * by a miss: the public gateway answers an absent chunk with Bee's own 404 after
+ * 3.4 to 4.8 s (measured 2026-10-18), and does not route `GET /soc`, so a shorter
+ * limit made every empty roster inconclusive. No device then ever wrote its first
+ * entry, and signing in on another device always failed.
+ */
+export const ROSTER_READ_TIMEOUT_MS = 10_000
+
+/**
  * Partition-lease lifetime. A device holds its partition for this long before
  * the lease must be refreshed; if it crashes without refreshing, peers can
  * reclaim the partition.

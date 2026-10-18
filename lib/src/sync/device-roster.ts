@@ -42,7 +42,7 @@ import { isStamperTarget, uploadData, type UploadTarget } from "../proxy/upload"
 import { downloadDataWithChunkAPI } from "../proxy/download-data"
 import { withTimeout } from "../utils/promise"
 import { isNotFoundError } from "../utils/bee-error"
-import { SYNC_READ_TIMEOUT_MS } from "./timing-constants"
+import { ROSTER_READ_TIMEOUT_MS } from "./timing-constants"
 import { mergeDevicesList } from "./merge-snapshot"
 
 export const ROSTER_TOPIC_PREFIX = "swarm-id-roster-v1"
@@ -116,13 +116,11 @@ export function resetRosterScanCache(): void {
   knownRosterLength.clear()
 }
 
-// Per-read cap so an empty/unreachable slot on a slow gateway fails fast instead
-// of hanging on peer-exhaustion. A present slot retrieves well under this.
-// Matches the epoch finder's bound. An inconclusive read (timeout / 5xx /
-// network) is NOT a confirmed empty slot: `readRosterEntry` surfaces it as
+// Each slot read is capped by ROSTER_READ_TIMEOUT_MS so an unreachable slot
+// fails instead of hanging on peer-exhaustion. An inconclusive read (timeout /
+// 5xx / network) is NOT a confirmed empty slot: `readRosterEntry` surfaces it as
 // `ROSTER_READ_INCONCLUSIVE` so `readRoster` retries it once at the stop boundary
 // rather than mistaking it for end-of-feed and truncating the roster.
-const ROSTER_READ_TIMEOUT_MS = SYNC_READ_TIMEOUT_MS
 
 /**
  * Sentinel for a roster slot whose read was INCONCLUSIVE — a timeout, a 5xx, or

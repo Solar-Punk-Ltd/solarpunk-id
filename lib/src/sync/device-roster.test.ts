@@ -20,6 +20,7 @@ import {
   rosterTopic,
   rosterIdentifier,
 } from "./device-roster"
+import { ROSTER_READ_TIMEOUT_MS } from "./timing-constants"
 
 const OWNER = new EthAddress("a".repeat(40))
 const ACCOUNT_ID = "b".repeat(40)
@@ -154,9 +155,11 @@ describe("readRoster — windowed-parallel scan", () => {
   })
 })
 
-// The per-read timeout (ROSTER_READ_TIMEOUT_MS) is module-private; the SOC read
-// is bounded by it. Driven here with fake timers + a hanging download.
-const ROSTER_READ_TIMEOUT_MS = 2500
+// The SOC read is bounded by ROSTER_READ_TIMEOUT_MS. Driven here with fake
+// timers + a hanging download.
+
+/** How long the public gateway took to answer a missing chunk with Bee's 404, the slowest of six reads on 2026-10-18. */
+const PUBLIC_GATEWAY_MISS_MS = 4_800
 
 /**
  * Fake Bee where index `slowOnce` HANGS on its first SOC read (→ a timeout, not
@@ -212,6 +215,45 @@ function fakeBeeWithSlow(opts: {
     bee,
   }
 }
+
+describe("readRoster — a slow gateway's miss is still a miss", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    resetRosterScanCache()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // The public gateway, Swarm ID's default, answers an absent chunk with Bee's
+  // own 404 only after searching the network, and does not route GET /soc. A
+  // read limit under its miss time made every empty roster inconclusive, so no
+  // device ever wrote its first entry and no account could sign in elsewhere.
+  it("reads an empty roster as empty when every miss takes as long as the public gateway's", async () => {
+    const bee = {
+      soc: {
+        makeReader: () => ({
+          download: () =>
+            new Promise((_resolve, reject) =>
+              setTimeout(() => reject(notFound404()), PUBLIC_GATEWAY_MISS_MS),
+            ),
+        }),
+      },
+    }
+    const promise = readRoster({
+      bee: bee as never,
+      accountId: ACCOUNT_ID,
+      owner: OWNER,
+    })
+    const settled = promise.then(
+      (devices) => ({ devices }),
+      (error: unknown) => ({ error }),
+    )
+    await vi.advanceTimersByTimeAsync(PUBLIC_GATEWAY_MISS_MS * 4)
+    expect(await settled).toEqual({ devices: [] })
+  })
+})
 
 describe("readRoster — a timed-out read is not end-of-feed", () => {
   beforeEach(() => {
