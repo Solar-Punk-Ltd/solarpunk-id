@@ -98,6 +98,12 @@ worst delay discovering a _brand-new_ device until the next fold, never drop a k
 append-only, so a once-seen length can never overshoot), mirrored to localStorage where available so a
 page reload's first fold is warm too.
 
+Each slot read is capped by `ROSTER_READ_TIMEOUT_MS` (10 s), longer than the other sync reads, because an
+empty roster is confirmed only by a miss and the public gateway, the default, answers a miss with Bee's 404
+after 3.4 to 4.8 s and does not route `GET /soc` (measured 2026-10-18). With the shorter limit every empty
+roster read was inconclusive: `ensureInRoster` then skipped its append, so no device wrote its first entry,
+and signing in on another device failed with "roster scan inconclusive".
+
 `ensureInRoster` appends only when the device is absent or its `removedAt` state changed —
 keeping the roster a rare, membership-only write. (Replaced an earlier mutable registry doc that a caching
 gateway could clobber.)

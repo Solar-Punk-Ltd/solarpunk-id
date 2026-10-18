@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.1
+
+### Fixes
+
+- **lib:** signing in to an existing account on another device works on the public gateway. Swarm ID read
+  each slot of the account's device list with a 2.5 s limit, and the public gateway, the default, takes 3.4
+  to 4.8 s to say a slot is empty, so an empty list could never be confirmed. A first device then never
+  wrote itself into the list, and "I already have an account" elsewhere failed with "roster scan
+  inconclusive". The device list is now read with a 10 s limit (`ROSTER_READ_TIMEOUT_MS`). An account made
+  before this fix gets its first device in the list the next time that device publishes its state, which
+  an account with a drive does on its next sync.
+
 ## 0.10.0
 
 ### Breaking changes
