@@ -131,7 +131,13 @@ describe("checkRestoredSession", () => {
   it("ends a session removed after it signed in, also with no time of its own", async () => {
     foldAccountFromSwarm.mockResolvedValue(
       published([
-        { appUrl: SITE, appName: "dApp", revokedAt: 1, disconnectedAt: 1 },
+        {
+          appUrl: SITE,
+          appName: "dApp",
+          lastConnectedAt: 0,
+          revokedAt: 1,
+          disconnectedAt: 1,
+        },
       ]),
     )
     expect(
