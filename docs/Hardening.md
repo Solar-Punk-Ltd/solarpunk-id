@@ -217,7 +217,8 @@ before closing, and that save claims a share of the same drive the site's
 frame claims at that moment to send with. On a slow gateway each claim's read
 of the other's intent timed out and counted as missing, so both won the same
 share. A new sign-in reaches the account's saved state with its next save,
-and until then this check allows it.
+the next account change made in a Swarm ID tab that stays open for its 2 s
+debounce, and until then this check allows it.
 
 A session the person connects in this load writes without the check.
 
