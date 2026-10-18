@@ -25,10 +25,13 @@ import { foldAccountFromSwarm } from "./fold-account-from-swarm"
  *   account has never published anything (it has no drive, so it cannot have
  *   published a revoke either).
  * - `ended`: the published account removed or disconnected the site after
- *   this session connected. A site the account does not list has had nothing
- *   saved about it, its end included, because a removal keeps the entry with
- *   its mark.
- * - `unconfirmed`: the answer could not be read.
+ *   this session connected, or did so on an entry carrying this session's own
+ *   sign-in time, which a removal keeps, so a device that had seen this sign-in
+ *   ended it whatever its clock said. A site the account does not list has had
+ *   nothing saved about it, its end included, because a removal keeps the
+ *   entry with its mark, but only when every device's state was read.
+ * - `unconfirmed`: the answer could not be read, or the site is not listed
+ *   and a device that could hold its removal went unread.
  */
 export type SessionVerdict = "allowed" | "ended" | "unconfirmed"
 
@@ -55,10 +58,15 @@ export async function checkRestoredSession(opts: {
     const app = folded.account.connectedApps.find(
       (entry) => entry.appUrl === opts.appOrigin,
     )
+    if (!app) return folded.unreadDevices > 0 ? "unconfirmed" : "allowed"
+    const connectedAt = opts.connectedAt ?? 0
+    const endedAt = Math.max(app.revokedAt ?? 0, app.disconnectedAt ?? 0)
+    if (endedAt === 0) return "allowed"
     // The clock `mergeConnectedApps` ranks membership by: a sign-in after a
     // removal wins there, so it must win here too.
-    const endedAt = Math.max(app?.revokedAt ?? 0, app?.disconnectedAt ?? 0)
-    return endedAt > (opts.connectedAt ?? 0) ? "ended" : "allowed"
+    const endedAfterSignIn = endedAt > connectedAt
+    const endedThisSignIn = app.lastConnectedAt >= connectedAt
+    return endedAfterSignIn || endedThisSignIn ? "ended" : "allowed"
   } catch {
     return "unconfirmed"
   }

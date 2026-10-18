@@ -75,7 +75,7 @@ channel to another context carries it, and a fold keeps this context's own.
 The person's choice in the record is never touched by it. Nothing else ends the
 wait, a drive picked on the Apps screen included: that pick is saved, the next
 connect window starts on it, and the site uses it once the person confirms
-there. "Go to app" on the done screen is the confirm: one write saves a changed pick and ends the wait,
+there. "Go to app" on the done screen is the confirm: one write saves a changed pick locally and ends the wait,
 and is stored before the window closes, so a frame that reads the shared store
 picks the drive up from it. A frame kept apart is handed the confirmed drive a
 second time the way the session itself was, posted to the Swarm ID frames
@@ -207,11 +207,27 @@ answer rather than as a failed read, and allows the session.
 the clock the account's merge ranks a site by, so a sign-in after an older
 removal wins here as it wins there. A site the published account does not
 list has had nothing saved about it, its end included, because a removal
-keeps the site's entry with its mark, and the session is allowed. Before
-0.10.4 an old removal and a site not listed both read as ended, and since the connect window closed before its
-save ran, an account with a drive was signed out of a site on every reload.
-The connect window now waits, up to 30 s, for that save before it closes
-(`saveNow` in `ui/src/lib/dev/sync-hooks.ts`).
+keeps the site's entry with its mark, and the session is allowed, but only
+when every device still on the account was read. A device that could not be
+read may hold the removal, so the answer is then unconfirmed and writes wait.
+A removal also keeps the sign-in time it saw, so an entry marked ended that
+carries this session's own sign-in time ends it, whatever the removing
+device's clock said. Before
+0.10.4 an old removal and a site not listed both read as ended, and since the
+connect window closes before its save lands, an account with a drive was
+signed out of a site on every reload.
+
+"Go to app" closes the connect window without waiting for a save to Swarm.
+The sign-in itself queues a save behind the 2 s debounce when the account is
+picked, which starts while the done screen is open, and the close cuts it off
+when it has not landed. A changed drive pick queues another, which the closing
+window outruns. 0.10.4 had it wait for the save of the sign-in
+before closing, and that save claims a share of the same drive the site's
+frame claims at that moment to send with. On a slow gateway each claim's read
+of the other's intent timed out and counted as missing, so both won the same
+share. A new sign-in reaches the account's saved state with its next save,
+the next account change made in a Swarm ID tab that stays open for its 2 s
+debounce, and until then this check allows it.
 
 A session the person connects in this load writes without the check.
 

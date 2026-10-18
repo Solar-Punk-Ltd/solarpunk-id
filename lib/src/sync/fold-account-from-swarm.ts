@@ -26,6 +26,8 @@ import type { SyncedAccount, Device } from "../schemas"
 export interface FoldAccountResult {
   account: FoldedAccount
   devices: Device[]
+  /** Devices still on the account whose saved state could not be read, so `account` lacks their view */
+  unreadDevices: number
 }
 
 /**
@@ -139,18 +141,17 @@ async function doFoldAccountFromSwarm(opts: {
   // still converge the shared entities.
   // ponytail: plain Promise.all — device count is tiny; add a concurrency pool
   // only if rosters ever grow large.
+  const activeDevices = devices.filter((device) => !device.removedAt)
   const views = (
     await Promise.all(
-      devices
-        .filter((device) => !device.removedAt)
-        .map((device) =>
-          readLatestDeviceState({
-            bee: opts.bee,
-            accountId: opts.accountId,
-            deviceId: device.deviceId,
-            owner,
-          }).catch(() => undefined),
-        ),
+      activeDevices.map((device) =>
+        readLatestDeviceState({
+          bee: opts.bee,
+          accountId: opts.accountId,
+          deviceId: device.deviceId,
+          owner,
+        }).catch(() => undefined),
+      ),
     )
   ).filter((view): view is DeviceStateSnapshot => view !== undefined)
 
@@ -176,5 +177,9 @@ async function doFoldAccountFromSwarm(opts: {
   ]) {
     if (Array.isArray(arr)) Object.freeze(arr)
   }
-  return { account, devices }
+  return {
+    account,
+    devices,
+    unreadDevices: activeDevices.length - views.length,
+  }
 }

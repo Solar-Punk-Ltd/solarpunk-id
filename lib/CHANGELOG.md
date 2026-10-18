@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.10.5
+
+### Fixes
+
+- **ui:** the connect window closes at once again and does not wait for a save to Swarm. 0.10.4 had "Go to app" save the
+  sign-in first, and that save claims a share of the same drive the site's frame claims at that moment to send
+  with. On the public gateway each claim's read of the other's intent timed out and counted as missing, so both
+  won the same share, and a message on the person's own stamp waited over a minute. The reload fix of 0.10.4
+  stays: a site not yet in the account's saved state is allowed, so the sign-in no longer has to be saved
+  before the window closes.
+- **lib:** a restored session is held to a removal the 0.10.4 check could miss. A site the saved account does not
+  list is allowed only when every device still on the account was read, because an unread device may hold the
+  removal. Otherwise the answer is unconfirmed and writes wait for a later check. And an entry marked removed or
+  disconnected that carries this session's own sign-in time ends it, since the removal keeps the sign-in time it
+  saw, so a removing device whose clock runs behind no longer lets the session through.
+
 ## 0.10.4
 
 ### Fixes
@@ -13,7 +29,7 @@
   ranks a site by, and a site the saved state does not list is allowed, because a removal keeps the entry.
 - **ui:** "Go to app" in the connect window saves the sign-in to Swarm before it closes the window, showing
   "Saving your sign-in…", for up to 30 s, so the account's other devices and a reloaded site see the new
-  sign-in.
+  sign-in Reverted in 0.10.5.
 
 ## 0.10.3
 
