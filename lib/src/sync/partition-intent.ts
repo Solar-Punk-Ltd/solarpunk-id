@@ -66,7 +66,8 @@ import { Binary } from "cafe-utility"
 import { downloadEncryptedSOC } from "../proxy/download-data"
 import { uploadSOC, type UploadTarget } from "../proxy/upload"
 import { UtilizationAwareStamper } from "../utils/batch-utilization"
-import { TimeoutError, sleep, withTimeout } from "../utils/promise"
+import { TimeoutError, sleep } from "../utils/promise"
+import { withReadTimeout } from "./read-line"
 import { INTENT_EPOCH_MS, SYNC_READ_TIMEOUT_MS } from "./timing-constants"
 import {
   PartitionIntentPayloadSchemaV1,
@@ -385,13 +386,17 @@ async function readPartitionSoc(opts: {
   retryOn5xx?: boolean
 }): Promise<PartitionIntentPayload | undefined> {
   const download = () =>
-    withTimeout(
-      downloadEncryptedSOC(
-        opts.bee,
-        opts.owner,
-        opts.identifier,
-        opts.swarmEncryptionKey,
-      ),
+    withReadTimeout(
+      opts.bee,
+      "claim",
+      (requestOptions) =>
+        downloadEncryptedSOC(
+          opts.bee,
+          opts.owner,
+          opts.identifier,
+          opts.swarmEncryptionKey,
+          requestOptions,
+        ),
       opts.timeoutMs ?? INTENT_READ_TIMEOUT_MS,
       "intent read timed out",
     )

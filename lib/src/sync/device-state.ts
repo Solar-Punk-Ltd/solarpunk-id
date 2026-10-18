@@ -48,6 +48,7 @@ import type { WalletLink } from "../utils/wallet-link"
 import { AsyncEpochFinder, BasicEpochUpdater } from "../proxy/feeds/epochs"
 import { uploadData, type UploadTarget } from "../proxy/upload"
 import { downloadDataWithChunkAPI } from "../proxy/download-data"
+import { throughReadLine } from "./read-line"
 import { mergeConnectedApps, mergePostageStamps } from "./merge-snapshot"
 import { ensureInRoster } from "./device-roster"
 import type { SyncResult } from "./types"
@@ -279,11 +280,12 @@ export async function readLatestDeviceState(opts: {
   owner: EthAddress
 }): Promise<DeviceStateSnapshot | undefined> {
   const topic = deviceStateTopic(opts.accountId, opts.deviceId)
-  const finder = new AsyncEpochFinder(opts.bee, topic, opts.owner)
+  const reads = throughReadLine(opts.bee, "background")
+  const finder = new AsyncEpochFinder(reads, topic, opts.owner)
   const refBytes = await finder.findAt(BigInt(Math.floor(Date.now() / 1000)))
   if (!refBytes) return undefined
   const data = await downloadDataWithChunkAPI(
-    opts.bee,
+    reads,
     new Reference(refBytes).toHex(),
   )
   return deserializeDeviceState(data)

@@ -19,8 +19,10 @@ import {
   RosterScanInconclusiveError,
   rosterTopic,
   rosterIdentifier,
+  ROSTER_SCAN_WINDOW,
 } from "./device-roster"
 import { MISS_READ_TIMEOUT_MS } from "./timing-constants"
+import { GATEWAY_READS_IN_FLIGHT } from "./read-line"
 
 const OWNER = new EthAddress("a".repeat(40))
 const ACCOUNT_ID = "b".repeat(40)
@@ -598,9 +600,11 @@ describe("readRoster — /soc absence probe on an inconclusive /chunks read (#45
       const assertion = expect(promise).rejects.toBeInstanceOf(
         RosterScanInconclusiveError,
       )
-      // First round + the one retry, each bounded by the per-read timeout.
-      await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS)
-      await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS)
+      // First round + the one retry, each bounded by the per-read timeout,
+      // and each a window of probes sent a line's width at a time.
+      const waves = Math.ceil(ROSTER_SCAN_WINDOW / GATEWAY_READS_IN_FLIGHT)
+      await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS * waves)
+      await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS * waves)
       await assertion
     } finally {
       vi.useRealTimers()
