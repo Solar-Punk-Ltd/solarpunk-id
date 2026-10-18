@@ -24,8 +24,10 @@ import { foldAccountFromSwarm } from "./fold-account-from-swarm"
  * - `allowed`: the published account still has this site connected, or the
  *   account has never published anything (it has no drive, so it cannot have
  *   published a revoke either).
- * - `ended`: the published account removed the site, disconnected it after
- *   this session connected, or no longer lists it.
+ * - `ended`: the published account removed or disconnected the site after
+ *   this session connected. A site the account does not list has had nothing
+ *   saved about it, its end included, because a removal keeps the entry with
+ *   its mark.
  * - `unconfirmed`: the answer could not be read.
  */
 export type SessionVerdict = "allowed" | "ended" | "unconfirmed"
@@ -53,12 +55,10 @@ export async function checkRestoredSession(opts: {
     const app = folded.account.connectedApps.find(
       (entry) => entry.appUrl === opts.appOrigin,
     )
-    const ended =
-      app === undefined ||
-      app.revokedAt !== undefined ||
-      (app.disconnectedAt !== undefined &&
-        app.disconnectedAt > (opts.connectedAt ?? 0))
-    return ended ? "ended" : "allowed"
+    // The clock `mergeConnectedApps` ranks membership by: a sign-in after a
+    // removal wins there, so it must win here too.
+    const endedAt = Math.max(app?.revokedAt ?? 0, app?.disconnectedAt ?? 0)
+    return endedAt > (opts.connectedAt ?? 0) ? "ended" : "allowed"
   } catch {
     return "unconfirmed"
   }
