@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.5
+
+### Fixes
+
+- **ui:** the connect window closes at once again and writes nothing to Swarm. 0.10.4 had "Go to app" save the
+  sign-in first, and that save claims a share of the same drive the site's frame claims at that moment to send
+  with. On the public gateway each claim's read of the other's intent timed out and counted as missing, so both
+  won the same share, and a message on the person's own stamp waited over a minute. The reload fix of 0.10.4
+  stays: a site not yet in the account's saved state is allowed, so the sign-in no longer has to be saved
+  before the window closes.
+
 ## 0.10.4
 
 ### Fixes
