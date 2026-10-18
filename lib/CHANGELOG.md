@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.2
+
+### Fixes
+
+- **lib:** a site's message on the person's own stamp is sent on the public gateway. Before a site's frame
+  stamps, it claims a share of the drive, which reads the share's lock and its last saved state. On a drive
+  no site had used, both are missing, and the public gateway, the default, takes 3.4 to 4.8 s to say so,
+  past the 2.5 s these reads had. The frame then went read-only and stamped nothing, so the message stayed
+  at Sending. These reads, and the device list's, now share an 8 s limit (`MISS_READ_TIMEOUT_MS`), which
+  replaces 0.10.1's `ROSTER_READ_TIMEOUT_MS`.
+
 ## 0.10.1
 
 ### Fixes

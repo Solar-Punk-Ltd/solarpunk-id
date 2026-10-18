@@ -63,7 +63,7 @@ import {
   intentSocAddress,
   partitionOccupancyAddress,
 } from "./partition-intent"
-import { SYNC_READ_TIMEOUT_MS } from "./timing-constants"
+import { MISS_READ_TIMEOUT_MS } from "./timing-constants"
 
 /** Length of a Swarm encrypted reference: 32-byte address + 32-byte key. */
 const ENCRYPTED_REFERENCE_BYTES = 64
@@ -149,9 +149,6 @@ export const STATE_POINTER_EPOCH_MS = INTENT_EPOCH_MS
  * final heartbeats it survives.
  */
 const POINTER_LOOKUP_SLACK_BUCKETS = 2
-
-/** Bound a single pointer read so an absent SOC doesn't block on peer exhaustion. */
-const STATE_POINTER_READ_TIMEOUT_MS = SYNC_READ_TIMEOUT_MS
 
 /**
  * Sentinel for a pointer-bucket read that TIMED OUT — distinct from `undefined`
@@ -349,7 +346,7 @@ export async function readStatePointer(opts: {
             identifier,
             opts.swarmEncryptionKey,
           ),
-          STATE_POINTER_READ_TIMEOUT_MS,
+          MISS_READ_TIMEOUT_MS,
           "state-pointer read timed out",
         )
         const parsed = StatePointerPayloadSchemaV1.safeParse(

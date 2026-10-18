@@ -42,7 +42,7 @@ import { isStamperTarget, uploadData, type UploadTarget } from "../proxy/upload"
 import { downloadDataWithChunkAPI } from "../proxy/download-data"
 import { withTimeout } from "../utils/promise"
 import { isNotFoundError } from "../utils/bee-error"
-import { ROSTER_READ_TIMEOUT_MS } from "./timing-constants"
+import { MISS_READ_TIMEOUT_MS } from "./timing-constants"
 import { mergeDevicesList } from "./merge-snapshot"
 
 export const ROSTER_TOPIC_PREFIX = "swarm-id-roster-v1"
@@ -116,7 +116,7 @@ export function resetRosterScanCache(): void {
   knownRosterLength.clear()
 }
 
-// Each slot read is capped by ROSTER_READ_TIMEOUT_MS so an unreachable slot
+// Each slot read is capped by MISS_READ_TIMEOUT_MS so an unreachable slot
 // fails instead of hanging on peer-exhaustion. An inconclusive read (timeout /
 // 5xx / network) is NOT a confirmed empty slot: `readRosterEntry` surfaces it as
 // `ROSTER_READ_INCONCLUSIVE` so `readRoster` retries it once at the stop boundary
@@ -177,7 +177,7 @@ async function probeSocSlot(opts: {
   try {
     const response = await withTimeout(
       fetch(url),
-      ROSTER_READ_TIMEOUT_MS,
+      MISS_READ_TIMEOUT_MS,
       "roster /soc probe timed out",
     )
     if (response.ok) return new Uint8Array(await response.arrayBuffer())
@@ -208,7 +208,7 @@ async function readRosterEntry(opts: {
   try {
     const soc = await withTimeout(
       opts.bee.soc.makeReader(opts.owner).download(identifier),
-      ROSTER_READ_TIMEOUT_MS,
+      MISS_READ_TIMEOUT_MS,
       "roster read timed out",
     )
     refBytes = soc.payload.toUint8Array()
@@ -236,7 +236,7 @@ async function readRosterEntry(opts: {
   try {
     data = await withTimeout(
       downloadDataWithChunkAPI(opts.bee, new Reference(refBytes).toHex()),
-      ROSTER_READ_TIMEOUT_MS,
+      MISS_READ_TIMEOUT_MS,
       "roster read timed out",
     )
   } catch (error) {

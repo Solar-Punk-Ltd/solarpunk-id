@@ -20,7 +20,7 @@ import {
   rosterTopic,
   rosterIdentifier,
 } from "./device-roster"
-import { ROSTER_READ_TIMEOUT_MS } from "./timing-constants"
+import { MISS_READ_TIMEOUT_MS } from "./timing-constants"
 
 const OWNER = new EthAddress("a".repeat(40))
 const ACCOUNT_ID = "b".repeat(40)
@@ -155,7 +155,7 @@ describe("readRoster — windowed-parallel scan", () => {
   })
 })
 
-// The SOC read is bounded by ROSTER_READ_TIMEOUT_MS. Driven here with fake
+// The SOC read is bounded by MISS_READ_TIMEOUT_MS. Driven here with fake
 // timers + a hanging download.
 
 /** How long the public gateway took to answer a missing chunk with Bee's 404, the slowest of six reads on 2026-10-18. */
@@ -279,7 +279,7 @@ describe("readRoster — a timed-out read is not end-of-feed", () => {
       accountId: ACCOUNT_ID,
       owner: OWNER,
     })
-    await vi.advanceTimersByTimeAsync(ROSTER_READ_TIMEOUT_MS) // fire the hang
+    await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS) // fire the hang
     expect((await promise).map((d) => d.deviceId)).toEqual(["dev-0"])
   })
 
@@ -294,7 +294,7 @@ describe("readRoster — a timed-out read is not end-of-feed", () => {
       accountId: ACCOUNT_ID,
       owner: OWNER,
     })
-    await vi.advanceTimersByTimeAsync(ROSTER_READ_TIMEOUT_MS)
+    await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS)
     const devices = await promise
     expect(devices).toHaveLength(17)
     expect(devices.some((d) => d.deviceId === "dev-16")).toBe(true)
@@ -314,8 +314,8 @@ describe("readRoster — a timed-out read is not end-of-feed", () => {
     const assertion = expect(promise).rejects.toBeInstanceOf(
       RosterScanInconclusiveError,
     )
-    await vi.advanceTimersByTimeAsync(ROSTER_READ_TIMEOUT_MS) // first read
-    await vi.advanceTimersByTimeAsync(ROSTER_READ_TIMEOUT_MS) // the one retry
+    await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS) // first read
+    await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS) // the one retry
     await assertion
   })
 
@@ -599,8 +599,8 @@ describe("readRoster — /soc absence probe on an inconclusive /chunks read (#45
         RosterScanInconclusiveError,
       )
       // First round + the one retry, each bounded by the per-read timeout.
-      await vi.advanceTimersByTimeAsync(ROSTER_READ_TIMEOUT_MS)
-      await vi.advanceTimersByTimeAsync(ROSTER_READ_TIMEOUT_MS)
+      await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS)
+      await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS)
       await assertion
     } finally {
       vi.useRealTimers()

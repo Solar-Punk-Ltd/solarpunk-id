@@ -34,7 +34,7 @@ import {
 } from "@ethersphere/bee-js"
 import { uint8ArrayToHex } from "../utils/hex"
 import { withTimeout } from "../utils/promise"
-import { SYNC_READ_TIMEOUT_MS } from "./timing-constants"
+import { MISS_READ_TIMEOUT_MS } from "./timing-constants"
 import { deriveSecret, BACKUP_KEY_LABEL } from "../utils/key-derivation"
 import {
   LEASE_TTL_MS,
@@ -86,14 +86,6 @@ function isZeroRef(ref: Uint8Array): boolean {
   for (let i = 0; i < ref.length; i++) if (ref[i] !== 0) return false
   return true
 }
-
-/**
- * Bound each lock-SOC read in `refreshFromSwarm` so a hanging read on a slow
- * gateway is classified as "unreadable" (a takeover then fails safe) rather than
- * silently treated as an absent lock. Matches the roster / state-pointer read
- * timeouts.
- */
-const LOCK_READ_TIMEOUT_MS = SYNC_READ_TIMEOUT_MS
 
 /** This device's own lease over a partition. */
 export interface SelfLease {
@@ -368,7 +360,7 @@ export class PartitionLease {
             batchId: this.opts.batchId,
             partition: p,
           }),
-          LOCK_READ_TIMEOUT_MS,
+          MISS_READ_TIMEOUT_MS,
           "lock read timed out",
         ).catch(() => {
           this.unreadableLocks.add(p)
