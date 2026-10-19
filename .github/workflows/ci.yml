@@ -130,6 +130,23 @@ jobs:
             exit 1
           fi
 
+      # The site is served from Swarm through bzz.link, which answers 500 to a
+      # good share of a burst of parallel requests. A split build made a cold
+      # load ask for 36 to 62 files at once, and one failed file left the page
+      # stuck on its logo. `bundleStrategy: 'single'` (svelte.config.js) makes
+      # it one script and one stylesheet. A later option or plugin that splits
+      # the build again would pass every other check, so count the files.
+      - name: Check the build is one bundle (ui)
+        working-directory: ./ui
+        run: |
+          scripts=$(find build/_app -name '*.js' ! -name env.js | sort)
+          count=$(printf '%s\n' "$scripts" | grep -c . || true)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::The ui build has $count script files where one bundle is expected (bundleStrategy 'single' in svelte.config.js):"
+            printf '%s\n' "$scripts" | head -20
+            exit 1
+          fi
+
       - name: Check the build (ui)
         working-directory: ./ui
         run: pnpm run check
