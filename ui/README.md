@@ -32,6 +32,11 @@ pnpm --filter @swarm-id/ui build    # outputs to ./build
 `BASE_PATH` controls the base path of the build, for a host that serves it under a path. Leave it
 unset for the Swarm hosting, which serves it from the root.
 
+The build is one script and one stylesheet (`bundleStrategy: 'single'` in `svelte.config.js`), not
+SvelteKit's default of a file per module. bzz.link answers 500 to a good share of a burst of parallel
+requests, and the split build made a cold load ask for 36 to 62 files at once, so one failed file left
+the page stuck on its logo. CI fails a build that has more than one script file.
+
 ## Checks & tests
 
 ```bash
