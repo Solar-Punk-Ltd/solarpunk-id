@@ -139,13 +139,19 @@ jobs:
       - name: Check the build is one bundle (ui)
         working-directory: ./ui
         run: |
-          scripts=$(find build/_app -name '*.js' ! -name env.js | sort)
-          count=$(printf '%s\n' "$scripts" | grep -c . || true)
-          if [ "$count" -ne 1 ]; then
-            echo "::error::The ui build has $count script files where one bundle is expected (bundleStrategy 'single' in svelte.config.js):"
-            printf '%s\n' "$scripts" | head -20
-            exit 1
-          fi
+          split=0
+          # $1 what is counted, $2 the files found
+          require_one() {
+            count=$(printf '%s\n' "$2" | grep -c . || true)
+            if [ "$count" -ne 1 ]; then
+              echo "::error::The ui build has $count $1 files where one bundle is expected (bundleStrategy 'single' in svelte.config.js):"
+              printf '%s\n' "$2" | head -20
+              split=1
+            fi
+          }
+          require_one script "$(find build/_app -name '*.js' ! -name env.js | sort)"
+          require_one stylesheet "$(find build/_app -name '*.css' | sort)"
+          exit "$split"
 
       - name: Check the build (ui)
         working-directory: ./ui
