@@ -7,7 +7,7 @@
 - **ui:** the site is built as one script and one stylesheet. bzz.link answers 500 to a good share of a burst of
   parallel requests, and the split build made a cold load ask for 36 to 62 files at once, so one failed file left
   Swarm ID stuck on its logo and the sign-in never came up. A cold load now asks for 5 files. Each page downloads
-  the whole app, 4.8 MB of script, once per browser.
+  the whole app, 4.8 MB of script, once for each site that embeds Swarm ID and again after each release.
 
 ## 0.10.5
 
