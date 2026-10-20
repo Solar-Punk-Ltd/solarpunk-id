@@ -1,8 +1,8 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 /**
- * A site uses only the drive the person picked for it (Levi's ruling D4,
- * 2026-10-16). The account default never stands in for a missing pick, so a
+ * A site uses only the drive the person picked for it. The account default
+ * never stands in for a missing pick, so a
  * drive bought after the site signed in, or the default left after the picked
  * drive is removed, pays for nothing until the person picks it.
  *
