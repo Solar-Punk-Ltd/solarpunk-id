@@ -47,8 +47,8 @@ const account = {
   defaultPostageStampBatchID: new BatchId(DEFAULT_HEX),
 }
 
-// Levi's ruling D4, 2026-10-16: a site uses only the drive the person picked
-// for it, and the account default never stands in for a missing pick.
+// A site uses only the drive the person picked for it, and the account
+// default never stands in for a missing pick.
 describe('appStampValue', () => {
   it('names no drive for a site with no pick, though the account has a default', () => {
     expect(appStampValue({ postageStampBatchID: undefined }, account)).toBe(NO_POSTAGE_STAMP)

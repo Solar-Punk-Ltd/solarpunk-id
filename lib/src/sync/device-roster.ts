@@ -2,21 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Device roster (Phase 3a hardening) — append-only discovery log.
+ * Device roster, the append-only discovery log.
  *
  * Replaces the single shared *mutable* registry doc, which a device could
  * **clobber** on a high-latency/caching gateway: it read-merge-overwrote the
  * whole doc, so a device that couldn't yet see a peer's just-written entry
- * dropped it. (See the gateway finding in the Phase 3a implementation log.)
+ * dropped it. A caching gateway that kept serving the doc from before a
+ * peer's write is where that loss was found.
  *
  * The roster is a **sequential append-only feed** (`swarm-id-roster-v1:<acct>`):
  * each device appends ONLY its own membership record (`Device`) at the next free
  * index. A device never overwrites a peer's slot, so concurrent announces can't
- * clobber an existing entry — the worst case is two devices racing the same
+ * clobber an existing entry. The worst case is two devices racing the same
  * fresh index, where one append is lost and re-added on its next sync (existing
  * entries are untouched). Readers scan all entries and fold by `deviceId`
- * (reusing `mergeDevicesList`, so removals/resurrections converge by Phase 1
- * LWW). Account-level immutables (publicKey, createdAt, partitionCount) live on
+ * (reusing `mergeDevicesList`, so removals/resurrections converge by its LWW
+ * clock). Account-level immutables (publicKey, createdAt, partitionCount) live on
  * the robust per-device state feed (`device-state.ts`), not here.
  *
  * Each entry is an encrypted blob (privacy parity with the old registry)
@@ -266,8 +267,8 @@ async function readRosterEntry(opts: {
 }
 
 /**
- * Scan the roster and fold to the latest record per `deviceId` (Phase 1
- * `mergeDevicesList`: removals/resurrections converge by LWW). Returns `[]` when
+ * Scan the roster and fold to the latest record per `deviceId`
+ * (`mergeDevicesList`: removals/resurrections converge by LWW). Returns `[]` when
  * the feed is empty (nothing published yet).
  */
 export async function readRoster(opts: {

@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Per-device account-state feed (Phase 3a).
+ * Per-device account-state feed.
  *
  * Each device publishes its own **full current account view** to its OWN feed
  * (`swarm-id-devstate-v1:<accountId>:<deviceId>`). Because a device writes only
  * its own feed there is no shared SOC address and no cross-device write
- * contention — the `publishAccountState` merge-read-rewrite + `verifyWon` dance
- * is gone. Convergence happens at READ time: `foldAccount` merges every device's
- * latest view with the Phase 1 merge primitives.
+ * contention, so no device has to read, merge and rewrite a shared doc and then
+ * check that its write won. Convergence happens at READ time: `foldAccount`
+ * merges every device's latest view with the merge primitives of
+ * `merge-snapshot.ts`.
  *
  * Device membership (the `deviceId` set) lives in the append-only device roster
  * (`device-roster.ts`), not here; account-level immutables (publicKey, createdAt,
@@ -61,8 +62,9 @@ const ClockedSchema = <T extends z.ZodTypeAny>(value: T) =>
   z.object({ value, at: z.number() })
 
 /**
- * One device's view of the account. `connectedApps`/`postageStamps` carry their
- * Phase 1 LWW/tombstone clocks; scalars carry their own per-field `at`.
+ * One device's view of the account. `connectedApps`/`postageStamps` carry the
+ * LWW and tombstone clocks `merge-snapshot.ts` merges by. Scalars carry their
+ * own per-field `at`.
  */
 export const DeviceStateSnapshotSchemaV1 = z.object({
   version: z.literal(DEVICE_STATE_VERSION),
@@ -159,6 +161,10 @@ export function deviceStateTopic(accountId: string, deviceId: string): Topic {
   )
 }
 
+/**
+ * The device-state feed's payload: this device's full current view of the
+ * account, encrypted under the Swarm encryption key.
+ */
 export function serializeDeviceState(
   accountId: string,
   deviceId: string,
@@ -298,14 +304,15 @@ function pickLatest<T extends { at: number }>(a: T, b: T): T {
 }
 
 /**
- * Merge every device's latest view into one account state, reusing the Phase 1
- * primitives for the collections and per-field LWW for the scalars. The device
- * set (`rosterDevices`) comes from the append-only roster (discovery); account
- * immutables come from any device view (identical across devices).
+ * Merge every device's latest view into one account state, reusing the
+ * `merge-snapshot.ts` primitives for the collections and per-field LWW for the
+ * scalars. The device set (`rosterDevices`) comes from the append-only roster
+ * (discovery). Account immutables come from any device view (identical across
+ * devices).
  *
- * Equivalent by construction to today's `mergeSnapshotWithRemote` over the same
- * data (see the differential test) — convergence and deletion semantics are
- * unchanged from Phase 1.
+ * Equivalent by construction to `mergeSnapshotWithRemote` over the same data
+ * (see the differential test), so convergence and deletion work exactly as
+ * they do there.
  */
 export function foldAccount(
   views: DeviceStateSnapshot[],

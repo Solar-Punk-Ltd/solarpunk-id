@@ -20,9 +20,9 @@ const accountStamp = createPostageStamp({ batchID: accountBatch })
 const appStamp = createPostageStamp({ batchID: appBatch })
 
 describe("resolveStampForApp", () => {
-  // Levi's ruling D4, 2026-10-16: a site spends only the drive the person
-  // picked for it. A drive bought after the site signed in becomes the
-  // account default, and the site must not start stamping with it unasked.
+  // A site spends only the drive the person picked for it. A drive bought
+  // after the site signed in becomes the account default, and the site must
+  // not start stamping with it unasked.
   it("resolves nothing for a site with no pick, though the account has a default", () => {
     const result = resolveStampForApp({ postageStampBatchID: undefined }, [
       accountStamp,

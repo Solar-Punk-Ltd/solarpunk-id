@@ -1522,9 +1522,9 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     expect(last.uploadUnavailableReason).toBe("no-stamp")
   })
 
-  // Levi's ruling D4, 2026-10-16: a site spends only the drive the person
-  // picked for it, so an account default the site was never given stays
-  // out of its reach, in the handover and in what it reports.
+  // A site spends only the drive the person picked for it, so an account
+  // default the site was never given stays out of its reach, in the handover
+  // and in what it reports.
   it("reports no-stamp for a site with no pick, though the account has a default drive", async () => {
     const account = makeSyncedAccount()
     const challenge = await startPartitionedConnect()

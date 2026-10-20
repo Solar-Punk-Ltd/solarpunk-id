@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Per-device partition-INTENT SOCs — Phase 2 of the partition-lock hardening
- * (see docs/Partition-Lock-Hardening-Plan.md, "Extension that covers the
- * symmetric case: per-device intent SOCs").
+ * Per-device partition-INTENT SOCs, the intent round a fresh claim of a free
+ * partition runs before binding it (see docs/Postage-Batch-Partitioning.md,
+ * "Intent round").
  *
  * The lock SOC lives at a single static address. Across disjoint gateways a
  * node serves that address from a frozen cache (no TTL, no invalidation), so

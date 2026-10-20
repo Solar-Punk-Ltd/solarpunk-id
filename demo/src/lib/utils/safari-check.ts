@@ -77,12 +77,13 @@ function partitioning(input: CheckInput): CheckResult {
  * under ITP? The popup is opened by the Swarm ID button frame and posts to the
  * Swarm ID frames beside it (`ui/src/lib/handover-targets.ts`). The device run
  * recorded in the README measured the older path, a popup the session frame
- * opened posting to `window.opener`, and W6.1e measures this one again.
+ * opened posting to `window.opener`. This path is still to be measured on a
+ * real Safari device.
  *
  * `storagePartitioned` answers it on its own. The proxy sets that flag in one
- * place — the `setSecret` handler — so a partitioned session reporting it
+ * place, the `setSecret` handler, so a partitioned session reporting it
  * cannot have got there any other way. Whether the session then became a
- * writer is a different question with different causes; see {@link writerPath}.
+ * writer is a different question with different causes, see {@link writerPath}.
  */
 function popupHandover(input: CheckInput): CheckResult {
   const connection = input.connection

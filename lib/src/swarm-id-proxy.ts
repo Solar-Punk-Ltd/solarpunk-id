@@ -817,7 +817,7 @@ export class SwarmIdProxy {
     }
     this.ownBeeApiUrl = beeNodeUrl
 
-    // Mirrors the parentIdentify override. ponytail: reverting to the default
+    // Mirrors the parentIdentify override. Known gap: reverting to the default
     // URL won't re-enable a dropped subsidised gateway. That needs a fresh
     // parentIdentify (dApp reload) or the site naming its own node. Rare
     // enough to not build for.
@@ -3196,7 +3196,7 @@ export class SwarmIdProxy {
       if (!account || isSignedOutAccount(account)) return
 
       // Feed owner = backup signer (derived from the swarm encryption key).
-      // Phase 3a: discovery is the append-only device roster, not a shared doc.
+      // Discovery is the append-only device roster, not a shared doc.
       const backupKey = new PrivateKey(
         await deriveSecret(uint8ArrayToHex(encryptionKey), BACKUP_KEY_LABEL),
       )
@@ -4731,8 +4731,9 @@ export class SwarmIdProxy {
   /**
    * Derive a stable, app-scoped secret HMAC(appSecret, label) for the connected
    * app. `appSecret` is genuinely secret (unlike the recoverable appKey public
-   * key) and never leaves the iframe — only the derived bytes are returned, so
-   * the app can seed an unguessable feed topic without exposing metadata (#520).
+   * key) and is never handed to the app's page. Only the derived bytes are
+   * returned, so the app can seed an unguessable feed topic without exposing
+   * metadata (#520).
    */
   private async handleDeriveAppSecret(
     message: DeriveAppSecretMessage,
@@ -4764,7 +4765,7 @@ export class SwarmIdProxy {
    * Hand the authenticated page its site's chat key, the key whose address the
    * site's chat binding names (docs/Chat-Binding.md), so the site's chat can
    * sign with it. Same authentication rule as `handleDeriveAppSecret`, and like
-   * it the app secret itself never leaves the frame.
+   * it the app secret itself is never handed to the page.
    */
   private async handleGetChatKey(
     message: GetChatKeyMessage,

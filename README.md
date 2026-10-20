@@ -1,5 +1,11 @@
 # Swarm Identity Management
 
+> **A fork of Swarm ID, in beta and experimental.** This repository is Solar Punk's fork of
+> [snaha/swarm-id](https://github.com/snaha/swarm-id), taken at snaha's 0.7.0 release, commit
+> [`dc70275`](https://github.com/snaha/swarm-id/commit/dc70275bb), 2026-10-12. It is an experimental
+> test from Solar Punk's side, not a release of snaha's project. What changed since the fork is in the
+> [changelog](./lib/CHANGELOG.md).
+
 Cross-browser compatible authentication and identity management for Swarm dApps.
 
 **[Documentation](./docs-site/src/content/docs)** | **[Identity UI](https://solarpunkid.bzz.link)**
@@ -326,7 +332,7 @@ tools would be spending real money.
 
 Safari's Intelligent Tracking Prevention (ITP) partitions storage for third-party iframes, so the proxy cannot read the trusted domain's localStorage. Uploads are designed to keep working regardless: the connect popup hands the iframe the account's synced projection (postage stamps including their signer keys), and cross-context coordination rides the [account bus](./docs/Account-Bus.md) instead of storage events.
 
-> **Status: confirmed on real Safari, upload included.** Measured on iOS 18.7 / Safari 26.6 against snaha's deployed sites of the upstream project (`swarm-demo.snaha.net` → `swarm-id.snaha.net`). ITP partitions the proxy iframe. The connect popup's `postMessage` through `window.opener` reaches it. That run measured the older path, a popup the session frame opened itself. The popup is now opened by the Swarm ID button frame and posts to the Swarm ID frames beside it, and W6.1e measures that path on a device again. The hydrated account view builds a working stamper (`uploadMode: user-stamp`), and a chunk uploads and reads back byte-identical. The device id also held across a reload, so the partitioned store survived the session ending and being re-seeded ([#584](https://github.com/snaha/swarm-id/issues/584) has the report). Apps no longer receive the device id, so this is no longer checked ([docs/Hardening.md](docs/Hardening.md)).
+> **Status: confirmed on real Safari, upload included.** Measured on iOS 18.7 / Safari 26.6 against snaha's deployed sites of the upstream project (`swarm-demo.snaha.net` → `swarm-id.snaha.net`). ITP partitions the proxy iframe. The connect popup's `postMessage` through `window.opener` reaches it. That run measured the older path, a popup the session frame opened itself. The popup is now opened by the Swarm ID button frame and posts to the Swarm ID frames beside it, and that path is still to be measured on a real device. The hydrated account view builds a working stamper (`uploadMode: user-stamp`), and a chunk uploads and reads back byte-identical. The device id also held across a reload, so the partitioned store survived the session ending and being re-seeded ([#584](https://github.com/snaha/swarm-id/issues/584) has the report). Apps no longer receive the device id, so this is no longer checked ([docs/Hardening.md](docs/Hardening.md)).
 >
 > A **private window** was measured separately and passes the same five checks, upload included, with a fresh device id each time, as expected, since the private partition is discarded when the window closes.
 >

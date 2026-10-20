@@ -11,12 +11,11 @@ import {
  * Resolve which postage stamp an app uploads with: the one the person picked
  * for it (`postageStampBatchID`), and nothing else.
  *
- * The account default is never a fallback (Levi's ruling D4, 2026-10-16). A
- * site with no pick, a site set to `NO_POSTAGE_STAMP`, and a site whose
- * picked drive is gone all resolve to no stamp, and the person picks one in
- * Swarm ID. Falling back let a drive bought after the site signed in, or the
- * default left after the picked drive was removed, pay for the site's
- * uploads without the person choosing it.
+ * The account default is never a fallback. A site with no pick, a site set
+ * to `NO_POSTAGE_STAMP`, and a site whose picked drive is gone all resolve to
+ * no stamp, and the person picks one in Swarm ID. Falling back let a drive
+ * bought after the site signed in, or the default left after the picked drive
+ * was removed, pay for the site's uploads without the person choosing it.
  *
  * A deleted stamp (tombstone) resolves to nothing. An EXPIRED one still
  * resolves: it can be renewed, and the session reports it as expired (#745).

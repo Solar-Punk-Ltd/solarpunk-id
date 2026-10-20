@@ -35,7 +35,7 @@ const ETHEREUM_COIN_TYPE = 60n
 const EXECUTION_REVERTED_CODE = 3
 
 const WALLET = `0x${"ab".repeat(20)}`
-const NAME = "levi.eth"
+const NAME = "alice.eth"
 const RESOLVER: Hex = `0x${"22".repeat(20)}`
 const REVERSE_RESOLVER: Hex = `0x${"11".repeat(20)}`
 const SHORT_TIMEOUT_MS = 50
@@ -189,11 +189,11 @@ describe("resolveVerifiedEnsName", () => {
   })
 
   it.each([
-    ["upper case", "Levi.eth"],
+    ["upper case", "Alice.eth"],
     ["a space", "le vi.eth"],
     ["a zero-width joiner", "le‍vi.eth"],
     ["full-width letters", "ｌｅｖｉ.eth"],
-    ["an empty label", "levi..eth"],
+    ["an empty label", "alice..eth"],
   ])(
     "answers no name for a name with %s, which ENSIP-15 does not keep as it is",
     async (_label, name) => {

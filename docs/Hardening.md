@@ -50,8 +50,8 @@ starts on is read from the account's own record for that site, and nothing in
 the window's link or from the site can name a drive, preselect one or skip
 the question.
 
-A site spends only the drive the person picked for it (Levi's ruling D4,
-2026-10-16). The account default never stands in for a missing pick: a site
+A site spends only the drive the person picked for it. The account default
+never stands in for a missing pick: a site
 with no pick, or whose picked drive is gone, resolves no stamp and reports
 `no-stamp`. Without this, a drive bought after the site signed in became the
 account default and the site stamped with it unasked, and removing the picked
@@ -62,9 +62,9 @@ drive, stored by its batch so a later change of default does not move the site.
 Swarm ID's own account records written from a site's frame (the device-state
 feed, the roster, the lock and the partition lease, through the coordinator built
 on the site's resolved stamp) are paid from the drive the person picked for that
-site (Levi's ruling A, 2026-10-16). A site with no pick writes none, and Swarm
-ID's own window pays from the account's drives as before. Not done yet, follow-up
-B: housekeeping on the account default through its own coordinator.
+site. A site with no pick writes none, and Swarm ID's own window pays from the
+account's drives as before. Not done yet: housekeeping on the account default
+through its own coordinator.
 
 Signing in gives the site no stamp. Every connect, first or not, marks the
 site's entry `stampPending`, and the handover that signs a frame kept apart in

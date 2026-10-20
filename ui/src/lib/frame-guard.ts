@@ -10,6 +10,11 @@
  * top window. The hidden proxy page and the button page are the exceptions,
  * being the pages that exist to be framed. The button page's one action opens
  * a top-level Swarm ID window, where the person acts for themselves.
+ *
+ * This defends against other pages framing the site. It does not defend
+ * against the host serving different code: nothing in the browser checks the
+ * files bzz.link serves, so whoever serves this origin's code can use
+ * everything on it, this check included.
  */
 import routes from './routes'
 

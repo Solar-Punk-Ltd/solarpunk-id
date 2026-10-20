@@ -191,10 +191,9 @@ export function serializeConnectedApp(
  * A serialized connected app without its per-context session material.
  *
  * `appSecret` is the app's own credential and `connectedUntil` is the deadline
- * of the session that established it — both belong to one context, and neither
- * survives leaving it. Every channel that carries an account to another
- * context strips them here: the popup handshake (`serializeSyncedAccount`)
- * and the account bus (`accountDeltaSnapshot`). The bus receive schema
+ * of the session that established it. Both belong to one context. The popup
+ * handshake (`serializeSyncedAccount`) and the account bus
+ * (`accountDeltaSnapshot`) strip them here. The bus receive schema
  * (`BusConnectedAppSchema` in `bus/messages.ts`) omits the same two fields
  * again, so a publisher that forgets this strip is still caught on receive.
  */

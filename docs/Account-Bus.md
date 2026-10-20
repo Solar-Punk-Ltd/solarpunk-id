@@ -487,7 +487,7 @@ Done:
   checked ([Hardening.md](Hardening.md)). That run measured the older path, a popup the session
   frame opened posting through `window.opener`. The popup is now opened by the Swarm ID button
   frame and posts to the Swarm ID frames beside it (`ui/src/lib/handover-targets.ts`), which
-  W6.1e measures on a device again.
+  is still to be measured on a real device.
 
 Not yet written:
 
