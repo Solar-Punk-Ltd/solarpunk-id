@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Read entry point for Phase 3a: reconstruct account state from Swarm by
- * scanning the append-only device roster (discovery) and folding every device's
- * latest state feed. Replaces the single shared-snapshot fetch used by restore
+ * Read entry point for the per-device feeds: reconstruct account state from
+ * Swarm by scanning the append-only device roster (discovery) and folding
+ * every device's latest state feed. Replaces the single shared-snapshot fetch used by restore
  * / refresh / the proxy.
  */
 

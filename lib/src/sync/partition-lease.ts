@@ -277,9 +277,8 @@ export class PartitionLease {
        * Current known device IDs for this account (from the synced device
        * registry). Read fresh each round so it reflects late-announced
        * devices. When provided with ≥1 rival, a fresh claim of a free
-       * partition first runs an intent round (Phase 2 — see
-       * `partition-intent.ts`) so disjoint-gateway contenders agree on one
-       * winner before binding. Omitted (or empty) → today's guard+TTL path.
+       * partition first runs an intent round (see `partition-intent.ts`)
+       * so disjoint-gateway contenders agree on one winner before binding. Omitted (or empty) → today's guard+TTL path.
        */
       knownDeviceIds?: () => string[]
       /** Override for tests; per-rival intent-read timeout. */
@@ -878,7 +877,7 @@ export class PartitionLease {
       tiebreaker: makeDeviceTiebreaker(this.opts.deviceId),
     }
 
-    // Phase 2: for a fresh claim of a free/expired slot with known rivals, run
+    // For a fresh claim of a free/expired slot with known rivals, run
     // an intent round at a fresh per-epoch address (forces a network read that
     // bypasses the gateway's frozen lock-SOC cache). Only the round's winner
     // proceeds to bind; losers back off to read-only. See partition-intent.ts.

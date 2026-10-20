@@ -3196,7 +3196,7 @@ export class SwarmIdProxy {
       if (!account || isSignedOutAccount(account)) return
 
       // Feed owner = backup signer (derived from the swarm encryption key).
-      // Phase 3a: discovery is the append-only device roster, not a shared doc.
+      // Discovery is the append-only device roster, not a shared doc.
       const backupKey = new PrivateKey(
         await deriveSecret(uint8ArrayToHex(encryptionKey), BACKUP_KEY_LABEL),
       )
