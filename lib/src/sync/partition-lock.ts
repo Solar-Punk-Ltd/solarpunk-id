@@ -123,7 +123,7 @@ export function makeDeviceTiebreaker(deviceId: string): string {
  * ORDER. Visibly-held slots are still skipped, so behaviour under working
  * reads is unchanged.
  *
- * ponytail: probabilistic spread, not mutual exclusion, so colliding home
+ * Deliberate: probabilistic spread, not mutual exclusion, so colliding home
  * partitions still race. The cross-gateway fix is the intent round in
  * `partition-intent.ts`.
  */

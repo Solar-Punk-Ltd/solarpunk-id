@@ -59,14 +59,14 @@ export class SyncSequentialFinder implements SequentialFinder {
     const address = makeSequentialAddress(identifier, this.owner)
 
     // Bee's /chunks endpoint returns 500 ("read chunk failed") for a genuinely
-    // absent chunk — indistinguishable by status from a transient 500 — so a
+    // absent chunk, indistinguishable by status from a transient 500, so a
     // single failed read can't tell "free slot" from "blip on an existing entry".
     // Retry once; conclude the slot is free only if BOTH reads fail. This narrows
     // the window where a transient failure lets an append clobber a peer's roster
     // entry. We can't rethrow on failure (absence has no distinct signal here), so
     // the scan must still terminate on a persistent miss.
-    // ponytail: single retry — matches readPartitionSoc; add backoff/more attempts
-    // only if real gateways prove one insufficient.
+    // Deliberate: a single retry, matching readPartitionSoc. Add backoff or more
+    // attempts only if real gateways prove one insufficient.
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         await this.bee.chunk.download(

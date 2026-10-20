@@ -137,10 +137,10 @@ async function doFoldAccountFromSwarm(opts: {
   // Fold the latest view of every non-removed device. Reads run in parallel:
   // each device feed is independent and each lookup is a multi-round-trip epoch
   // traversal, so overlapping them collapses N×latency into ≈1×. A device whose
-  // feed is unreachable is skipped (best-effort), not fatal — its peers' views
-  // still converge the shared entities.
-  // ponytail: plain Promise.all — device count is tiny; add a concurrency pool
-  // only if rosters ever grow large.
+  // feed is unreachable is skipped (best-effort), not fatal, because its peers'
+  // views still converge the shared entities.
+  // Deliberate: a plain Promise.all, because the device count is tiny. Add a
+  // concurrency pool only if rosters ever grow large.
   const activeDevices = devices.filter((device) => !device.removedAt)
   const views = (
     await Promise.all(
@@ -164,9 +164,10 @@ async function doFoldAccountFromSwarm(opts: {
   // Coalesced callers share this ONE result (see `inFlightFolds`). Freeze the
   // arrays they iterate so a stray mutation throws loudly instead of silently
   // corrupting a concurrent caller's view.
-  // ponytail: shallow freeze (arrays only, not each element) — catches the
-  // realistic push/splice/sort corruption since today's callers only read or
-  // pass these into the pure `merge*` helpers, which never mutate their inputs.
+  // Deliberate: a shallow freeze (arrays only, not each element). It catches
+  // the realistic push/splice/sort corruption since today's callers only read
+  // or pass these into the pure `merge*` helpers, which never mutate their
+  // inputs.
   // If a caller ever mutates an element in place, deep-freeze the elements too
   // (or clone the result per caller).
   for (const arr of [

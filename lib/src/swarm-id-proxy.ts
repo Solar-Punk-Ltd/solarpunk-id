@@ -817,7 +817,7 @@ export class SwarmIdProxy {
     }
     this.ownBeeApiUrl = beeNodeUrl
 
-    // Mirrors the parentIdentify override. ponytail: reverting to the default
+    // Mirrors the parentIdentify override. Known gap: reverting to the default
     // URL won't re-enable a dropped subsidised gateway. That needs a fresh
     // parentIdentify (dApp reload) or the site naming its own node. Rare
     // enough to not build for.
