@@ -18,11 +18,11 @@ rather than kept beside the new one. `0.x` says the same thing to anyone consumi
 
 ## Architecture
 
-1. **Trusted Domain Model**: A trusted domain (e.g., `id.ethswarm.org`) hosts keystore UI and management
+1. **Trusted Domain Model**: A trusted domain (e.g., `solarpunkid.bzz.link`) hosts keystore UI and management
 2. **OAuth-style Popup Flow**: dApps trigger authentication popups that derive app-specific secrets from a master key
 3. **Iframe Proxy**: Hidden iframe handles secure communication and proxies Bee API calls
 
-**Security**: Master key in first-party context only, HMAC-SHA256 key derivation, all postMessage validated with Zod schemas.
+**Security**: Master key in first-party context only, which trusts whatever code the trusted domain's host serves (`docs-site/src/content/docs/swarm-hosting.mdx`, "Who you trust when you use the hosted site"), HMAC-SHA256 key derivation, all postMessage validated with Zod schemas.
 
 ### Authentication
 
