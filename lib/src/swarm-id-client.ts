@@ -1450,7 +1450,7 @@ export class SwarmIdClient {
    * Derive a stable, app-scoped secret for this identity + app origin.
    *
    * Computes `HMAC(appSecret, label)` inside the iframe, where `appSecret` is the
-   * app-specific secret that never leaves the trusted context. The result is
+   * app-specific secret, which is never handed to the app's page. The result is
    * deterministic — the same identity, app origin, and label always yield the
    * same bytes across sessions and devices — yet unguessable to anyone without
    * the identity. Use it to seed feed topics or other app material without
@@ -1488,10 +1488,10 @@ export class SwarmIdClient {
    * with, whose address `connectionInfo.chatBinding` names as the account's
    * chat address on this site (docs/Chat-Binding.md).
    *
-   * It is derived inside the iframe from the app secret, which never leaves
-   * it, and is the same for this account and this site on every device. The
-   * library keeps it in memory only and never writes it to storage. Hold it no
-   * longer than the chat needs it, and never publish it.
+   * It is derived inside the iframe from the app secret, which is never handed
+   * to the app's page, and is the same for this account and this site on every
+   * device. The library keeps it in memory only and never writes it to
+   * storage. Hold it no longer than the chat needs it, and never publish it.
    *
    * @returns A promise resolving to the 32-byte secp256k1 private key
    * @throws {SwarmIdError} If the client is not initialized, or with code

@@ -216,7 +216,8 @@ export const ConnectedAppSchemaV1 = z.object({
   // Set by every connect until the person confirms the site's drive in the
   // connect window. While it is set the site's frame holds no stamp, whatever
   // the pointer above says. Session material of this device, like
-  // `appSecret`: no channel carries it to another context.
+  // `appSecret`, so no channel should carry it to another context. The
+  // device-state feed carries both today, a known open issue.
   stampPending: z.literal(true).optional(),
   // Tombstone marker. A revoked app is kept in the snapshot (so the removal
   // propagates to other devices) but hidden from the UI and invalid for auth.
