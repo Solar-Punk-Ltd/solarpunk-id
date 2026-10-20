@@ -39,6 +39,13 @@ jobs:
         timeout-minutes: 10
         run: pnpm exec playwright install --with-deps chromium
 
+      # The WebKit build itself is installed by the suite's webkit-install
+      # project, but its system libraries need root, so they come from here.
+      - name: Install WebKit's system libraries
+        working-directory: ./ui
+        timeout-minutes: 10
+        run: pnpm exec playwright install-deps webkit
+
       - name: Build lib dependency
         working-directory: ./lib
         run: pnpm build
