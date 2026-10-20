@@ -193,12 +193,18 @@ class Device {
 
   private async connectThroughPopup(page: Page): Promise<void> {
     await page.getByRole('button', { name: 'Connect Swarm ID' }).click({ timeout: 5_000 })
-    // Rendered once the client is up; before that, Connect is a silent no-op.
-    await expect(page.locator('#swarm-id-button iframe')).toBeVisible({ timeout: 10_000 })
-    // Settled either way, so a click that misses (the label flipped under
+    // Through the Swarm ID button, not the demo's own Connect: a seeded device
+    // has never opened the Swarm ID site at the top level, so its frame cannot
+    // prove its storage is shared and `connect()` refuses there.
+    const button = page
+      .frameLocator('#swarm-id-button iframe')
+      .getByRole('button', { name: 'Connect to Swarm' })
+    // Rendered once the client is up.
+    await expect(button).toBeVisible({ timeout: 15_000 })
+    // Settled either way, so a click that misses (the popover closed under
     // it) leaves no stray rejection behind to fail the test from outside.
     const popupPromise = page.waitForEvent('popup', { timeout: 10_000 }).catch(() => undefined)
-    await page.getByRole('button', { name: 'Connect', exact: true }).click({ timeout: 5_000 })
+    await button.click({ timeout: 5_000 })
     const popup = await popupPromise
     if (!popup) throw new Error('the connect popup did not open')
     await popup.waitForLoadState()
