@@ -305,13 +305,19 @@ says who that host is for `solarpunkid.bzz.link` and what changed code can reach
 - **XSS in an app**: cannot reach the master key or another app's secret; the iframe is a
   different origin
 - **A malicious app**: only gets the secret derived for its own origin
-- **Man in the middle**: HTTPS is required for every deployment
+- **Man in the middle**: HTTPS is required for every deployment. It protects the connection, not
+  the content. It does not protect against the host serving the site
 - **Message spoofing**: every message is validated against a schema, and the iframe answers only
   its own parent
+- **Changed code on the identity site**: not covered. Whoever serves the site, or controls the
+  name it is reached by, can serve code that uses every key the site holds
+  ([Who you trust when you use the hosted site](../swarm-hosting/#who-you-trust-when-you-use-the-hosted-site))
 
 ### What you do
 
 - Use HTTPS in production
-- Check that `iframeOrigin` is the Swarm ID site you expect
-- Keep the Swarm ID site secure and audited, above all when you [host your own](../self-hosting/)
+- Decide whose copy of the identity site you trust. `iframeOrigin` names a host, and that host
+  decides what code runs
+- Keep the Swarm ID site's host locked down and its build current with this repository's fixes,
+  above all when you [host your own](../self-hosting/)
 - Use a Content Security Policy to restrict who may embed the iframe
