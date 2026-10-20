@@ -162,11 +162,8 @@ export function deviceStateTopic(accountId: string, deviceId: string): Topic {
 }
 
 /**
- * The device-state feed's payload. It carries each connected app's
- * `appSecret`, `connectedUntil` and `stampPending` and each stamp's
- * `signerKey` as stored, encrypted only under the Swarm encryption key derived
- * from `derivationKey`. That is a known open issue. This is not the portable
- * projection that `portableConnectedApp` makes for the handover and the bus.
+ * The device-state feed's payload: this device's full current view of the
+ * account, encrypted under the Swarm encryption key.
  */
 export function serializeDeviceState(
   accountId: string,

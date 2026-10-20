@@ -193,9 +193,8 @@ export function serializeConnectedApp(
  * `appSecret` is the app's own credential and `connectedUntil` is the deadline
  * of the session that established it. Both belong to one context. The popup
  * handshake (`serializeSyncedAccount`) and the account bus
- * (`accountDeltaSnapshot`) strip them here. The device-state feed does not, it
- * publishes both through `serializeConnectedApp`, a known open issue. The bus
- * receive schema (`BusConnectedAppSchema` in `bus/messages.ts`) omits the same two fields
+ * (`accountDeltaSnapshot`) strip them here. The bus receive schema
+ * (`BusConnectedAppSchema` in `bus/messages.ts`) omits the same two fields
  * again, so a publisher that forgets this strip is still caught on receive.
  */
 export function portableConnectedApp(

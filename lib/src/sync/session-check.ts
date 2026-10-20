@@ -54,8 +54,7 @@ export async function checkRestoredSession(opts: {
     if (!folded)
       return (await hasNeverPublished(opts)) ? "allowed" : "unconfirmed"
     // `connectedUntil` is not read here, because this session's own deadline
-    // is enforced on read. The published device-state feed does carry
-    // `connectedUntil` and `appSecret` today, a known open issue.
+    // is enforced on read.
     const app = folded.account.connectedApps.find(
       (entry) => entry.appUrl === opts.appOrigin,
     )
