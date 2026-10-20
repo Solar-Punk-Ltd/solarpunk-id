@@ -5,7 +5,7 @@
  * and changes it. What the site's frame spends is decided by the library's
  * `resolveStampForApp`, so the screen reads the same rule rather than its own:
  * the drive the person picked for the site, and never the account default in
- * its place (Levi's ruling D4, 2026-10-16).
+ * its place. A site with no pick has no stamp.
  */
 import { BatchId } from '@ethersphere/bee-js'
 import {
