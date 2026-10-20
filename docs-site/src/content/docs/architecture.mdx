@@ -7,7 +7,8 @@ Swarm ID has three parts. Your page runs the library. The library embeds a hidde
 Swarm ID site, and that iframe does all the talking to Swarm. Where your page asks, it also shows a
 small Swarm ID button, a second iframe from the same site. When the user clicks it, a popup opens on
 the Swarm ID site, unlocks the account, and hands the hidden iframe a secret made for your app
-alone. The secret that controls the account never leaves the Swarm ID site.
+alone. The secret that controls the account is never sent to your page. It lives in code served
+from the Swarm ID site, so that site has to be trustworthy.
 
 ```text
 ┌───────────────────────────────────────────────────────────────────┐
@@ -118,7 +119,8 @@ An app's secret is `HMAC-SHA256(masterKey, appOrigin)`:
 - **Deterministic**: the same account always gives the same app the same secret
 - **Unique per app**: two apps never share one
 - **No cross-app leakage**: one app's secret says nothing about another's
-- **The master key stays home**: it never leaves the Swarm ID site
+- **The master key is never sent to an app**: only code served from the Swarm ID site uses it,
+  so that site has to be trustworthy
 
 ## Storage
 

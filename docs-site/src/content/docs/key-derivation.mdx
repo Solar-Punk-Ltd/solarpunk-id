@@ -133,16 +133,21 @@ else.
 
 ## What leaves the trusted domain
 
-| Material                                     | Who receives it                                                  |
-| -------------------------------------------- | ---------------------------------------------------------------- |
-| master key, recovery phrase, vault           | nobody; they stay in the identity site's own storage             |
-| app secret                                   | that one app's proxy iframe, which is also on the trusted domain |
-| account view (stamps, signer keys, no vault) | a proxy iframe whose storage the browser has partitioned         |
-| app material from `deriveAppSecret`          | the app page that asked for it                                   |
-| chat key from `getChatKey`                   | the app page that asked for it                                   |
+| Material                                     | Who receives it                                                    |
+| -------------------------------------------- | ------------------------------------------------------------------ |
+| master key, recovery phrase, vault           | no app page. They stay in the identity site's own storage          |
+| app secret                                   | that one app's proxy iframe, which is also on the trusted domain   |
+| account view (stamps, signer keys, no vault) | a proxy iframe whose storage the browser has partitioned           |
+| `derivationKey`                              | a proxy iframe whose storage the browser has partitioned, as above |
+| app material from `deriveAppSecret`          | the app page that asked for it                                     |
+| chat key from `getChatKey`                   | the app page that asked for it                                     |
 
 The proxy iframe is served from the trusted domain, so an app page cannot read its storage.
 What the app gets is what it asks the iframe for through `SwarmIdClient`.
+
+Everything in the first four rows lives in code served from the trusted domain, so that domain
+has to be trustworthy. Whoever serves it can serve changed code that reads all of it, see
+[Who you trust when you use the hosted site](../swarm-hosting/#who-you-trust-when-you-use-the-hosted-site).
 
 ## Porting
 
