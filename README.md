@@ -1,5 +1,11 @@
 # Swarm Identity Management
 
+> **A fork of Swarm ID, in beta and experimental.** This repository is Solar Punk's fork of
+> [snaha/swarm-id](https://github.com/snaha/swarm-id), taken at snaha's 0.7.0 release, commit
+> [`dc70275`](https://github.com/snaha/swarm-id/commit/dc70275bb), 2026-10-12. It is an experimental
+> test from Solar Punk's side, not a release of snaha's project. What changed since the fork is in the
+> [changelog](./lib/CHANGELOG.md).
+
 Cross-browser compatible authentication and identity management for Swarm dApps.
 
 **[Documentation](./docs-site/src/content/docs)** | **[Identity UI](https://solarpunkid.bzz.link)**
