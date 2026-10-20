@@ -117,6 +117,31 @@ Bee takes each file's content type from its extension, which every file in the b
 Then set the content hash of `solarpunkid.eth` to `bzz://<reference>`, and
 `https://solarpunkid.bzz.link` serves it.
 
+## Who you trust when you use the hosted site
+
+The identity site is a set of static files. Swarm addresses those files by content hash, but
+your browser does not check that hash when it loads them through `https://solarpunkid.bzz.link`.
+The browser trusts whatever the bzz.link gateway sends. So the operator of that gateway, or
+anyone who gets into it, can serve changed code, and changed code on this site can use
+everything the site can use.
+
+Without the person typing anything, that is the secret of every app connected in this browser,
+the signing key of every drive, and the stored `derivationKey`, the key that opens the
+account's own data on Swarm. After one unlock, with a password, a passkey tap or a wallet signature, it is the
+recovery phrase as well.
+
+Whoever controls the ENS name `solarpunkid.eth` can do the same by pointing it at other files.
+That name also holds the site allow list, so the same person decides which sites may connect.
+
+HTTPS, the sealed storage, the frame guard, the site allow list, the 7-day sessions and the
+check for a revoked session do not defend against this. All of them run inside the code the
+host serves. They defend against other sites and against copies of the browser's files, not
+against the host.
+
+The hosted site is therefore as trustworthy as the gateway that serves it and the owner of its
+name. If that is not enough for your users, serve your own copy from a host you control, so the
+code the browser runs is code you control. See [Self-hosting](../self-hosting/).
+
 ## Passkeys stay on their host
 
 A passkey is bound to the host name it was made on (`ui/src/lib/crypto/passkey.ts` uses

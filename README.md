@@ -68,6 +68,13 @@ The identity site (`ui/`) is served from Swarm at https://solarpunkid.bzz.link, 
 served from one `index.html`, is in
 [Hosting on Swarm](./docs-site/src/content/docs/swarm-hosting.mdx).
 
+Your browser does not check the files it gets from `solarpunkid.bzz.link` against their content
+hash. So the gateway that serves the site, and whoever controls `solarpunkid.eth`, can serve
+changed code, and that code can use every key the site holds. The hosted site is as trustworthy
+as they are.
+[Who you trust when you use the hosted site](./docs-site/src/content/docs/swarm-hosting.mdx#who-you-trust-when-you-use-the-hosted-site)
+says what that covers. Serving your own copy from a host you control is the way around it.
+
 The documentation is not hosted. It is read from
 [`docs-site/src/content/docs`](./docs-site/src/content/docs) in this repository. The demo
 (`demo/`) is not hosted either and runs locally with `pnpm dev`.

@@ -287,6 +287,11 @@ The per-device feeds and the fold are described on
 
 ## Security
 
+Everything below runs inside the code the identity site's host serves, so all of it assumes that
+code is the real build. Your browser does not check that, and the host can serve changed code.
+[Who you trust when you use the hosted site](../swarm-hosting/#who-you-trust-when-you-use-the-hosted-site)
+says who that host is for `solarpunkid.bzz.link` and what changed code can reach.
+
 ### What is protected
 
 - **Master key**: only on the identity site, encrypted at rest under the access method
