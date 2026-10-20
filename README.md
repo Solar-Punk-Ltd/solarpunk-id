@@ -24,7 +24,7 @@ Cross-browser compatible authentication and identity management for Swarm dApps.
 
 The project uses an OAuth-style popup authentication flow over shared localStorage — no Storage Access API and no browser extension. The proxy iframe reads the trusted domain's first-party store while the embedding page is same-site, which covers the local rig and a copy self-hosted on the app's own domain. Where the two are cross-site, as an app on another domain is with the hosted site at `solarpunkid.bzz.link`, or the browser partitions regardless (Safari's ITP, strict privacy settings elsewhere), the connect popup hands the iframe the account's upload credentials directly instead, so uploads keep working ([Account bus](./docs/Account-Bus.md)). That path is confirmed on real Safari, upload included (iOS 18.7 / Safari 26.6), see [Safari limitations](#safari-limitations).
 
-**Key Innovation**: The popup-based authentication allows dApps to securely derive app-specific secrets from a master identity. Cross-app isolation comes from the derivation itself — every secret is an HMAC-SHA256 of the master key over the app's own origin, so one app cannot reach another's — not from storage partitioning, which the flow is designed to work with or without.
+**Key Innovation**: The popup-based authentication allows dApps to derive app-specific secrets from a master identity. Cross-app isolation comes from the derivation itself, not from storage partitioning, which the flow is designed to work with or without. Every secret is an HMAC-SHA256 of the master key over the app's own origin, so one app cannot reach another's.
 
 [Architecture deep-dive →](./docs-site/src/content/docs/architecture.mdx)
 
@@ -73,6 +73,13 @@ The identity site (`ui/`) is served from Swarm at https://solarpunkid.bzz.link, 
 `solarpunkid.eth` pointing at the upload. How it is built and uploaded, and why every route is
 served from one `index.html`, is in
 [Hosting on Swarm](./docs-site/src/content/docs/swarm-hosting.mdx).
+
+Your browser does not check the files it gets from `solarpunkid.bzz.link` against their content
+hash. So the gateway that serves the site, and whoever controls `solarpunkid.eth`, can serve
+changed code, and that code can use every key the site holds. The hosted site is as trustworthy
+as they are.
+[Who you trust when you use the hosted site](./docs-site/src/content/docs/swarm-hosting.mdx#who-you-trust-when-you-use-the-hosted-site)
+says what that covers. Serving your own copy from a host you control is the way around it.
 
 The documentation is not hosted. It is read from
 [`docs-site/src/content/docs`](./docs-site/src/content/docs) in this repository. The demo

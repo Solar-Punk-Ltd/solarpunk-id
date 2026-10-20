@@ -25,6 +25,8 @@ Safari backup prompt, because those navigate to the account pages.
 - Tests: `ui/src/lib/frame-guard.test.ts`, `ui/src/lib/while-allowed.test.ts`,
   and the browser journey
   `ui/tests/framing.test.ts`.
+- What this does not stop: the guard is part of the code the host serves, so a
+  host that serves changed code can leave it out.
 
 ## Every use of the connect window's site checks it first
 
@@ -182,8 +184,12 @@ renders no page until the stored accounts are read with their keys open
   hooks in `lib/src/utils/versioned-storage.ts`, the partitioned session in
   `lib/src/swarm-id-proxy.ts` (`savePartitionSession`, `readPartitionSession`).
 - What this does not stop: script running on the identity origin can use the
-  wrapping key. It keeps the plain keys out of the files a profile is stored
-  in, out of storage dumps and out of backups of the browser profile.
+  wrapping key. One way script gets there is code the host serves in place of
+  the real files: the browser does not check what bzz.link or any other host
+  sends against the build. Sealing keeps the plain keys out of the files a
+  profile is stored in, out of storage dumps and out of backups of the browser
+  profile. It rests on the served code being unchanged, as the frame guard
+  above does.
 
 ## A restored session checks it was not ended before its first write, and a session lasts 7 days
 

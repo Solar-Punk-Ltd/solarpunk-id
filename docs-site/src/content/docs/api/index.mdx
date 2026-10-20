@@ -3,7 +3,7 @@ title: SwarmIdClient API Reference
 description: Complete API documentation for the SwarmIdClient class
 ---
 
-The `SwarmIdClient` is the main class for integrating Swarm ID authentication and storage capabilities into web applications. It enables parent windows to interact with a Swarm ID iframe proxy, providing secure authentication, identity management, and data upload/download functionality to the Swarm decentralized storage network.
+The `SwarmIdClient` is the main class for integrating Swarm ID authentication and storage capabilities into web applications. It enables parent windows to interact with a Swarm ID iframe proxy, providing authentication, identity management, and data upload/download functionality to the Swarm decentralized storage network.
 
 ## Installation
 
@@ -411,7 +411,7 @@ const topic = keccak256(seed) // a stable feed topic nobody else can compute
 
 ### `getChatKey()`
 
-The site's chat key: the secp256k1 private key your chat signs its messages with. Its address is the chat address that [`chatBinding`](#connectioninfo-property) names, so a reader who recovers a message's author can check it against the binding with `acceptedChatBinding`. The iframe derives it from the app secret, which never leaves the iframe, and the same account and site give the same key on every device. The library keeps it in memory only and never stores it. Hold it no longer than your chat needs it, and never publish it.
+The site's chat key: the secp256k1 private key your chat signs its messages with. Its address is the chat address that [`chatBinding`](#connectioninfo-property) names, so a reader who recovers a message's author can check it against the binding with `acceptedChatBinding`. The iframe derives it from the app secret, which the iframe never hands to your page, and the same account and site give the same key on every device. The library keeps it in memory only and never stores it. Hold it no longer than your chat needs it, and never publish it.
 
 **Returns:** `Promise<Uint8Array>`, the 32-byte private key
 
@@ -453,6 +453,8 @@ Synchronous accessor for the current connection state. Populated by the proxy as
 | `chatBinding`                   | `{ message: string, signature: string } \| undefined`                                                           | The account's signed statement that the address of this site's chat key is its chat address on this site. Publish it beside your chat so readers can check it with `verifyChatBinding`, and trust the newest one per site. Present only on a session the connect window handed over. See `docs/Chat-Binding.md` in the repository                                                                                                                                                                                                        |
 
 `chatBinding` is often absent, and a site must work without it. It is there only when the connect window handed the session over, which happens when the browser keeps this frame's storage apart from the identity site's. A session read out of shared storage, where your site and the identity site are the same site, carries none. Neither does a connection made before bindings existed, or one whose kept binding names an address other than the site's chat key, until the person next unlocks their account in the connect window for your site. A reconnect that would skip the unlock is taken only when the kept binding still names the chat key, so the window asks for the unlock and signs a fresh one otherwise. Treat a missing binding as "this chat address is not linked to an account", never as an error, and listen on `onConnectionChange` for one that arrives later.
+
+A binding shows which account key signed it. Anyone can make an account key and sign a binding with it, so a binding tells one account from another. It does not prove that the signer is a genuine Swarm ID account, or that a person is behind it. A badge you draw from a binding means "the same account as before", not "checked by Swarm ID".
 
 **Example:**
 

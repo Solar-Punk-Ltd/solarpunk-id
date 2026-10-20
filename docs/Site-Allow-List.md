@@ -4,6 +4,11 @@ Swarm ID serves only the sites on its allow list. A site that is not on it canno
 embed the proxy frame and cannot open the connect window: both refuse it before
 anything is read, derived or signed for it, and say why.
 
+The check runs inside the identity site's own code. So it stops other sites from
+using an honest copy of that code. It does not stop the host from serving
+different code that skips the check, and it does not stop the Ethereum endpoint
+the build names from giving a false answer about the record.
+
 The list is a text record on an ENS name, so adding or removing a site is a
 change to that record. No new build and no new upload is needed.
 
@@ -50,8 +55,11 @@ The name is resolved properly: the ENS registry
 (`0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e`) names the name's resolver, and
 the resolver's `text(node, key)` gives the record. Both are `eth_call`s to the
 Ethereum mainnet JSON-RPC endpoint the build names. The list is never read
-through bzz.link or any Swarm gateway: whoever serves the code must not also be
-able to answer which sites it trusts.
+through bzz.link or any Swarm gateway, so the gateway that serves the code does
+not also answer which sites it trusts. This does not make the host harmless.
+A host that serves changed code can drop the check altogether. And the endpoint
+is trusted too: the answer is not checked against a block proof, so an endpoint
+that lies can name any list it likes.
 
 The name must be a plain lower-case name (letters, digits and hyphens in each
 label, at least two labels). Anything else is refused rather than normalized,

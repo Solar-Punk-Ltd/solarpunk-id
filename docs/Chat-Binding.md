@@ -17,6 +17,12 @@ says so in a signed statement, the chat binding: "this chat address on this site
 is mine". The site publishes it beside its chat. A reader recovers the signer
 and compares it with the account's address.
 
+What a binding shows is which account key signed it, and nothing more. Anyone
+can make an account key and sign a binding with it, so a binding tells one
+account from another. It does not prove that the signer is a genuine Swarm ID
+account, or that a person is behind it. A badge a site draws from a binding
+means "the same account as before", not "checked by Swarm ID".
+
 ## Who signs, and where
 
 The binding is signed by the account's own key: the private key of the account's
@@ -27,8 +33,8 @@ account is still signed for by its seed key, not by the wallet.
 
 It is signed only in the connect window (`ui/src/routes/connect/`), the one
 place the seed is unlocked, by `completeConnect` in
-`ui/src/lib/connect-handshake.ts`. The proxy frame never holds the account key
-and never signs one. `createChatBinding` is the only thing the account key signs
+`ui/src/lib/connect-handshake.ts`. The proxy frame never holds the master key,
+the account's own key, and never signs one. `createChatBinding` is the only thing the account key signs
 through this code, and it takes no text: it is given a site, and derives the
 chat address for that site itself.
 
