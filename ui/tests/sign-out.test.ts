@@ -58,25 +58,31 @@ test('sign out keeps only the encrypted remnant and signs back in from it', asyn
 
   // The stored record is the minimal remnant: vault + snapshot + the
   // storage-warning fields — and no plaintext secrets.
-  const remnant = await page.evaluate(() => {
-    const doc = JSON.parse(localStorage.getItem('swarm-id-accounts') ?? '{}') as {
-      data?: Record<string, unknown>[]
-    }
-    const record = doc.data?.[0] ?? {}
-    return { keys: Object.keys(record).sort(), raw: JSON.stringify(record) }
-  })
-  // `soonestDriveExpiry` is optional — it only exists when a drive's TTL is
+  const readRemnant = () =>
+    page.evaluate(() => {
+      const doc = JSON.parse(localStorage.getItem('swarm-id-accounts') ?? '{}') as {
+        data?: Record<string, unknown>[]
+      }
+      const record = doc.data?.[0] ?? {}
+      return { keys: Object.keys(record).sort(), raw: JSON.stringify(record) }
+    })
+  // The badge shows from memory and the account is saved sealed, which can
+  // land after it, so the stored record is read until the remnant is there.
+  // `soonestDriveExpiry` is optional, it only exists when a drive's TTL is
   // known.
-  expect(remnant.keys.filter((key) => key !== 'soonestDriveExpiry')).toEqual([
-    'access',
-    'createdAt',
-    'encryptedSeed',
-    'encryptedState',
-    'id',
-    'name',
-    'signedOutAt',
-    'storageWarning',
-  ])
+  await expect
+    .poll(async () => (await readRemnant()).keys.filter((key) => key !== 'soonestDriveExpiry'))
+    .toEqual([
+      'access',
+      'createdAt',
+      'encryptedSeed',
+      'encryptedState',
+      'id',
+      'name',
+      'signedOutAt',
+      'storageWarning',
+    ])
+  const remnant = await readRemnant()
   expect(remnant.raw).not.toContain('derivationKey')
 
   // Sign back in with the password alone; the snapshot restores the drive

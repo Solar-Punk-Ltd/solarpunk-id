@@ -155,12 +155,15 @@ test('drive management: add, rename, set default, remove', async ({ page }) => {
   await expect(page.getByText('Batch ID copied to clipboard')).toBeVisible()
   await expandedCard.getByRole('button', { name: 'Drive actions' }).click()
   await page.getByRole('menuitem', { name: 'Set as default' }).click()
+  await expect(page.getByText('Default drive updated')).toBeVisible()
 
   const afterDefault = await storedDrives(page)
   expect(afterDefault.live).toHaveLength(2)
   const photos = afterDefault.live.find((drive) => drive.name === 'Photos')
   expect(photos).toBeDefined()
-  expect(afterDefault.default).not.toBe(photos?.batchID)
+  // The account is saved sealed, which finishes after the click returns, so the
+  // stored default is read until the save lands.
+  await expect.poll(async () => (await storedDrives(page)).default).not.toBe(photos?.batchID)
 
   // Remove the renamed (now non-default) drive — collapse the other card
   // first so the expanded-card anchor stays unique.
@@ -172,8 +175,8 @@ test('drive management: add, rename, set default, remove', async ({ page }) => {
   await page.getByRole('dialog').getByRole('button', { name: 'Remove drive' }).click()
 
   await expect(page.getByText('Photos', { exact: true })).not.toBeVisible()
+  await expect.poll(async () => (await storedDrives(page)).live).toHaveLength(1)
   const afterRemove = await storedDrives(page)
-  expect(afterRemove.live).toHaveLength(1)
   expect(afterRemove.default).toBe(afterRemove.live[0].batchID)
 })
 
