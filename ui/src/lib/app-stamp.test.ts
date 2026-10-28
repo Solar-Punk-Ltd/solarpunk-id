@@ -114,18 +114,18 @@ describe('appStampOptions', () => {
 // person's "Go to app" is what picks it.
 describe('connectPickerStart', () => {
   it("starts on the site's own drive", () => {
-    expect(connectPickerStart({ postageStampBatchID: new BatchId(OTHER_HEX) }, account)).toBe(
+    expect(connectPickerStart({ postageStampBatchID: new BatchId(OTHER_HEX) }, account, NOW)).toBe(
       OTHER_HEX,
     )
   })
 
   it('offers the account default to a site with no pick', () => {
-    expect(connectPickerStart({ postageStampBatchID: undefined }, account)).toBe(DEFAULT_HEX)
+    expect(connectPickerStart({ postageStampBatchID: undefined }, account, NOW)).toBe(DEFAULT_HEX)
   })
 
   it("offers the account default when the site's own drive was removed", () => {
     const removed = new BatchId('e'.repeat(64))
-    expect(connectPickerStart({ postageStampBatchID: removed }, account)).toBe(DEFAULT_HEX)
+    expect(connectPickerStart({ postageStampBatchID: removed }, account, NOW)).toBe(DEFAULT_HEX)
   })
 
   it('keeps a site set to no drive on no drive', () => {
