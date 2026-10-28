@@ -10,6 +10,7 @@ import {
   appStampOptions,
   appStampSummary,
   appStampValue,
+  connectPickToStore,
   connectPickerStart,
 } from './app-stamp'
 
@@ -76,6 +77,32 @@ describe('appStampValue', () => {
         { stamps: [], defaultPostageStampBatchID: undefined },
       ),
     ).toBe(NO_POSTAGE_STAMP)
+  })
+})
+
+describe('connectPickToStore', () => {
+  const ownExpired = { postageStampBatchID: new BatchId(EXPIRED_HEX) }
+  const allExpired = { ...account, defaultPostageStampBatchID: new BatchId(EXPIRED_HEX) }
+
+  it('leaves the pick as it is when the window starts on no drive the person did not choose', () => {
+    const start = connectPickerStart(ownExpired, allExpired, NOW)
+    expect(connectPickToStore(ownExpired, allExpired, start, false)).toBeUndefined()
+  })
+
+  it('stores no drive when the person picked it', () => {
+    expect(connectPickToStore(ownExpired, allExpired, NO_POSTAGE_STAMP, true)).toBe(
+      NO_POSTAGE_STAMP,
+    )
+  })
+
+  it("stores the live default the window offered in place of the site's expired drive", () => {
+    const start = connectPickerStart(ownExpired, account, NOW)
+    expect(connectPickToStore(ownExpired, account, start, false)).toEqual(new BatchId(DEFAULT_HEX))
+  })
+
+  it("leaves the pick as it is when the site's drive is the one selected", () => {
+    const own = { postageStampBatchID: new BatchId(OTHER_HEX) }
+    expect(connectPickToStore(own, account, OTHER_HEX, true)).toBeUndefined()
   })
 })
 

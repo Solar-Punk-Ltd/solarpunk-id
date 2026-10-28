@@ -75,6 +75,24 @@ export function appStampChoice(value: string): AppStampChoice {
   return new BatchId(value)
 }
 
+/**
+ * What the connect window's "Go to app" stores for the site, or `undefined`
+ * to leave its pick as it is. The window starts on no drive when the site's
+ * drive and the default have both expired, and storing that unasked would
+ * mark the site as set to no drive, so a later live default is never offered
+ * to it. No drive is stored only when the person picked it.
+ */
+export function connectPickToStore(
+  app: AppStampPointer,
+  account: AccountDrives,
+  selected: string,
+  isPickedByPerson: boolean,
+): AppStampChoice | undefined {
+  if (selected === appStampValue(app, account)) return undefined
+  if (selected === NO_POSTAGE_STAMP && !isPickedByPerson) return undefined
+  return appStampChoice(selected)
+}
+
 /** Every drive, the default marked, an expired one listed but not choosable, and no drive last */
 export function appStampOptions(account: AccountDrives, now = Date.now()): SelectOption[] {
   const defaultHex = account.defaultPostageStampBatchID?.toHex()

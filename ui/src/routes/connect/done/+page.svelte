@@ -31,12 +31,7 @@
   import { goto } from '$app/navigation'
   import { resolve } from '$app/paths'
 
-  import {
-    appStampChoice,
-    appStampOptions,
-    appStampValue,
-    connectPickerStart,
-  } from '$lib/app-stamp'
+  import { appStampOptions, connectPickToStore, connectPickerStart } from '$lib/app-stamp'
   import AccountAvatar from '$lib/components/account-avatar.svelte'
   import AppHeader from '$lib/components/app-header.svelte'
   import DriveAddDialog from '$lib/components/drive-add-dialog.svelte'
@@ -63,8 +58,6 @@
   const showPitch = $derived(drives.length === 0)
 
   const driveOptions = $derived(account ? appStampOptions(account) : [])
-  /** The drive the site uses as the window opened, or none */
-  const currentDriveValue = $derived(account && app ? appStampValue(app, account) : '')
   /** Where the picker starts: the site's drive, or the account default offered to it */
   const startDriveValue = $derived(account && app ? connectPickerStart(app, account) : '')
   let pickedDriveValue = $state<string | undefined>(undefined)
@@ -84,10 +77,12 @@
 
   async function goToApp() {
     if (!pickNotReached && account && request && app) {
-      const changed = showPicker && selectedDriveValue !== currentDriveValue
+      const choice = showPicker
+        ? connectPickToStore(app, account, selectedDriveValue, pickedDriveValue !== undefined)
+        : undefined
       await account.confirmAppStamp(
         request.appOrigin,
-        changed ? { batchID: appStampChoice(selectedDriveValue) } : undefined,
+        choice === undefined ? undefined : { batchID: choice },
       )
       if (handOverPickedStamp(account, request) === 'not-reached' && showPicker) {
         pickNotReached = true
