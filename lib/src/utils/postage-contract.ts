@@ -19,7 +19,7 @@
  *   ttlSeconds               = remainingBlocks * GNOSIS_BLOCK_TIME
  */
 
-import { fetchBatchDetails, fetchBatchTTL, GNOSIS_BLOCK_TIME } from "./ttl"
+import { fetchBatchDetails, GNOSIS_BLOCK_TIME } from "./ttl"
 import { CHAIN_READ_TIMEOUT_MS, jsonRpcBatch } from "./json-rpc"
 
 /**
@@ -219,7 +219,7 @@ export type OnChainBatchResult =
 
 /**
  * Reads a batch's on-chain state, distinguishing "definitively absent" from
- * "couldn't check". {@link fetchOnChainBatchState} is the simpler wrapper that
+ * "couldn't check".
  * collapses both into `undefined`.
  */
 export async function fetchOnChainBatchStateResult(
@@ -265,19 +265,6 @@ export async function fetchOnChainBatchStateResult(
   }
 }
 
-export async function fetchOnChainBatchState(
-  rpcUrl: string,
-  batchId: string,
-  contractAddress: string = POSTAGE_STAMP_CONTRACT_ADDRESS,
-): Promise<OnChainBatchState | undefined> {
-  const result = await fetchOnChainBatchStateResult(
-    rpcUrl,
-    batchId,
-    contractAddress,
-  )
-  return result.status === "found" ? result.state : undefined
-}
-
 /**
  * Computes a batch's remaining TTL in seconds from an on-chain snapshot, using
  * the same integer math as the storage-incentives contract and Bee node.
@@ -299,67 +286,6 @@ export function calculateContractTTLSeconds(
   }
   const remainingBlocks = remaining / state.lastPrice
   return Number(remainingBlocks * BigInt(GNOSIS_BLOCK_TIME))
-}
-
-/**
- * Convenience wrapper: fetches a batch's on-chain state and returns its
- * remaining TTL in seconds. This is the contract-backed counterpart to
- * {@link fetchBatchTTL} (which reads the Bee node), and unlike it works for any
- * batch the contract knows about, regardless of whether the configured Bee node
- * tracks it.
- *
- * @param contractAddress - PostageStamp contract address (defaults to mainnet;
- *          override for a local dev chain).
- * @returns Remaining TTL in seconds (`0` when expired), or `undefined` when the
- *          batch is unknown, the RPC request fails, or the price is zero.
- */
-export async function fetchBatchTTLFromContract(
-  rpcUrl: string,
-  batchId: string,
-  contractAddress: string = POSTAGE_STAMP_CONTRACT_ADDRESS,
-): Promise<number | undefined> {
-  const state = await fetchOnChainBatchState(rpcUrl, batchId, contractAddress)
-  if (state === undefined) {
-    return undefined
-  }
-  return calculateContractTTLSeconds(state)
-}
-
-/**
- * Resolves a batch's remaining TTL (seconds) from the most authoritative source
- * available, in order:
- *   1. The PostageStamp contract, read directly by batchId — ground truth that
- *      works for any batch, even one the configured Bee node has never seen.
- *   2. The Bee node's `batchTTL` — also live chain state, but only for batches
- *      the node tracks.
- *
- * This is the single canonical "best remaining TTL" lookup; callers layer a
- * price-based approximation ({@link calculateTTLSeconds}) on top when both
- * sources return `undefined`.
- *
- * @param gnosisRpcUrl - Gnosis Chain JSON-RPC URL (for the contract read)
- * @param beeUrl - Bee node URL (fallback)
- * @param batchId - 32-byte hex batch ID, with or without `0x` prefix
- * @param localContractAddress - PostageStamp address for a local dev chain. Only
- *          honoured when `gnosisRpcUrl` targets a local node; against any remote
- *          RPC the Gnosis mainnet deployment is used regardless (see
- *          {@link resolvePostageStampContractAddress}).
- * @returns Remaining TTL in seconds, or `undefined` if neither source can answer.
- */
-export async function fetchAuthoritativeBatchTTL(
-  gnosisRpcUrl: string,
-  beeUrl: string,
-  batchId: string,
-  localContractAddress?: string,
-): Promise<number | undefined> {
-  const contractAddress = resolvePostageStampContractAddress(
-    gnosisRpcUrl,
-    localContractAddress,
-  )
-  return (
-    (await fetchBatchTTLFromContract(gnosisRpcUrl, batchId, contractAddress)) ??
-    (await fetchBatchTTL(beeUrl, batchId))
-  )
 }
 
 /** A batch's standing as {@link fetchBatchStanding} reads it. A field is absent where no source answered for it. */
