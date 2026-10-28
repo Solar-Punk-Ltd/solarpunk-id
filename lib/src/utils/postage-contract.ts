@@ -19,7 +19,7 @@
  *   ttlSeconds               = remainingBlocks * GNOSIS_BLOCK_TIME
  */
 
-import { fetchBatchTTL, GNOSIS_BLOCK_TIME } from "./ttl"
+import { fetchBatchDetails, fetchBatchTTL, GNOSIS_BLOCK_TIME } from "./ttl"
 import { CHAIN_READ_TIMEOUT_MS, jsonRpcBatch } from "./json-rpc"
 
 /**
@@ -362,17 +362,49 @@ export async function fetchAuthoritativeBatchTTL(
   )
 }
 
+/** A batch's standing as {@link fetchBatchStanding} reads it. A field is absent where no source answered for it. */
+export interface BatchStanding {
+  exists?: boolean
+  /** Remaining seconds, `0` once expired. */
+  batchTTL?: number
+  usable?: boolean
+}
+
 /**
  * Resolves a batch's existence and remaining TTL, treating the on-chain contract
- * as the source of truth. A contract `not-found` is authoritative — a Bee node
- * that happens to track the batch cannot override the chain. The Bee node is
- * consulted only when the contract read itself failed (RPC unreachable), as a
- * best-effort second opinion.
- *
- * Unlike {@link fetchAuthoritativeBatchTTL} (best-effort TTL, falls back to Bee
- * even on contract `not-found`), this is the stricter lookup for existence-aware
- * UI.
+ * as the source of truth. A contract `not-found` is authoritative: the batch has
+ * expired and been removed, or never existed, and a Bee node that still tracks
+ * it cannot override the chain. The Bee node answers `usable`, which the chain
+ * does not hold, and stands in for the chain only when the contract read itself
+ * failed (RPC unreachable).
  *
  * @param localContractAddress - PostageStamp address for a local dev chain; only
  *          honoured against a local RPC (see {@link resolvePostageStampContractAddress}).
  */
+export async function fetchBatchStanding(
+  gnosisRpcUrl: string,
+  beeUrl: string,
+  batchId: string,
+  localContractAddress?: string,
+): Promise<BatchStanding> {
+  const contractAddress = resolvePostageStampContractAddress(
+    gnosisRpcUrl,
+    localContractAddress,
+  )
+  const [onChain, node] = await Promise.all([
+    fetchOnChainBatchStateResult(gnosisRpcUrl, batchId, contractAddress),
+    fetchBatchDetails(beeUrl, batchId),
+  ])
+  if (onChain.status === "not-found") {
+    return { exists: false, batchTTL: 0, usable: false }
+  }
+  if (onChain.status === "found") {
+    const batchTTL = calculateContractTTLSeconds(onChain.state)
+    return {
+      exists: true,
+      batchTTL,
+      usable: batchTTL === 0 ? false : node?.usable,
+    }
+  }
+  return node ?? {}
+}

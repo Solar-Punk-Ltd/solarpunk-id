@@ -137,6 +137,7 @@ import {
   stampsReachableByApp,
 } from "./utils/postage-stamp-association"
 import {
+  remainingLifespanSeconds,
   stampRefusal,
   sameStampLifetime,
   type StampLifetimeFields,
@@ -214,12 +215,7 @@ import {
 import { createAsyncSequentialFinder } from "./proxy/feeds/sequence"
 import { Binary } from "cafe-utility"
 import {
-  calculateTTLSeconds,
-  fetchBatchDetails,
-  fetchSwarmPrice,
-} from "./utils/ttl"
-import {
-  fetchAuthoritativeBatchTTL,
+  fetchBatchStanding,
   POSTAGE_STAMP_CONTRACT_ADDRESS,
 } from "./utils/postage-contract"
 import { tryCreateTag } from "./utils/tag"
@@ -6294,45 +6290,34 @@ export class SwarmIdProxy {
 
     // The stored stamp's `usable`/`exists` are a snapshot from assignment time
     // and can be stale (e.g. a batch assigned during its ~30s warm-up stays
-    // `usable: false` in storage forever), so read live batch details from the
-    // Bee node for those fields.
-    const details = await fetchBatchDetails(
-      this.beeApiUrl,
-      stamp.batchID.toHex(),
-    )
-
-    // Resolve TTL from live chain state: the PostageStamp contract first
-    // (ground truth for any batch, even one this Bee node has never seen), then
-    // the Bee node's batchTTL. Fall back to the Swarmscan-price approximation
-    // only when neither authoritative source can answer (e.g. RPC unreachable
-    // and a public gateway that does not track the batch).
-    let batchTTL: number | undefined = await fetchAuthoritativeBatchTTL(
+    // `usable: false` in storage forever), so the batch is read live: the
+    // PostageStamp contract for existence and time left, the Bee node for
+    // `usable`. Where neither answers, the stored lifetime aged to now stands
+    // in, never a price estimate, which is the lifetime of a fresh batch with
+    // this deposit and would show an expired one as having time left.
+    const standing = await fetchBatchStanding(
       this.gnosisRpcUrl,
       this.beeApiUrl,
       stamp.batchID.toHex(),
       this.postageStampContractAddress,
     )
-    if (batchTTL === undefined) {
-      try {
-        const pricePerGBPerMonth = await fetchSwarmPrice()
-        batchTTL = calculateTTLSeconds(stamp.amount, pricePerGBPerMonth)
-      } catch (error) {
-        console.warn("[Proxy] Failed to calculate TTL:", error)
-      }
-    }
+    const storedRemaining = remainingLifespanSeconds(stamp)
+    const batchTTL =
+      standing.batchTTL ??
+      (storedRemaining === undefined ? undefined : Math.max(0, storedRemaining))
 
     // Map PostageStamp to public PostageBatch (exclude signerKey)
     const postageBatch: PostageBatch = {
       batchID: stamp.batchID.toHex(),
       utilization: stamp.utilization,
-      usable: details?.usable ?? stamp.usable,
+      usable: batchTTL === 0 ? false : (standing.usable ?? stamp.usable),
       label: "", // PostageStamp doesn't store label
       depth: stamp.depth,
       amount: stamp.amount.toString(),
       bucketDepth: stamp.bucketDepth,
       blockNumber: stamp.blockNumber,
       immutableFlag: stamp.immutableFlag,
-      exists: details?.exists ?? stamp.exists,
+      exists: standing.exists ?? stamp.exists,
       batchTTL,
     }
 
