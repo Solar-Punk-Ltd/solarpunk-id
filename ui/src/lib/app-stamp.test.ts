@@ -142,6 +142,22 @@ describe('connectPickerStart', () => {
       ),
     ).toBe(NO_POSTAGE_STAMP)
   })
+
+  it("offers the account default, not the site's own drive, once the site's own drive has expired", () => {
+    expect(connectPickerStart({ postageStampBatchID: new BatchId(EXPIRED_HEX) }, account, NOW)).toBe(
+      DEFAULT_HEX,
+    )
+  })
+
+  it("offers no drive when the site's own drive and the default have both expired", () => {
+    expect(
+      connectPickerStart(
+        { postageStampBatchID: new BatchId(EXPIRED_HEX) },
+        { ...account, defaultPostageStampBatchID: new BatchId(EXPIRED_HEX) },
+        NOW,
+      ),
+    ).toBe(NO_POSTAGE_STAMP)
+  })
 })
 
 describe('appStampSummary', () => {

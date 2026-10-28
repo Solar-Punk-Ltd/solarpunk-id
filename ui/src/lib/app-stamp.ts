@@ -45,20 +45,23 @@ export function appStampValue(app: AppStampPointer, account: AccountDrives): str
 /**
  * The drive the connect window's picker starts on. A site with a live drive of
  * its own starts there, and a site set to no drive stays on none. A site with
- * no pick, or whose drive is gone, is offered the account default when it has
- * not expired, and only the person's "Go to app" makes it the site's drive.
+ * no pick, or whose drive is gone or has expired, is offered the account
+ * default when it has not expired, and only the person's "Go to app" makes it
+ * the site's drive. An expired drive is listed but not choosable, so starting
+ * on one would let "Go to app" keep it.
  */
 export function connectPickerStart(
   app: AppStampPointer,
   account: AccountDrives,
   now = Date.now(),
 ): string {
+  const isLive = (drive: PostageStamp) => describeDrive(drive, now).status !== 'expired'
   const own = resolvedDrive(app, account)
-  if (own) return own.batchID.toHex()
+  if (own && isLive(own)) return own.batchID.toHex()
   if (app.postageStampBatchID === NO_POSTAGE_STAMP) return NO_POSTAGE_STAMP
   const fallback = account.defaultPostageStampBatchID
   const offered = fallback && account.stamps.find((drive) => drive.batchID.equals(fallback))
-  if (!offered || describeDrive(offered, now).status === 'expired') return NO_POSTAGE_STAMP
+  if (!offered || !isLive(offered)) return NO_POSTAGE_STAMP
   return offered.batchID.toHex()
 }
 
