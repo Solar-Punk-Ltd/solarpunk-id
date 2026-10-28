@@ -128,9 +128,8 @@ describe("SwarmIdProxy getPostageBatch", () => {
     )
 
     expect(batch).toMatchObject({ batchTTL: 0, usable: false })
-    expect(fetchSpy.mock.calls.map(([url]) => String(url))).not.toContain(
-      expect.stringContaining("swarmscan"),
-    )
+    const asked = fetchSpy.mock.calls.map(([url]) => String(url))
+    expect(asked.some((url) => url.includes("swarmscan"))).toBe(false)
   })
 
   it("says nothing of the time left when no source knows it", async () => {
