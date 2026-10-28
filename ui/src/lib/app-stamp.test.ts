@@ -144,9 +144,9 @@ describe('connectPickerStart', () => {
   })
 
   it("offers the account default, not the site's own drive, once the site's own drive has expired", () => {
-    expect(connectPickerStart({ postageStampBatchID: new BatchId(EXPIRED_HEX) }, account, NOW)).toBe(
-      DEFAULT_HEX,
-    )
+    expect(
+      connectPickerStart({ postageStampBatchID: new BatchId(EXPIRED_HEX) }, account, NOW),
+    ).toBe(DEFAULT_HEX)
   })
 
   it("offers no drive when the site's own drive and the default have both expired", () => {
