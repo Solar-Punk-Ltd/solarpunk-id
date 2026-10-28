@@ -10,6 +10,7 @@ import {
   appStampOptions,
   appStampSummary,
   appStampValue,
+  connectPickToStore,
   connectPickerStart,
 } from './app-stamp'
 
@@ -79,6 +80,32 @@ describe('appStampValue', () => {
   })
 })
 
+describe('connectPickToStore', () => {
+  const ownExpired = { postageStampBatchID: new BatchId(EXPIRED_HEX) }
+  const allExpired = { ...account, defaultPostageStampBatchID: new BatchId(EXPIRED_HEX) }
+
+  it('leaves the pick as it is when the window starts on no drive the person did not choose', () => {
+    const start = connectPickerStart(ownExpired, allExpired, NOW)
+    expect(connectPickToStore(ownExpired, allExpired, start, false)).toBeUndefined()
+  })
+
+  it('stores no drive when the person picked it', () => {
+    expect(connectPickToStore(ownExpired, allExpired, NO_POSTAGE_STAMP, true)).toBe(
+      NO_POSTAGE_STAMP,
+    )
+  })
+
+  it("stores the live default the window offered in place of the site's expired drive", () => {
+    const start = connectPickerStart(ownExpired, account, NOW)
+    expect(connectPickToStore(ownExpired, account, start, false)).toEqual(new BatchId(DEFAULT_HEX))
+  })
+
+  it("leaves the pick as it is when the site's drive is the one selected", () => {
+    const own = { postageStampBatchID: new BatchId(OTHER_HEX) }
+    expect(connectPickToStore(own, account, OTHER_HEX, true)).toBeUndefined()
+  })
+})
+
 describe('appStampChoice', () => {
   // A pick of the default is a pick of that drive: the site does not move
   // when the default later does.
@@ -114,18 +141,18 @@ describe('appStampOptions', () => {
 // person's "Go to app" is what picks it.
 describe('connectPickerStart', () => {
   it("starts on the site's own drive", () => {
-    expect(connectPickerStart({ postageStampBatchID: new BatchId(OTHER_HEX) }, account)).toBe(
+    expect(connectPickerStart({ postageStampBatchID: new BatchId(OTHER_HEX) }, account, NOW)).toBe(
       OTHER_HEX,
     )
   })
 
   it('offers the account default to a site with no pick', () => {
-    expect(connectPickerStart({ postageStampBatchID: undefined }, account)).toBe(DEFAULT_HEX)
+    expect(connectPickerStart({ postageStampBatchID: undefined }, account, NOW)).toBe(DEFAULT_HEX)
   })
 
   it("offers the account default when the site's own drive was removed", () => {
     const removed = new BatchId('e'.repeat(64))
-    expect(connectPickerStart({ postageStampBatchID: removed }, account)).toBe(DEFAULT_HEX)
+    expect(connectPickerStart({ postageStampBatchID: removed }, account, NOW)).toBe(DEFAULT_HEX)
   })
 
   it('keeps a site set to no drive on no drive', () => {
@@ -139,6 +166,22 @@ describe('connectPickerStart', () => {
       connectPickerStart(
         { postageStampBatchID: undefined },
         { ...account, defaultPostageStampBatchID: new BatchId(EXPIRED_HEX) },
+      ),
+    ).toBe(NO_POSTAGE_STAMP)
+  })
+
+  it("offers the account default, not the site's own drive, once the site's own drive has expired", () => {
+    expect(
+      connectPickerStart({ postageStampBatchID: new BatchId(EXPIRED_HEX) }, account, NOW),
+    ).toBe(DEFAULT_HEX)
+  })
+
+  it("offers no drive when the site's own drive and the default have both expired", () => {
+    expect(
+      connectPickerStart(
+        { postageStampBatchID: new BatchId(EXPIRED_HEX) },
+        { ...account, defaultPostageStampBatchID: new BatchId(EXPIRED_HEX) },
+        NOW,
       ),
     ).toBe(NO_POSTAGE_STAMP)
   })

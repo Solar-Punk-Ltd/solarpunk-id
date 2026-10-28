@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **lib:** `getPostageBatch` no longer reports an expired drive with time left. Once the PostageStamp contract no longer
+  holds the batch, it says the batch does not exist, is not usable and has no time left, whatever a Bee node still
+  tracking it says. Where neither the chain nor the Bee node answers, the drive's stored lifetime aged to now stands
+  in. The Swarmscan price estimate is gone: it was the lifetime of a fresh batch with the same deposit, so a site saw
+  an expired drive as having weeks left.
+- **ui:** the connect window no longer starts on a site's own drive once it has expired. That drive is listed but
+  cannot be chosen, and starting on it let "Go to app" keep it. The window now starts on the account default when it
+  has not expired, and on no drive otherwise.
+
 ## 0.10.6
 
 ### Fixes

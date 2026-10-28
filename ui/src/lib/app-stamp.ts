@@ -45,20 +45,23 @@ export function appStampValue(app: AppStampPointer, account: AccountDrives): str
 /**
  * The drive the connect window's picker starts on. A site with a live drive of
  * its own starts there, and a site set to no drive stays on none. A site with
- * no pick, or whose drive is gone, is offered the account default when it has
- * not expired, and only the person's "Go to app" makes it the site's drive.
+ * no pick, or whose drive is gone or has expired, is offered the account
+ * default when it has not expired, and only the person's "Go to app" makes it
+ * the site's drive. An expired drive is listed but not choosable, so starting
+ * on one would let "Go to app" keep it.
  */
 export function connectPickerStart(
   app: AppStampPointer,
   account: AccountDrives,
   now = Date.now(),
 ): string {
+  const isLive = (drive: PostageStamp) => describeDrive(drive, now).status !== 'expired'
   const own = resolvedDrive(app, account)
-  if (own) return own.batchID.toHex()
+  if (own && isLive(own)) return own.batchID.toHex()
   if (app.postageStampBatchID === NO_POSTAGE_STAMP) return NO_POSTAGE_STAMP
   const fallback = account.defaultPostageStampBatchID
   const offered = fallback && account.stamps.find((drive) => drive.batchID.equals(fallback))
-  if (!offered || describeDrive(offered, now).status === 'expired') return NO_POSTAGE_STAMP
+  if (!offered || !isLive(offered)) return NO_POSTAGE_STAMP
   return offered.batchID.toHex()
 }
 
@@ -70,6 +73,24 @@ export function connectPickerStart(
 export function appStampChoice(value: string): AppStampChoice {
   if (value === NO_POSTAGE_STAMP) return NO_POSTAGE_STAMP
   return new BatchId(value)
+}
+
+/**
+ * What the connect window's "Go to app" stores for the site, or `undefined`
+ * to leave its pick as it is. The window starts on no drive when the site's
+ * drive and the default have both expired, and storing that unasked would
+ * mark the site as set to no drive, so a later live default is never offered
+ * to it. No drive is stored only when the person picked it.
+ */
+export function connectPickToStore(
+  app: AppStampPointer,
+  account: AccountDrives,
+  selected: string,
+  isPickedByPerson: boolean,
+): AppStampChoice | undefined {
+  if (selected === appStampValue(app, account)) return undefined
+  if (selected === NO_POSTAGE_STAMP && !isPickedByPerson) return undefined
+  return appStampChoice(selected)
 }
 
 /** Every drive, the default marked, an expired one listed but not choosable, and no drive last */
