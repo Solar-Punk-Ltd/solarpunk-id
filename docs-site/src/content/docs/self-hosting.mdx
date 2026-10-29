@@ -22,7 +22,8 @@ On your own copy, served from a host you control, it is code you control.
 1. Build `ui/` with `BASE_PATH` set to the path you serve it from (leave it unset when you
    serve it from the root of its host, as `solarpunkid.bzz.link` is), and `PUBLIC_BUS_SIGNALING_URL` pointing at a
    [signaling server](../account-bus/) you run, or leave it unset to run without
-   cross-device sync.
+   cross-device sync. To make your own gateway the default Bee node, set
+   `PUBLIC_DEFAULT_BEE_NODE_URL` ([A build's default node](../own-bee-node/#a-builds-default-node)).
 2. Serve the build from a subdomain of your app's site, over HTTPS, with the same
    registrable domain. Ports do not affect site; the scheme and the registrable domain do.
 3. Allow your app's origin. The identity site serves only the sites named in a text record

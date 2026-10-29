@@ -367,6 +367,14 @@ interface StampedForApp {
 }
 
 /**
+ * Who ended a session. `ended-here` is the site's own Disconnect, the one end
+ * this frame makes and so the one it dates. `ended-elsewhere` is an end it was
+ * told about (storage, a peer's delta, the restored-session check) or a lapsed
+ * deadline, and that end already carries its own time or none.
+ */
+type SessionEnd = "ended-here" | "ended-elsewhere"
+
+/**
  * Writes to a stored partitioned session, chained per storage key across every
  * proxy in this window, in call order (see `writePartitionSession`).
  */
@@ -491,6 +499,8 @@ export class SwarmIdProxy {
   private utilizationStore: UtilizationStoreDB | undefined
   /** The Bee node the person set in Swarm ID's network settings. */
   private ownBeeApiUrl: string
+  /** The node `ownBeeApiUrl` is while the person has set none. */
+  private defaultBeeNodeUrl: string
   /**
    * The Bee node the embedding site named for its own session, from
    * `parentIdentify` or `setBeeApiUrl`. In memory only: a frame
@@ -558,7 +568,7 @@ export class SwarmIdProxy {
   private dropGatewayForOwnCustomNode(): void {
     if (
       this.siteBeeApiUrl === undefined &&
-      this.ownBeeApiUrl !== DEFAULT_BEE_NODE_URL
+      this.ownBeeApiUrl !== this.defaultBeeNodeUrl
     ) {
       this.subsidisedGatewayUrl = undefined
     }
@@ -666,9 +676,10 @@ export class SwarmIdProxy {
 
   constructor(config: ProxyConfig) {
     this.siteAllowList = config.siteAllowList
+    this.defaultBeeNodeUrl = config.defaultBeeNodeUrl || DEFAULT_BEE_NODE_URL
     // Load Bee API URL from network settings, falling back to default
     const networkSettings = createNetworkSettingsStorageManager().load()
-    this.ownBeeApiUrl = networkSettings?.beeNodeUrl || DEFAULT_BEE_NODE_URL
+    this.ownBeeApiUrl = networkSettings?.beeNodeUrl || this.defaultBeeNodeUrl
     this.gnosisRpcUrl = networkSettings?.gnosisRpcUrl || DEFAULT_GNOSIS_RPC_URL
     // PostageStamp contract address for on-chain TTL reads. The host app
     // supplies this from a build-time env so local dev can point at the
@@ -807,7 +818,7 @@ export class SwarmIdProxy {
   ): void {
     this.gnosisRpcUrl = settings?.gnosisRpcUrl || DEFAULT_GNOSIS_RPC_URL
 
-    const beeNodeUrl = settings?.beeNodeUrl || DEFAULT_BEE_NODE_URL
+    const beeNodeUrl = settings?.beeNodeUrl || this.defaultBeeNodeUrl
     if (beeNodeUrl === this.ownBeeApiUrl) {
       return
     }
@@ -912,7 +923,7 @@ export class SwarmIdProxy {
         // transports and rewrites the entry we are reporting.
         this.publishAccountDelta({ ofEndedConnection: true })
       }
-      this.clearAuthData()
+      this.clearAuthData("ended-elsewhere")
       this.sendToParent({
         type: "disconnectResponse",
         requestId: source === "bus" ? "account-delta" : "storage-event",
@@ -2992,7 +3003,7 @@ export class SwarmIdProxy {
         console.info(
           "[Proxy] The restored session was ended while this page was closed",
         )
-        this.clearAuthData()
+        this.clearAuthData("ended-elsewhere")
       } else if (verdict === "unconfirmed") {
         console.warn(
           "[Proxy] Could not confirm the restored session, writes stay refused",
@@ -3667,7 +3678,7 @@ export class SwarmIdProxy {
   /**
    * Clear authentication data
    */
-  private clearAuthData(): void {
+  private clearAuthData(end: SessionEnd): void {
     if (!this.parentOrigin) {
       return
     }
@@ -3691,7 +3702,13 @@ export class SwarmIdProxy {
     // is simply the value that loses every merge, so the entry's old timestamp
     // came back on the next fold and a dApp-initiated Disconnect never reached
     // a peer the way the identity UI's does.
+    //
+    // Only an end made here is dated now. An end read from elsewhere keeps the
+    // time it carries: dated at the moment this frame read it, it outranked
+    // every sign-in the account's other devices made after the real end, and
+    // the merge signed them all out (`restoreLocalSessionFields`).
     const parentOrigin = this.parentOrigin
+    const endedNow = end === "ended-here" ? Date.now() : undefined
     const disconnectWrite = createAccountsStorageManager().update(
       (accounts) => {
         let changed = false
@@ -3704,7 +3721,7 @@ export class SwarmIdProxy {
                 ...app,
                 connectedUntil: undefined,
                 appSecret: undefined,
-                disconnectedAt: Date.now(),
+                disconnectedAt: endedNow ?? app.disconnectedAt,
               }
             }
             return app
@@ -4092,8 +4109,7 @@ export class SwarmIdProxy {
     message: { type: "disconnect"; requestId: string },
     event: MessageEvent,
   ): void {
-    // Clear auth data
-    this.clearAuthData()
+    this.clearAuthData("ended-here")
 
     // Send response
     this.postMessage(event, {
@@ -6402,6 +6418,13 @@ export interface ProxyConfig {
    * origin it refuses gets an `initError` and nothing else.
    */
   siteAllowList: SiteAllowList
+  /**
+   * The Bee node used while the person has set none in the network settings,
+   * and the one that does not count as their own custom node. Defaults to
+   * `DEFAULT_BEE_NODE_URL`. The identity UI passes the same value its network
+   * settings default to, or the two would disagree on which node is custom.
+   */
+  defaultBeeNodeUrl?: string
   /**
    * PostageStamp contract address for on-chain stamp-TTL reads. Defaults to the
    * Gnosis mainnet deployment; set this (from a build-time env) to the local
