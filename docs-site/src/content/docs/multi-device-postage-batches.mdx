@@ -418,7 +418,9 @@ The reference orchestrator is `PartitionLease`. Constants:
 | `INTENT_EPOCH_MS`         | 30 000 ms  | Epoch of the intent and occupancy beacons.                                |
 | `INTENT_GUARD_WINDOW_MS`  | 12 000 ms  | How long a contender watches for rival intents before binding.            |
 | `STATE_POINTER_EPOCH_MS`  | 30 000 ms  | Rotation period of the state-pointer SOC.                                 |
-| `SYNC_READ_TIMEOUT_MS`    | 2 500 ms   | Bound on every lock, beacon, and roster read on the acquire path.         |
+| `SYNC_READ_TIMEOUT_MS`    | 2 500 ms   | Bound on the beacon reads and the lock protocol's own reads.              |
+| `MISS_READ_TIMEOUT_MS`    | 8 000 ms   | Bound on the reads whose miss is the answer: lock scan, pointer, roster.  |
+| `GATEWAY_READS_IN_FLIGHT` | 5          | Sync reads sent at once to one origin, each timed from when it is sent.   |
 | `PRESENCE_INTERVAL_MS`    | 20 000 ms  | Account-bus liveness message; feeds the rival set, not the lock.          |
 | `PRESENCE_MAX_AGE_MS`     | 180 000 ms | A device unheard this long leaves the rival set (three throttled beats).  |
 | `KNOWN_DEVICE_MAX_AGE_MS` | 30 min     | A device that signed in this recently counts as a rival even with no bus. |
@@ -517,6 +519,7 @@ device's full current view (`DeviceStateSnapshotSchemaV1`):
   accountName: { value, at },                             // scalars carry their own clock
   defaultPostageStampBatchID: { value, at },
   settings: { value, at },
+  walletLink: { value, at },                              // apart from settings, docs/Wallet-Link.md
   accountPublicKey, accountCreatedAt, partitionCount }    // immutables, so a fold needs no shared doc
 ```
 
@@ -599,16 +602,3 @@ To interoperate with the reference implementation, an external client must:
 All hashes are keccak256; multi-byte integers in identifiers and topics are **big-endian**
 (`uint32` for partitions, `uint64` for epochs); serialized counters are **little-endian**;
 every feed and SOC is owned by the backup signer.
-
-## Future work
-
-Tracked under the multi-device umbrella
-([#217](https://github.com/snaha/swarm-id/issues/217)):
-
-- **SWIP-60 transport for the account bus**, so synced accounts get broker push through the
-  Bee node instead of a separate signaling server. Waits on bee and bee-js releasing it;
-  tracked in [#571](https://github.com/snaha/swarm-id/issues/571).
-- **Live-suite coverage of the bus handover** — sub-second with both peers live, timeout
-  fallback with one peer killed — in `lib/test/live/`.
-- **A stale lock read after a bus wake** still costs a full poll interval and can make a
-  second holder yield ([#724](https://github.com/snaha/swarm-id/issues/724)).

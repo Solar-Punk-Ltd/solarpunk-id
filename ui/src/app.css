@@ -151,4 +151,7 @@
    during connect would swallow every click on the wallet list. Lift it above. */
 :root {
   --onboard-modal-z-index: 60;
+  /* The wallet chooser draws in the app's own font. Onboard's default is
+     Inter fetched from rsms.me, and onboard.ts turns that download off. */
+  --w3o-font-family: 'iA Writer Quattro V', ui-sans-serif, system-ui, sans-serif;
 }

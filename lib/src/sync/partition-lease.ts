@@ -33,8 +33,8 @@ import {
   type Stamper,
 } from "@ethersphere/bee-js"
 import { uint8ArrayToHex } from "../utils/hex"
-import { withTimeout } from "../utils/promise"
-import { SYNC_READ_TIMEOUT_MS } from "./timing-constants"
+import { MISS_READ_TIMEOUT_MS } from "./timing-constants"
+import { withReadTimeout } from "./read-line"
 import { deriveSecret, BACKUP_KEY_LABEL } from "../utils/key-derivation"
 import {
   LEASE_TTL_MS,
@@ -86,14 +86,6 @@ function isZeroRef(ref: Uint8Array): boolean {
   for (let i = 0; i < ref.length; i++) if (ref[i] !== 0) return false
   return true
 }
-
-/**
- * Bound each lock-SOC read in `refreshFromSwarm` so a hanging read on a slow
- * gateway is classified as "unreadable" (a takeover then fails safe) rather than
- * silently treated as an absent lock. Matches the roster / state-pointer read
- * timeouts.
- */
-const LOCK_READ_TIMEOUT_MS = SYNC_READ_TIMEOUT_MS
 
 /** This device's own lease over a partition. */
 export interface SelfLease {
@@ -285,9 +277,8 @@ export class PartitionLease {
        * Current known device IDs for this account (from the synced device
        * registry). Read fresh each round so it reflects late-announced
        * devices. When provided with ≥1 rival, a fresh claim of a free
-       * partition first runs an intent round (Phase 2 — see
-       * `partition-intent.ts`) so disjoint-gateway contenders agree on one
-       * winner before binding. Omitted (or empty) → today's guard+TTL path.
+       * partition first runs an intent round (see `partition-intent.ts`)
+       * so disjoint-gateway contenders agree on one winner before binding. Omitted (or empty) → today's guard+TTL path.
        */
       knownDeviceIds?: () => string[]
       /** Override for tests; per-rival intent-read timeout. */
@@ -360,15 +351,19 @@ export class PartitionLease {
     // `undefined` (clean 404) is genuinely absent and stays claimable.
     const locks = await Promise.all(
       Array.from({ length: partitionCount }, (_unused, p) =>
-        withTimeout(
-          readPartitionLock({
-            bee: this.opts.bee,
-            backupSigner: this.opts.backupSigner,
-            swarmEncryptionKey: this.opts.swarmEncryptionKey,
-            batchId: this.opts.batchId,
-            partition: p,
-          }),
-          LOCK_READ_TIMEOUT_MS,
+        withReadTimeout(
+          this.opts.bee,
+          "claim",
+          (requestOptions) =>
+            readPartitionLock({
+              bee: this.opts.bee,
+              backupSigner: this.opts.backupSigner,
+              swarmEncryptionKey: this.opts.swarmEncryptionKey,
+              batchId: this.opts.batchId,
+              partition: p,
+              requestOptions,
+            }),
+          MISS_READ_TIMEOUT_MS,
           "lock read timed out",
         ).catch(() => {
           this.unreadableLocks.add(p)
@@ -882,7 +877,7 @@ export class PartitionLease {
       tiebreaker: makeDeviceTiebreaker(this.opts.deviceId),
     }
 
-    // Phase 2: for a fresh claim of a free/expired slot with known rivals, run
+    // For a fresh claim of a free/expired slot with known rivals, run
     // an intent round at a fresh per-epoch address (forces a network read that
     // bypasses the gateway's frozen lock-SOC cache). Only the round's winner
     // proceeds to bind; losers back off to read-only. See partition-intent.ts.

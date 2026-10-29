@@ -43,6 +43,12 @@ export interface BusTransport {
    * departures to report, which is a truthful answer rather than a gap.
    */
   onPeerLeft?(handler: (peerId: string) => void): () => void
+  /**
+   * A peer joined the room. Optional for the same reason. The room keeps no
+   * mailbox, so this is what lets a context already in it tell a newcomer
+   * what it missed.
+   */
+  onPeerJoined?(handler: (peerId: string) => void): () => void
   close(): void
 }
 
@@ -103,6 +109,21 @@ export class BroadcastChannelTransport implements BusTransport {
   }
 }
 
+/** One handler throwing must not starve the ones after it. */
+function notifyEach(
+  handlers: Set<(peerId: string) => void>,
+  peerId: string,
+  kind: string,
+): void {
+  for (const handler of handlers) {
+    try {
+      handler(peerId)
+    } catch (error) {
+      console.error(`[AccountBus] ${kind} handler error:`, error)
+    }
+  }
+}
+
 /**
  * Fans a publish out to every transport and funnels received messages through
  * schema validation to subscribers. Invalid messages are dropped silently
@@ -112,6 +133,7 @@ export class AccountBus {
   private transports: BusTransport[]
   private handlers = new Set<(message: BusMessage, from?: string) => void>()
   private peerLeftHandlers = new Set<(peerId: string) => void>()
+  private peerJoinedHandlers = new Set<(peerId: string) => void>()
   private transportUnsubscribers: (() => void)[]
   private closed = false
 
@@ -127,16 +149,14 @@ export class AccountBus {
     const removers = [
       transport.subscribe((raw, from) => this.dispatch(raw, from)),
     ]
-    const onPeerLeft = transport.onPeerLeft?.((peerId) => {
-      for (const handler of this.peerLeftHandlers) {
-        try {
-          handler(peerId)
-        } catch (error) {
-          console.error("[AccountBus] Peer-left handler error:", error)
-        }
-      }
-    })
+    const onPeerLeft = transport.onPeerLeft?.((peerId) =>
+      notifyEach(this.peerLeftHandlers, peerId, "Peer-left"),
+    )
     if (onPeerLeft) removers.push(onPeerLeft)
+    const onPeerJoined = transport.onPeerJoined?.((peerId) =>
+      notifyEach(this.peerJoinedHandlers, peerId, "Peer-joined"),
+    )
+    if (onPeerJoined) removers.push(onPeerJoined)
     return removers
   }
 
@@ -205,6 +225,15 @@ export class AccountBus {
     return () => this.peerLeftHandlers.delete(handler)
   }
 
+  /**
+   * A peer joined the room, by the name the delivering transport uses for it,
+   * the same name its messages arrive under.
+   */
+  onPeerJoined(handler: (peerId: string) => void): () => void {
+    this.peerJoinedHandlers.add(handler)
+    return () => this.peerJoinedHandlers.delete(handler)
+  }
+
   /** Idempotent, and terminal: a closed bus neither publishes nor attaches. */
   close(): void {
     this.closed = true
@@ -214,6 +243,7 @@ export class AccountBus {
     this.transportUnsubscribers = []
     this.handlers.clear()
     this.peerLeftHandlers.clear()
+    this.peerJoinedHandlers.clear()
     for (const transport of this.transports) {
       transport.close()
     }

@@ -4,19 +4,26 @@ description: Serve Swarm ID same-site with your app, and what that costs
 ---
 
 The identity site is a static SvelteKit build under Apache-2.0, and nothing in it is bound
-to `solarpunkid.bzz.link`. An app can serve its own copy. The reason to do it is the browser's
+to `solarpunkid.bzz.link`. An app can serve its own copy. One reason to do it is the browser's
 notion of **site**: an app on `app.example.com` embedding an identity site on
 `id.example.com` is same-site, so the proxy iframe reads the identity origin's first-party
 storage directly. No storage partitioning, no popup handover, no third browser context on
 first run. The hosted site at `solarpunkid.bzz.link` is cross-site with an app on any other
 domain, so such an app gets the partitioned path and the popup handover instead.
 
+The other reason is trust. The browser runs whatever code the identity site's host serves, and
+that code can use every key the site holds. On the hosted site that host is the bzz.link
+gateway, together with whoever controls `solarpunkid.eth`
+([Who you trust when you use the hosted site](../swarm-hosting/#who-you-trust-when-you-use-the-hosted-site)).
+On your own copy, served from a host you control, it is code you control.
+
 ## What it takes
 
 1. Build `ui/` with `BASE_PATH` set to the path you serve it from (leave it unset when you
    serve it from the root of its host, as `solarpunkid.bzz.link` is), and `PUBLIC_BUS_SIGNALING_URL` pointing at a
    [signaling server](../account-bus/) you run, or leave it unset to run without
-   cross-device sync.
+   cross-device sync. To make your own gateway the default Bee node, set
+   `PUBLIC_DEFAULT_BEE_NODE_URL` ([A build's default node](../own-bee-node/#a-builds-default-node)).
 2. Serve the build from a subdomain of your app's site, over HTTPS, with the same
    registrable domain. Ports do not affect site; the scheme and the registrable domain do.
 3. Allow your app's origin. The identity site serves only the sites named in a text record

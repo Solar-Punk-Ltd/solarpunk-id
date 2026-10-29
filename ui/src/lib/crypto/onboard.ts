@@ -77,6 +77,9 @@ const accessWallets = [
   coinbaseModule({ ...coinbaseOptions, supportedWalletType: 'eoaOnly' }),
   ...walletConnectModules,
 ]
+// The rpcUrl is handed to the wallet when it adds a chain. Onboard's own ENS
+// lookup ignored it for a public endpoint baked into the library, and is patched
+// to read nothing (`patches/@web3-onboard__core@2.24.1.patch`).
 const chains = walletChains.map((chain) => ({
   id: `0x${chain.id.toString(16)}`,
   token: chain.nativeCurrency.symbol,
@@ -106,6 +109,10 @@ export const onboard = Onboard({
   wallets,
   chains,
   appMetadata,
+  // Onboard otherwise fetches the Inter font from rsms.me whenever the picker
+  // opens, telling that host who opened Swarm ID. The picker takes the app's
+  // own font instead, through `--w3o-font-family` in app.css.
+  disableFontDownload: true,
   connect: {
     showSidebar: false,
   },

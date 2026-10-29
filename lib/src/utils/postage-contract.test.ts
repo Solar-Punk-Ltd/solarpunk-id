@@ -7,9 +7,7 @@ import {
   calculateContractTTLSeconds,
   decodeBatches,
   decodeUint,
-  fetchAuthoritativeBatchTTL,
-  fetchBatchTTLFromContract,
-  fetchOnChainBatchState,
+  fetchBatchStanding,
   fetchOnChainBatchStateResult,
   POSTAGE_STAMP_CONTRACT_ADDRESS,
   resolvePostageStampContractAddress,
@@ -144,7 +142,15 @@ describe("calculateContractTTLSeconds", () => {
   })
 })
 
-describe("fetchOnChainBatchState", () => {
+/** The batch's on-chain state when the contract holds it, `undefined` otherwise. */
+async function fetchOnChainBatchState(
+  ...args: Parameters<typeof fetchOnChainBatchStateResult>
+): Promise<OnChainBatchState | undefined> {
+  const result = await fetchOnChainBatchStateResult(...args)
+  return result.status === "found" ? result.state : undefined
+}
+
+describe("fetchOnChainBatchStateResult's found state", () => {
   let fetchSpy: MockInstance<typeof fetch>
 
   beforeEach(() => {
@@ -286,47 +292,30 @@ describe("fetchOnChainBatchState", () => {
   })
 })
 
-describe("fetchBatchTTLFromContract", () => {
-  let fetchSpy: MockInstance<typeof fetch>
-
-  beforeEach(() => {
-    fetchSpy = vi.spyOn(globalThis, "fetch")
-  })
-
-  afterEach(() => {
-    fetchSpy.mockRestore()
-  })
-
-  it("returns the ground-truth TTL in seconds", async () => {
-    fetchSpy.mockResolvedValue(batchResponse(FULL_RESPONSE))
-
-    const ttl = await fetchBatchTTLFromContract("https://rpc.example", BATCH_ID)
-
-    expect(ttl).toBe(EXPECTED_TTL_SECONDS)
-  })
-
-  it("returns undefined when the batch is unknown", async () => {
-    fetchSpy.mockRejectedValue(new Error("network error"))
-
-    const ttl = await fetchBatchTTLFromContract("https://rpc.example", BATCH_ID)
-
-    expect(ttl).toBeUndefined()
-  })
-})
-
-describe("fetchAuthoritativeBatchTTL", () => {
+describe("fetchBatchStanding", () => {
   let fetchSpy: MockInstance<typeof fetch>
 
   const RPC = "https://rpc.example"
   const BEE = "https://bee.example"
+  const NOT_FOUND_RESPONSE = {
+    0: { result: "0x" + word(0n).repeat(6) },
+    1: { result: OUT_PAYMENT_RESULT },
+    2: { result: LAST_PRICE_RESULT },
+  }
 
-  function beeStampResponse(batchTTL: number): Response {
+  function beeStampResponse(body: Record<string, unknown>): Response {
     return {
       ok: true,
       status: 200,
-      json: () => Promise.resolve({ batchTTL }),
+      json: () => Promise.resolve(body),
     } as Response
   }
+
+  const notTracked = {
+    ok: false,
+    status: 404,
+    json: () => Promise.resolve({}),
+  } as Response
 
   beforeEach(() => {
     fetchSpy = vi.spyOn(globalThis, "fetch")
@@ -336,45 +325,62 @@ describe("fetchAuthoritativeBatchTTL", () => {
     fetchSpy.mockRestore()
   })
 
-  it("prefers the contract TTL when the contract read succeeds", async () => {
-    // Answer the Bee node too, with a different value, to prove the contract wins.
+  it("takes existence and time left from the contract, and usable from the Bee node", async () => {
     fetchSpy.mockImplementation((url) =>
       Promise.resolve(
-        url === RPC ? batchResponse(FULL_RESPONSE) : beeStampResponse(999),
+        url === RPC
+          ? batchResponse(FULL_RESPONSE)
+          : beeStampResponse({ batchTTL: 999, usable: true, exists: true }),
       ),
     )
 
-    const ttl = await fetchAuthoritativeBatchTTL(RPC, BEE, BATCH_ID)
-
-    expect(ttl).toBe(EXPECTED_TTL_SECONDS)
+    expect(await fetchBatchStanding(RPC, BEE, BATCH_ID)).toEqual({
+      exists: true,
+      batchTTL: EXPECTED_TTL_SECONDS,
+      usable: true,
+    })
   })
 
-  it("falls back to the Bee node batchTTL when the contract read fails", async () => {
+  it("says a batch the contract no longer holds does not exist and has no time left, whatever the Bee node says", async () => {
+    fetchSpy.mockImplementation((url) =>
+      Promise.resolve(
+        url === RPC
+          ? batchResponse(NOT_FOUND_RESPONSE)
+          : beeStampResponse({ batchTTL: 86400, usable: true, exists: true }),
+      ),
+    )
+
+    expect(await fetchBatchStanding(RPC, BEE, BATCH_ID)).toEqual({
+      exists: false,
+      batchTTL: 0,
+      usable: false,
+    })
+  })
+
+  it("asks the Bee node alone when the contract read fails", async () => {
     fetchSpy.mockImplementation((url) =>
       url === RPC
         ? Promise.reject(new Error("rpc down"))
-        : Promise.resolve(beeStampResponse(86400)),
+        : Promise.resolve(
+            beeStampResponse({ batchTTL: 86400, usable: true, exists: true }),
+          ),
     )
 
-    const ttl = await fetchAuthoritativeBatchTTL(RPC, BEE, BATCH_ID)
-
-    expect(ttl).toBe(86400)
+    expect(await fetchBatchStanding(RPC, BEE, BATCH_ID)).toEqual({
+      exists: true,
+      batchTTL: 86400,
+      usable: true,
+    })
   })
 
-  it("returns undefined when both sources fail", async () => {
+  it("answers nothing when neither the contract nor the Bee node does", async () => {
     fetchSpy.mockImplementation((url) =>
       url === RPC
         ? Promise.reject(new Error("rpc down"))
-        : Promise.resolve({
-            ok: false,
-            status: 404,
-            json: () => Promise.resolve({}),
-          } as Response),
+        : Promise.resolve(notTracked),
     )
 
-    const ttl = await fetchAuthoritativeBatchTTL(RPC, BEE, BATCH_ID)
-
-    expect(ttl).toBeUndefined()
+    expect(await fetchBatchStanding(RPC, BEE, BATCH_ID)).toEqual({})
   })
 })
 

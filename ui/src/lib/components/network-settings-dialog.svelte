@@ -4,12 +4,12 @@
 -->
 
 <script lang="ts">
-  import { DEFAULT_BEE_NODE_URL } from '@solarpunkltd/swarm-id'
   import { DEFAULT_GNOSIS_RPC_URL, isHttpUrl } from '@solarpunkltd/swarm-id/internal'
 
   import { Button } from '$lib/components/ui/button'
   import { Dialog } from '$lib/components/ui/dialog'
   import { Input } from '$lib/components/ui/input'
+  import { defaultBeeNodeUrl } from '$lib/default-bee-node'
   import { chainIdentity, probeChainId } from '$lib/payment/chain'
   // Through the seam, never `$lib/dev/*` directly: a direct import puts the
   // local rail, the anvil cheat codes and the dev faucet key back in the
@@ -116,7 +116,7 @@
 
   // Fill the fields with the defaults; only persisted once the user hits Save.
   function resetToDefaults() {
-    beeNodeUrl = DEFAULT_BEE_NODE_URL
+    beeNodeUrl = defaultBeeNodeUrl()
     gnosisRpcUrl = DEFAULT_GNOSIS_RPC_URL
   }
 </script>
@@ -127,7 +127,7 @@
     <Input
       id="bee-node-url"
       bind:value={beeNodeUrl}
-      placeholder={DEFAULT_BEE_NODE_URL}
+      placeholder={defaultBeeNodeUrl()}
       class="font-mono"
       aria-invalid={beeNodeUrlError}
     />

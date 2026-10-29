@@ -60,7 +60,7 @@
   }
 
   function chooseDrive(appUrl: string, value: string) {
-    account.setAppStamp(appUrl, appStampChoice(value, account))
+    account.setAppStamp(appUrl, appStampChoice(value))
   }
 
   $effect(() => {

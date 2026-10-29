@@ -20,7 +20,7 @@ import { deriveKeyFromSignature } from '@solarpunkltd/swarm-id/internal'
 import { type Hex, getAddress, recoverMessageAddress } from 'viem'
 
 import { connectAccessWallet } from '$lib/crypto/onboard'
-import { canonicalSignature } from '$lib/crypto/signature'
+import { canonicalSignature, lowSSignature } from '$lib/crypto/signature'
 
 interface EthereumProvider {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>
@@ -30,6 +30,9 @@ const SIGNING_MESSAGE =
   'Swarm ID\n\nSign this message to encrypt your recovery phrase on this device.\n\nv1'
 
 const UNSUPPORTED_WALLET = 'This wallet type is not supported for securing an account.'
+
+const UNVERIFIABLE_LINK =
+  'This wallet’s signature does not match its own address, which is how a smart-contract wallet signs. Sites could not check it, so this wallet cannot show an ENS name.'
 
 /**
  * Onboard labels of wallets confirmed to sign byte-identically every time
@@ -73,13 +76,19 @@ async function connectWallet(): Promise<{
 }
 
 /**
- * Sign SIGNING_MESSAGE and return its canonical form, refusing a signature that
- * does not recover to the wallet's own address (a smart-contract wallet).
+ * Sign `message` and return its canonical form, refusing with `refusal` a
+ * signature that does not recover to the wallet's own address (a
+ * smart-contract wallet).
  */
-async function signKeyMessage(provider: EthereumProvider, walletAddress: string): Promise<Hex> {
+async function signRecoverable(
+  provider: EthereumProvider,
+  walletAddress: string,
+  message: string,
+  refusal: string,
+): Promise<Hex> {
   const signature = (await provider.request({
     method: 'personal_sign',
-    params: [SIGNING_MESSAGE, walletAddress],
+    params: [message, walletAddress],
   })) as string
 
   // Every representation we know how to read is handled in `canonicalSignature`;
@@ -90,13 +99,17 @@ async function signKeyMessage(provider: EthereumProvider, walletAddress: string)
   try {
     canonical = canonicalSignature(signature)
   } catch {
-    throw new Error(UNSUPPORTED_WALLET)
+    throw new Error(refusal)
   }
-  const signer = await recoverMessageAddress({ message: SIGNING_MESSAGE, signature: canonical })
+  const signer = await recoverMessageAddress({ message, signature: canonical })
   if (getAddress(signer) !== getAddress(walletAddress)) {
-    throw new Error(UNSUPPORTED_WALLET)
+    throw new Error(refusal)
   }
   return canonical
+}
+
+function signKeyMessage(provider: EthereumProvider, walletAddress: string): Promise<Hex> {
+  return signRecoverable(provider, walletAddress, SIGNING_MESSAGE, UNSUPPORTED_WALLET)
 }
 
 /**
@@ -125,6 +138,32 @@ export async function unlockWalletKeySource(): Promise<WalletKeySource> {
   const { provider, walletAddress } = await connectWallet()
   const signature = await signKeyMessage(provider, walletAddress)
   return { walletAddress: getAddress(walletAddress), signature }
+}
+
+/** The access wallet, unlocked once and still connected for the wallet link. */
+export interface WalletForLink {
+  source: WalletKeySource
+  /**
+   * Ask the same wallet to sign a wallet link message, in canonical form with
+   * a low s, refusing a signature that does not recover to the wallet's own
+   * address.
+   */
+  signLink(message: string): Promise<Hex>
+}
+
+/**
+ * Connect the wallet an account is secured with, sign once to re-derive its
+ * key, and keep the connection for the wallet link's own signature, so the
+ * person picks the wallet once.
+ */
+export async function unlockWalletForLink(): Promise<WalletForLink> {
+  const { provider, walletAddress } = await connectWallet()
+  const signature = await signKeyMessage(provider, walletAddress)
+  return {
+    source: { walletAddress: getAddress(walletAddress), signature },
+    signLink: (message) =>
+      signRecoverable(provider, walletAddress, message, UNVERIFIABLE_LINK).then(lowSSignature),
+  }
 }
 
 /** Derive the seed-encryption key for a wallet key source. */

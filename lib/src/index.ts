@@ -110,3 +110,26 @@ export type {
   SiteOriginOptions,
   VerifiedChatBinding,
 } from "./utils/chat-binding"
+
+// The wallet link (docs/Wallet-Link.md): an account and the wallet it is
+// secured with, signed by both. A reader checks it, then looks up the
+// wallet's ENS name itself.
+export {
+  WALLET_LINK_STATEMENT,
+  WALLET_LINK_TITLE,
+  buildWalletLinkMessage,
+  parseWalletLinkMessage,
+  verifyWalletLink,
+} from "./utils/wallet-link"
+export type {
+  ExpectedWalletLink,
+  VerifiedWalletLink,
+  WalletLink,
+  WalletLinkFields,
+} from "./utils/wallet-link"
+export {
+  ENS_NAME_CACHE_MS,
+  ENS_NAME_FAILURE_CACHE_MS,
+  resolveVerifiedEnsName,
+} from "./utils/ens-name"
+export type { EnsNameOptions } from "./utils/ens-name"

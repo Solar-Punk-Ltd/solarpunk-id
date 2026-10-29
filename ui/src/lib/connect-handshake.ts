@@ -90,10 +90,9 @@ function keptChatBinding(
 
 /**
  * The account view handed to a partitioned proxy iframe: the synced projection
- * (no vault, no app secrets) with the stamp collection narrowed to the ones
- * THIS app can spend — its own batch override and the account default it falls
- * through to (#578), and none while the person has not yet confirmed the
- * site's drive (`stampPending`).
+ * (no vault, no app secrets) with the stamp collection narrowed to the one
+ * THIS app can spend, the drive the person picked for it (#578), and none
+ * while the person has not yet confirmed the site's drive (`stampPending`).
  *
  * The iframe is on the SwarmID origin and an unpartitioned proxy reads the same
  * material out of shared storage, so this is least privilege rather than a
@@ -129,7 +128,6 @@ export function partitionHandoverAccount(
     connectedApps: onlySiteChatBinding(account.connectedApps, appOrigin),
     postageStamps: stampsReachableByApp(
       { postageStampBatchID: app?.postageStampBatchID, stampPending: app?.stampPending },
-      account,
       account.postageStamps,
     ),
   })

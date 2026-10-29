@@ -57,7 +57,7 @@ const LANE_DEPTH_SHIFT = Math.log2(PARTITION_COUNT)
  * coding, which is how the lib writes chunks; the one-argument form of the
  * bee-js call silently uses a table with medium erasure coding baked in.
  *
- * ponytail: the `- 1` reserved slot is not modelled. It costs little from
+ * Known gap: the `- 1` reserved slot is not modelled. It costs little from
  * depth 22 up, but ~1.6x at depth 20 (7 slots, not 8) and ~6x at 19 (3, not
  * 4); computing the volume for the exact lane capacity fixes that (#728).
  */

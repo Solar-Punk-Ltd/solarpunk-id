@@ -12,6 +12,7 @@ import {
   fundPostageSigner,
   goToApp,
   openConnectPopup,
+  openSwarmIdButtonPopup,
   seedLocalChain,
 } from './helpers'
 
@@ -85,8 +86,10 @@ test('connect flow shows the done screen variants and closes the popup', async (
   await page.goto(DEMO_URL)
 
   // Fresh profile: create the account inside the connect popup. No drives yet
-  // → the confirmation shows the (secondary) drive pitch card.
-  let popup = await openConnectPopup(page)
+  // → the confirmation shows the (secondary) drive pitch card. A browser that
+  // has never opened the Swarm ID site cannot prove its storage is shared, so
+  // the demo's own Connect refuses and the Swarm ID button is the way in.
+  let popup = await openSwarmIdButtonPopup(page)
   await completeCreateFlow(popup)
 
   await expect(popup).toHaveURL(/\/connect\/done$/)

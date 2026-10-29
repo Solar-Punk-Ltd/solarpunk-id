@@ -1,5 +1,11 @@
 # Swarm Identity Management
 
+> **A fork of Swarm ID, in beta and experimental.** This repository is Solar Punk's fork of
+> [snaha/swarm-id](https://github.com/snaha/swarm-id), taken at snaha's 0.7.0 release, commit
+> [`dc70275`](https://github.com/snaha/swarm-id/commit/dc70275bb), 2026-10-12. It is an experimental
+> test from Solar Punk's side, not a release of snaha's project. What changed since the fork is in the
+> [changelog](./lib/CHANGELOG.md).
+
 Cross-browser compatible authentication and identity management for Swarm dApps.
 
 **[Documentation](./docs-site/src/content/docs)** | **[Identity UI](https://solarpunkid.bzz.link)**
@@ -18,7 +24,7 @@ Cross-browser compatible authentication and identity management for Swarm dApps.
 
 The project uses an OAuth-style popup authentication flow over shared localStorage — no Storage Access API and no browser extension. The proxy iframe reads the trusted domain's first-party store while the embedding page is same-site, which covers the local rig and a copy self-hosted on the app's own domain. Where the two are cross-site, as an app on another domain is with the hosted site at `solarpunkid.bzz.link`, or the browser partitions regardless (Safari's ITP, strict privacy settings elsewhere), the connect popup hands the iframe the account's upload credentials directly instead, so uploads keep working ([Account bus](./docs/Account-Bus.md)). That path is confirmed on real Safari, upload included (iOS 18.7 / Safari 26.6), see [Safari limitations](#safari-limitations).
 
-**Key Innovation**: The popup-based authentication allows dApps to securely derive app-specific secrets from a master identity. Cross-app isolation comes from the derivation itself — every secret is an HMAC-SHA256 of the master key over the app's own origin, so one app cannot reach another's — not from storage partitioning, which the flow is designed to work with or without.
+**Key Innovation**: The popup-based authentication allows dApps to derive app-specific secrets from a master identity. Cross-app isolation comes from the derivation itself, not from storage partitioning, which the flow is designed to work with or without. Every secret is an HMAC-SHA256 of the master key over the app's own origin, so one app cannot reach another's.
 
 [Architecture deep-dive →](./docs-site/src/content/docs/architecture.mdx)
 
@@ -67,6 +73,13 @@ The identity site (`ui/`) is served from Swarm at https://solarpunkid.bzz.link, 
 `solarpunkid.eth` pointing at the upload. How it is built and uploaded, and why every route is
 served from one `index.html`, is in
 [Hosting on Swarm](./docs-site/src/content/docs/swarm-hosting.mdx).
+
+Your browser does not check the files it gets from `solarpunkid.bzz.link` against their content
+hash. So the gateway that serves the site, and whoever controls `solarpunkid.eth`, can serve
+changed code, and that code can use every key the site holds. The hosted site is as trustworthy
+as they are.
+[Who you trust when you use the hosted site](./docs-site/src/content/docs/swarm-hosting.mdx#who-you-trust-when-you-use-the-hosted-site)
+says what that covers. Serving your own copy from a host you control is the way around it.
 
 The documentation is not hosted. It is read from
 [`docs-site/src/content/docs`](./docs-site/src/content/docs) in this repository. The demo
@@ -326,13 +339,13 @@ tools would be spending real money.
 
 Safari's Intelligent Tracking Prevention (ITP) partitions storage for third-party iframes, so the proxy cannot read the trusted domain's localStorage. Uploads are designed to keep working regardless: the connect popup hands the iframe the account's synced projection (postage stamps including their signer keys), and cross-context coordination rides the [account bus](./docs/Account-Bus.md) instead of storage events.
 
-> **Status: confirmed on real Safari, upload included.** Measured on iOS 18.7 / Safari 26.6 against snaha's deployed sites of the upstream project (`swarm-demo.snaha.net` → `swarm-id.snaha.net`). ITP partitions the proxy iframe. The connect popup's `postMessage` through `window.opener` reaches it. That run measured the older path, a popup the session frame opened itself. The popup is now opened by the Swarm ID button frame and posts to the Swarm ID frames beside it, and W6.1e measures that path on a device again. The hydrated account view builds a working stamper (`uploadMode: user-stamp`), and a chunk uploads and reads back byte-identical. The device id also held across a reload, so the partitioned store survived the session ending and being re-seeded ([#584](https://github.com/snaha/swarm-id/issues/584) has the report). Apps no longer receive the device id, so this is no longer checked ([docs/Hardening.md](docs/Hardening.md)).
+> **Status: confirmed on real Safari, upload included.** Measured on iOS 18.7 / Safari 26.6 against the upstream project's deployed demo and identity sites. ITP partitions the proxy iframe. The connect popup's `postMessage` through `window.opener` reaches it. That run measured the older path, a popup the session frame opened itself. The popup is now opened by the Swarm ID button frame and posts to the Swarm ID frames beside it. The hydrated account view builds a working stamper (`uploadMode: user-stamp`), and a chunk uploads and reads back byte-identical. The device id also held across a reload, so the partitioned store survived the session ending and being re-seeded ([#584](https://github.com/snaha/swarm-id/issues/584) has the report). Apps no longer receive the device id, so this is no longer checked ([docs/Hardening.md](docs/Hardening.md)).
 >
 > A **private window** was measured separately and passes the same five checks, upload included, with a fresh device id each time, as expected, since the private partition is discarded when the window closes.
 >
-> One thing no run has settled, and it is not claimed here: the **eviction horizon**. Two loads in one sitting say nothing about how long a dormant account's storage survives ITP ([#659](https://github.com/snaha/swarm-id/issues/659)). The sources disagree. WebKit's published rule is seven days of Safari use without interaction on the site ([webkit.org, 2020-03-24](https://webkit.org/blog/10218/full-third-party-cookie-blocking-and-more/)). A WebKit source change of 2024-02-09 added a 30-day tier for sites never reached through cross-site link decoration ([`4506123`](https://github.com/WebKit/WebKit/commit/45061230013728ec9c4900b01b12af26dc592b4b)), while its own message says it does not change current behaviour. The Safari backup prompt plans for the shorter figure ([docs/Hardening.md](docs/Hardening.md)).
+> **Storage eviction.** ITP deletes a dormant site's script-writable storage after a stretch of Safari use without interaction on the site. WebKit's published rule puts that stretch at seven days ([webkit.org, 2020-03-24](https://webkit.org/blog/10218/full-third-party-cookie-blocking-and-more/)). A WebKit source change of 2024-02-09 added a 30-day tier for sites never reached through cross-site link decoration ([`4506123`](https://github.com/WebKit/WebKit/commit/45061230013728ec9c4900b01b12af26dc592b4b)), while its own message says it does not change current behaviour. The Safari backup prompt assumes the shorter figure ([docs/Hardening.md](docs/Hardening.md)).
 
-What remains regardless:
+How a partitioned session behaves:
 
 - **The session outlives the page.** The handover is kept in the partition's own store until the user disconnects or the 7-day session expires, so a reload does not re-run the popup ([#635](https://github.com/snaha/swarm-id/issues/635)). A restored session reads the account's published state before its first write, and ends itself if this app was revoked while the tab was closed, which reaches it no other way. Reads start at once and writes wait for the answer. If Swarm cannot be reached the writes stay refused, with `uploadUnavailableReason` set to `session-unconfirmed`, and the next write asks again. An account with no drive has published nothing, so it cannot have published a revoke, and its session writes once the check confirms that ([docs/Hardening.md](docs/Hardening.md)).
 - **Live propagation needs a signaling server.** `pnpm dev` starts one locally. The hosted site is built without one unless `PUBLIC_BUS_SIGNALING_URL` is set at build time, and a build without one leaves a partitioned iframe talking only to contexts in its own partition. Everything still works without it: a partition handover between devices waits for the 10 s lease poll instead of one bus round trip, and a synced account's changes arrive through Swarm feed sync rather than at once. How the bus works: [docs/Account-Bus.md](./docs/Account-Bus.md).

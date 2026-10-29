@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Tests for the per-device partition-intent SOCs (Phase 2 of the
- * partition-lock hardening). Uses MockBee + mockFetch from the epoch-feeds
+ * Tests for the per-device partition-intent SOCs, the intent round of a
+ * fresh partition claim. Uses MockBee + mockFetch from the epoch-feeds
  * test utilities so the SOC round-trip exercises real bee-js code paths
  * (`uploadSOC`, `downloadEncryptedSOC`) against an in-memory store.
  */

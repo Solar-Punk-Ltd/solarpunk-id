@@ -65,6 +65,9 @@ const INTENT_LIVENESS_GRACE_MS = 30_000
 
 /** How long a disconnected session is watched for coming back on its own. */
 const DISCONNECT_SETTLE_MS = 5_000
+/** How many rounds `ensureAllConnected` makes. Each sign-in can sign out only the
+ *  devices that signed in before the last Disconnect, so the second round normally settles it. */
+const MAX_CONNECT_PASSES = 3
 /** Long enough for a seeded device to authenticate from storage, or for one
  *  popup round trip and a retry. */
 const CONNECT_TIMEOUT_MS = 60_000
@@ -193,12 +196,18 @@ class Device {
 
   private async connectThroughPopup(page: Page): Promise<void> {
     await page.getByRole('button', { name: 'Connect Swarm ID' }).click({ timeout: 5_000 })
-    // Rendered once the client is up; before that, Connect is a silent no-op.
-    await expect(page.locator('#swarm-id-button iframe')).toBeVisible({ timeout: 10_000 })
-    // Settled either way, so a click that misses (the label flipped under
+    // Through the Swarm ID button, not the demo's own Connect: a seeded device
+    // has never opened the Swarm ID site at the top level, so its frame cannot
+    // prove its storage is shared and `connect()` refuses there.
+    const button = page
+      .frameLocator('#swarm-id-button iframe')
+      .getByRole('button', { name: 'Connect to Swarm' })
+    // Rendered once the client is up.
+    await expect(button).toBeVisible({ timeout: 15_000 })
+    // Settled either way, so a click that misses (the popover closed under
     // it) leaves no stray rejection behind to fail the test from outside.
     const popupPromise = page.waitForEvent('popup', { timeout: 10_000 }).catch(() => undefined)
-    await page.getByRole('button', { name: 'Connect', exact: true }).click({ timeout: 5_000 })
+    await button.click({ timeout: 5_000 })
     const popup = await popupPromise
     if (!popup) throw new Error('the connect popup did not open')
     await popup.waitForLoadState()
@@ -217,12 +226,14 @@ class Device {
     await expect(page.getByRole('heading', { name: 'Identity' })).toBeVisible({ timeout: 15_000 })
   }
 
-  /** Connect unless this tab already shows the storage page with a stamp. */
-  async ensureConnected(): Promise<void> {
-    if (this.page.isClosed()) return
+  /** Connect unless this tab already shows the storage page with a stamp.
+   *  Says whether it had to connect. */
+  async ensureConnected(): Promise<boolean> {
+    if (this.page.isClosed()) return false
     const onStorage = this.page.url().endsWith('/storage')
-    if (onStorage && (await this.page.getByText(PARTITION_LINE).count()) > 0) return
+    if (onStorage && (await this.page.getByText(PARTITION_LINE).count()) > 0) return false
     await this.connect()
+    return true
   }
 
   private async openStorage(page: Page): Promise<void> {
@@ -379,6 +390,30 @@ class Device {
   }
 }
 
+/**
+ * Connect every device that is not, and go round again until a whole pass
+ * connects nobody. A device that signs in tells the others the account's state,
+ * and when that state carries a Disconnect it made earlier (a scenario that
+ * stopped between its Disconnect and its reconnect), the devices that signed in
+ * before that Disconnect are signed out of the demo, as designed. A device
+ * checked earlier in the same pass is then signed out behind the check.
+ */
+async function ensureAllConnected(devices: Device[]): Promise<void> {
+  for (let pass = 0; pass < MAX_CONNECT_PASSES; pass++) {
+    let connectedAny = false
+    for (const device of devices) {
+      if (await device.ensureConnected()) connectedAny = true
+    }
+    if (!connectedAny) return
+    if (pass === MAX_CONNECT_PASSES - 1) break
+    // The news reaches the others within a second of the sign-in window opening.
+    await sleep(DISCONNECT_SETTLE_MS)
+  }
+  throw new Error(
+    `devices still sign each other out after ${MAX_CONNECT_PASSES} rounds of sign-ins`,
+  )
+}
+
 /** The one invariant: the partitions held right now are pairwise distinct. */
 async function expectNoDualHold(devices: Device[]): Promise<Map<string, number | undefined>> {
   // Read together, not in turn: a release landing between two reads would
@@ -454,7 +489,7 @@ const rigUp =
 
 // Not `serial`: a scenario that fails must not hide the ones after it — the
 // point of the run is a verdict per scenario. Each one re-establishes what it
-// needs (`ensureConnected`) and takes the lease state as it finds it.
+// needs (`ensureAllConnected`) and takes the lease state as it finds it.
 test.describe('three devices on two partitions', () => {
   test.skip(
     !rigUp,
@@ -535,7 +570,7 @@ test.describe('three devices on two partitions', () => {
   })
 
   test('C arrives with both partitions held: its first upload makes a holder give one up', async () => {
-    for (const device of all()) await device.ensureConnected()
+    await ensureAllConnected(all())
     // Both holders idle past the peer-yield threshold, so either may answer.
     await sleep(PEER_YIELD_MIN_IDLE_MS)
     const before = await expectNoDualHold([A, B])
@@ -559,7 +594,7 @@ test.describe('three devices on two partitions', () => {
   })
 
   test('the device that yielded is served on its next upload', async () => {
-    for (const device of all()) await device.ensureConnected()
+    await ensureAllConnected(all())
     const before = await expectNoDualHold(all())
     const waiter = [...before].find(([, p]) => p === undefined)?.[0]
     expect(waiter, 'every device holds a partition, nobody yielded').toBeDefined()
@@ -574,7 +609,7 @@ test.describe('three devices on two partitions', () => {
   })
 
   test('holders idle past IDLE_YIELD_MS release their partitions, and re-acquire on the next upload', async () => {
-    for (const device of all()) await device.ensureConnected()
+    await ensureAllConnected(all())
     test.setTimeout(IDLE_WAIT_MS + UPLOAD_TIMEOUT_MS * 2 + 60_000)
     // A rival is known to every device by now, which is what arms the timer
     // yield: a solo device keeps its lease across a pause instead.
@@ -597,7 +632,7 @@ test.describe('three devices on two partitions', () => {
   })
 
   test('a reload keeps the lease: the fresh page adopts it from the cache without a cold acquire', async () => {
-    for (const device of all()) await device.ensureConnected()
+    await ensureAllConnected(all())
     // Hold something first; an upload acquires when nothing is held.
     const before = await A.uploadAndHoldOrSkip()
 
@@ -610,7 +645,7 @@ test.describe('three devices on two partitions', () => {
   })
 
   test('a second tab of one device shares its partition, and both tabs upload', async () => {
-    for (const device of all()) await device.ensureConnected()
+    await ensureAllConnected(all())
     // Hold something first; an upload acquires when nothing is held.
     const held = await A.uploadAndHoldOrSkip()
 
@@ -633,7 +668,7 @@ test.describe('three devices on two partitions', () => {
   })
 
   test('a disconnect releases the partition at once, and a waiting device takes it', async () => {
-    for (const device of all()) await device.ensureConnected()
+    await ensureAllConnected(all())
     // Fill both slots: B takes a free one, then C's request makes an idle
     // holder yield. The holder that yields may be B rather than A — then B
     // holds nothing to release, and the scenario has no subject (#798: the
@@ -675,7 +710,7 @@ test.describe('three devices on two partitions', () => {
   })
 
   test('a closed tab never releases: its partition comes back by TTL, and the others end up holding', async () => {
-    for (const device of all()) await device.ensureConnected()
+    await ensureAllConnected(all())
     test.setTimeout(TTL_LAPSE_MS + UPLOAD_TIMEOUT_MS * 5)
     // C holds a partition and then goes away without a teardown — no release
     // sentinel, no `lease-released`, only a socket close the room notices.

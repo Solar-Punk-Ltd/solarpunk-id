@@ -263,14 +263,6 @@ A future cache could reintroduce the bug silently, so
   delegate holds standing authority over that EOA — which is why the choice is a minimal account and
   not a general-purpose executor. No flow clears the delegation.
 
-## Out of scope
-
-- Fund delivery, quoting and the payment UI — [`Drive-Payment-Flow.md`](./Drive-Payment-Flow.md).
-- Partition and utilization reaction to depth changes (capacity accounting, the depth-31→32 counter
-  codec crossing, IndexedDB invalidation, multi-device skew) —
-  [#463](https://github.com/snaha/swarm-id/issues/463). This engine only rebuilds the stamper.
-- Relayed and gasless variants (EIP-2612 permit, ERC-4337) — unnecessary at <$0.001 per operation.
-
 ## Files and tests
 
 | Path                                    | Role                                                      |

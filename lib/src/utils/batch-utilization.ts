@@ -1266,8 +1266,8 @@ export class UtilizationAwareStamper implements Stamper, SlotAssigner {
   private reservedUtilizationChunks: Map<string, number> | undefined = undefined
 
   /**
-   * The per-partition intent SOC for an in-flight intent round (Phase 2 —
-   * `partition-intent.ts`), mapped to the reserved SLOT it must overstamp (the
+   * The per-partition intent SOC for an in-flight intent round
+   * (`partition-intent.ts`), mapped to the reserved SLOT it must overstamp (the
    * contended partition index). Routed like the lock SOC / utilisation chunks:
    * `stamp()` places it in the partition's reserved slot, so it NEVER lands in
    * a data lane (`>= DATA_COUNTER_START`) and cannot overstamp user data.
@@ -1739,9 +1739,9 @@ export class UtilizationAwareStamper implements Stamper, SlotAssigner {
       return utilizationSlot
     }
 
-    // Intent-SOC short-circuit: a partition-intent chunk (Phase 2) overstamps
-    // the contended partition's reserved slot — like the lock SOC, below the
-    // data lanes — so it can never collide with user data. Doesn't bump the
+    // Intent-SOC short-circuit: a partition-intent chunk overstamps the
+    // contended partition's reserved slot, like the lock SOC, below the data
+    // lanes, so it can never collide with user data. Doesn't bump the
     // counter. Not gated by `leaseStale`: the intent round runs before binding,
     // while no lease is held.
     if (this.intentSoc?.addressHex === addressHex) {

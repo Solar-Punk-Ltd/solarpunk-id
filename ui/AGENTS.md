@@ -14,7 +14,10 @@ The identity UI is a SvelteKit SPA.
   is served from the root of its host, as on Swarm (`docs-site/src/content/docs/swarm-hosting.mdx`)
 - **Wallet picker** (`src/lib/crypto/onboard.ts`): injected wallets, Coinbase Wallet, and
   WalletConnect when there is a project id. The last two need nothing installed and are the only
-  routes on a browser with no wallet extension (Safari, mobile)
+  routes on a browser with no wallet extension (Safari, mobile). The picker contacts no host of
+  its own: it draws in the app's font rather than fetching Inter from rsms.me, and Onboard's ENS
+  lookup of each connected wallet is patched out (`patches/@web3-onboard__core@2.24.1.patch`),
+  so an Onboard bump redoes that patch or `onboard-chain-reads.test.ts` goes red
 - **WalletConnect project id**: only `PUBLIC_WALLETCONNECT_PROJECT_ID`, set per build. Without it
   the picker offers no WalletConnect. Never hand `@web3-onboard/walletconnect` a blank id: it
   throws, at import of a module every wallet page loads. Go through `walletConnectOptions`, which

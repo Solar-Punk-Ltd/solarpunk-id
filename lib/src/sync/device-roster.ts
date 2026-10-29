@@ -2,21 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Device roster (Phase 3a hardening) — append-only discovery log.
+ * Device roster, the append-only discovery log.
  *
  * Replaces the single shared *mutable* registry doc, which a device could
  * **clobber** on a high-latency/caching gateway: it read-merge-overwrote the
  * whole doc, so a device that couldn't yet see a peer's just-written entry
- * dropped it. (See the gateway finding in the Phase 3a implementation log.)
+ * dropped it. A caching gateway that kept serving the doc from before a
+ * peer's write is where that loss was found.
  *
  * The roster is a **sequential append-only feed** (`swarm-id-roster-v1:<acct>`):
  * each device appends ONLY its own membership record (`Device`) at the next free
  * index. A device never overwrites a peer's slot, so concurrent announces can't
- * clobber an existing entry — the worst case is two devices racing the same
+ * clobber an existing entry. The worst case is two devices racing the same
  * fresh index, where one append is lost and re-added on its next sync (existing
  * entries are untouched). Readers scan all entries and fold by `deviceId`
- * (reusing `mergeDevicesList`, so removals/resurrections converge by Phase 1
- * LWW). Account-level immutables (publicKey, createdAt, partitionCount) live on
+ * (reusing `mergeDevicesList`, so removals/resurrections converge by its LWW
+ * clock). Account-level immutables (publicKey, createdAt, partitionCount) live on
  * the robust per-device state feed (`device-state.ts`), not here.
  *
  * Each entry is an encrypted blob (privacy parity with the old registry)
@@ -40,9 +41,9 @@ import {
 } from "../proxy/feeds/sequence"
 import { isStamperTarget, uploadData, type UploadTarget } from "../proxy/upload"
 import { downloadDataWithChunkAPI } from "../proxy/download-data"
-import { withTimeout } from "../utils/promise"
 import { isNotFoundError } from "../utils/bee-error"
-import { SYNC_READ_TIMEOUT_MS } from "./timing-constants"
+import { MISS_READ_TIMEOUT_MS } from "./timing-constants"
+import { withReadTimeout } from "./read-line"
 import { mergeDevicesList } from "./merge-snapshot"
 
 export const ROSTER_TOPIC_PREFIX = "swarm-id-roster-v1"
@@ -54,7 +55,7 @@ const MAX_ROSTER_SCAN = 256
 // How many roster indices to probe in parallel per round. The roster is small
 // and contiguous, so one window of this size usually resolves the whole scan in
 // a single round-trip instead of K+1 serial ones.
-const ROSTER_SCAN_WINDOW = 16
+export const ROSTER_SCAN_WINDOW = 16
 
 // How many indices to probe past a KNOWN roster length to detect new appends
 // (#400). Absent-slot probes are the expensive kind (Bee has no fast
@@ -116,13 +117,11 @@ export function resetRosterScanCache(): void {
   knownRosterLength.clear()
 }
 
-// Per-read cap so an empty/unreachable slot on a slow gateway fails fast instead
-// of hanging on peer-exhaustion. A present slot retrieves well under this.
-// Matches the epoch finder's bound. An inconclusive read (timeout / 5xx /
-// network) is NOT a confirmed empty slot: `readRosterEntry` surfaces it as
+// Each slot read is capped by MISS_READ_TIMEOUT_MS so an unreachable slot
+// fails instead of hanging on peer-exhaustion. An inconclusive read (timeout /
+// 5xx / network) is NOT a confirmed empty slot: `readRosterEntry` surfaces it as
 // `ROSTER_READ_INCONCLUSIVE` so `readRoster` retries it once at the stop boundary
 // rather than mistaking it for end-of-feed and truncating the roster.
-const ROSTER_READ_TIMEOUT_MS = SYNC_READ_TIMEOUT_MS
 
 /**
  * Sentinel for a roster slot whose read was INCONCLUSIVE — a timeout, a 5xx, or
@@ -177,9 +176,11 @@ async function probeSocSlot(opts: {
 }): Promise<Uint8Array | undefined | typeof ROSTER_READ_INCONCLUSIVE> {
   const url = `${opts.bee.url}/soc/${opts.owner.toHex()}/${opts.identifier.toHex()}`
   try {
-    const response = await withTimeout(
-      fetch(url),
-      ROSTER_READ_TIMEOUT_MS,
+    const response = await withReadTimeout(
+      opts.bee,
+      "background",
+      ({ signal }) => fetch(url, { signal }),
+      MISS_READ_TIMEOUT_MS,
       "roster /soc probe timed out",
     )
     if (response.ok) return new Uint8Array(await response.arrayBuffer())
@@ -208,9 +209,14 @@ async function readRosterEntry(opts: {
   const identifier = rosterIdentifier(opts.topic, opts.index)
   let refBytes: Uint8Array
   try {
-    const soc = await withTimeout(
-      opts.bee.soc.makeReader(opts.owner).download(identifier),
-      ROSTER_READ_TIMEOUT_MS,
+    const soc = await withReadTimeout(
+      opts.bee,
+      "background",
+      (requestOptions) =>
+        opts.bee.soc
+          .makeReader(opts.owner, requestOptions)
+          .download(identifier),
+      MISS_READ_TIMEOUT_MS,
       "roster read timed out",
     )
     refBytes = soc.payload.toUint8Array()
@@ -236,9 +242,18 @@ async function readRosterEntry(opts: {
   // garbage blob (the SOC resolved) — a skippable hole `readRoster` folds around.
   let data: Uint8Array
   try {
-    data = await withTimeout(
-      downloadDataWithChunkAPI(opts.bee, new Reference(refBytes).toHex()),
-      ROSTER_READ_TIMEOUT_MS,
+    data = await withReadTimeout(
+      opts.bee,
+      "background",
+      (requestOptions) =>
+        downloadDataWithChunkAPI(
+          opts.bee,
+          new Reference(refBytes).toHex(),
+          undefined,
+          undefined,
+          requestOptions,
+        ),
+      MISS_READ_TIMEOUT_MS,
       "roster read timed out",
     )
   } catch (error) {
@@ -252,8 +267,8 @@ async function readRosterEntry(opts: {
 }
 
 /**
- * Scan the roster and fold to the latest record per `deviceId` (Phase 1
- * `mergeDevicesList`: removals/resurrections converge by LWW). Returns `[]` when
+ * Scan the roster and fold to the latest record per `deviceId`
+ * (`mergeDevicesList`: removals/resurrections converge by LWW). Returns `[]` when
  * the feed is empty (nothing published yet).
  */
 export async function readRoster(opts: {

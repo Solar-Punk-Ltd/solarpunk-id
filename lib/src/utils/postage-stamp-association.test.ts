@@ -20,74 +20,60 @@ const accountStamp = createPostageStamp({ batchID: accountBatch })
 const appStamp = createPostageStamp({ batchID: appBatch })
 
 describe("resolveStampForApp", () => {
-  it("prefers the app's own batch override", () => {
-    const result = resolveStampForApp(
-      { postageStampBatchID: appBatch },
-      { defaultPostageStampBatchID: accountBatch },
-      [accountStamp, appStamp],
-    )
+  // A site spends only the drive the person picked for it. A drive bought
+  // after the site signed in becomes the account default, and the site must
+  // not start stamping with it unasked.
+  it("resolves nothing for a site with no pick, though the account has a default", () => {
+    const result = resolveStampForApp({ postageStampBatchID: undefined }, [
+      accountStamp,
+    ])
+    expect(result).toBeUndefined()
+  })
+
+  // The other half of D4: removing the picked drive leaves the site with no
+  // drive until the person picks again, never on the default.
+  it("resolves nothing when the site's picked drive is gone, though the account has a default", () => {
+    const result = resolveStampForApp({ postageStampBatchID: appBatch }, [
+      accountStamp,
+    ])
+    expect(result).toBeUndefined()
+  })
+
+  it("resolves the site's own pick", () => {
+    const result = resolveStampForApp({ postageStampBatchID: appBatch }, [
+      accountStamp,
+      appStamp,
+    ])
     expect(result?.batchID.toHex()).toBe(TEST_BATCH_ID_2_HEX)
   })
 
-  it("falls through to the account default when the app override is stale", () => {
-    const result = resolveStampForApp(
-      { postageStampBatchID: appBatch },
-      { defaultPostageStampBatchID: accountBatch },
-      [accountStamp], // the app's override batch is missing
-    )
-    expect(result?.batchID.toHex()).toBe(TEST_BATCH_ID_HEX)
+  it("resolves nothing when the site's picked drive is deleted", () => {
+    const deleted = createPostageStamp({ batchID: appBatch, deletedAt: 1 })
+    const result = resolveStampForApp({ postageStampBatchID: appBatch }, [
+      accountStamp,
+      deleted,
+    ])
+    expect(result).toBeUndefined()
   })
 
-  // Deliberate: expiry does not repoint spending. A tombstone is gone for
-  // good, so its pointer falls through; an expired drive can be renewed, and
-  // silently charging another drive is not what the user chose for this app.
-  it("does not fall through past an expired override", () => {
+  // An expired drive can be renewed, and the session reports it as expired
+  // rather than as having no drive (#745).
+  it("still resolves an expired pick", () => {
     const expired = createPostageStamp({
       batchID: appBatch,
       batchTTL: 60,
       updatedAt: Date.now() - 120_000,
     })
-    const result = resolveStampForApp(
-      { postageStampBatchID: appBatch },
-      { defaultPostageStampBatchID: accountBatch },
-      [accountStamp, expired],
-    )
+    const result = resolveStampForApp({ postageStampBatchID: appBatch }, [
+      accountStamp,
+      expired,
+    ])
     expect(result?.batchID.toHex()).toBe(TEST_BATCH_ID_2_HEX)
   })
 
-  it("uses the account default when the app has no override", () => {
-    const result = resolveStampForApp(
-      { postageStampBatchID: undefined },
-      { defaultPostageStampBatchID: accountBatch },
-      [accountStamp],
-    )
-    expect(result?.batchID.toHex()).toBe(TEST_BATCH_ID_HEX)
-  })
-
-  it("returns undefined when every pointer is stale", () => {
-    const result = resolveStampForApp(
-      { postageStampBatchID: appBatch },
-      { defaultPostageStampBatchID: accountBatch },
-      [], // neither stamp exists
-    )
-    expect(result).toBeUndefined()
-  })
-
-  // The person chose no stamp for this site in Swarm ID: the account default
-  // is not a fallthrough for it, or the choice would mean nothing.
-  it("resolves nothing for a site set to no stamp, though the account has a default", () => {
+  it("resolves nothing for a site set to no stamp", () => {
     const result = resolveStampForApp(
       { postageStampBatchID: NO_POSTAGE_STAMP },
-      { defaultPostageStampBatchID: accountBatch },
-      [accountStamp, appStamp],
-    )
-    expect(result).toBeUndefined()
-  })
-
-  it("returns undefined when neither app nor account has a pointer", () => {
-    const result = resolveStampForApp(
-      { postageStampBatchID: undefined },
-      { defaultPostageStampBatchID: undefined },
       [accountStamp, appStamp],
     )
     expect(result).toBeUndefined()
@@ -95,42 +81,33 @@ describe("resolveStampForApp", () => {
 })
 
 // A partitioned session is handed its account view by the connect popup, and
-// before #578 that view carried EVERY stamp with its signer key — in a context
+// before #578 that view carried EVERY stamp with its signer key, in a context
 // embedded by an arbitrary dApp page. It can only ever spend the one resolved
 // for it, so that is all it should hold (#578).
 describe("stampsReachableByApp", () => {
-  it("keeps only the app's override and the account default", () => {
+  it("keeps the site's own pick and not the account default", () => {
     const otherStamp = createPostageStamp({
       batchID: new BatchId("dd".repeat(32)),
     })
-
-    const result = stampsReachableByApp(
-      { postageStampBatchID: appBatch },
-      { defaultPostageStampBatchID: accountBatch },
-      [accountStamp, appStamp, otherStamp],
-    )
-
-    expect(result.map((s) => s.batchID.toHex()).sort()).toEqual(
-      [TEST_BATCH_ID_HEX, TEST_BATCH_ID_2_HEX].sort(),
-    )
+    const result = stampsReachableByApp({ postageStampBatchID: appBatch }, [
+      accountStamp,
+      appStamp,
+      otherStamp,
+    ])
+    expect(result.map((s) => s.batchID.toHex())).toEqual([TEST_BATCH_ID_2_HEX])
   })
 
-  // The default is the fallthrough `resolveStampForApp` takes when the
-  // override's stamp is gone, so shipping only the override would turn a
-  // recoverable stale pointer into an unusable session.
-  it("keeps the default even when the app has a live override", () => {
-    const result = stampsReachableByApp(
-      { postageStampBatchID: appBatch },
-      { defaultPostageStampBatchID: accountBatch },
-      [accountStamp, appStamp],
-    )
-    expect(result).toHaveLength(2)
+  it("keeps nothing for a site with no pick", () => {
+    const result = stampsReachableByApp({ postageStampBatchID: undefined }, [
+      accountStamp,
+      appStamp,
+    ])
+    expect(result).toEqual([])
   })
 
   it("keeps nothing for a site set to no stamp", () => {
     const result = stampsReachableByApp(
       { postageStampBatchID: NO_POSTAGE_STAMP },
-      { defaultPostageStampBatchID: accountBatch },
       [accountStamp, appStamp],
     )
     expect(result).toEqual([])
@@ -139,16 +116,6 @@ describe("stampsReachableByApp", () => {
   it("keeps nothing while the person has not confirmed the site's drive", () => {
     const result = stampsReachableByApp(
       { postageStampBatchID: appBatch, stampPending: true },
-      { defaultPostageStampBatchID: accountBatch },
-      [accountStamp, appStamp],
-    )
-    expect(result).toEqual([])
-  })
-
-  it("keeps nothing when neither pointer resolves", () => {
-    const result = stampsReachableByApp(
-      { postageStampBatchID: undefined },
-      { defaultPostageStampBatchID: undefined },
       [accountStamp, appStamp],
     )
     expect(result).toEqual([])
@@ -156,16 +123,14 @@ describe("stampsReachableByApp", () => {
 
   // A tombstone for our own stamp is news: it is how the session learns the
   // stamp it was spending is gone.
-  it("keeps a tombstoned stamp its pointers still name", () => {
+  it("keeps a tombstoned stamp its pick still names", () => {
     const deleted = createPostageStamp({
-      batchID: accountBatch,
+      batchID: appBatch,
       deletedAt: 2_000_000,
     })
-    const result = stampsReachableByApp(
-      { postageStampBatchID: undefined },
-      { defaultPostageStampBatchID: accountBatch },
-      [deleted],
-    )
+    const result = stampsReachableByApp({ postageStampBatchID: appBatch }, [
+      deleted,
+    ])
     expect(result).toHaveLength(1)
     expect(result[0].deletedAt).toBe(2_000_000)
   })

@@ -35,13 +35,15 @@ import {
   Bee,
   PrivateKey,
   type BatchId,
+  type BeeRequestOptions,
   type Stamper,
 } from "@ethersphere/bee-js"
 import { Binary } from "cafe-utility"
 import { downloadEncryptedSOC } from "../proxy/download-data"
 import { uploadSOC, type UploadTarget } from "../proxy/upload"
-import { sleep, withTimeout } from "../utils/promise"
+import { sleep } from "../utils/promise"
 import { SYNC_READ_TIMEOUT_MS } from "./timing-constants"
+import { withReadTimeout } from "./read-line"
 import { makePartitionLockIdentifier } from "../utils/lock-soc"
 import {
   PartitionLockPayloadSchemaV1,
@@ -116,14 +118,14 @@ export function makeDeviceTiebreaker(deviceId: string): string {
  * Deterministic per-device starting partition: `keccak256(deviceId) mod
  * partitionCount`. Distinct devices map to distinct home partitions with high
  * probability, so they spread across slots even when none can read peers' lock
- * SOCs (the disjoint-gateway frozen-cache case — see
- * docs/Partition-Lock-Hardening-Plan.md). Only changes the selection scan
- * ORDER; visibly-held slots are still skipped, so behaviour under working
+ * SOCs (the disjoint-gateway frozen-cache case, see
+ * docs/Postage-Batch-Partitioning.md). Only changes the selection scan
+ * ORDER. Visibly-held slots are still skipped, so behaviour under working
  * reads is unchanged.
  *
- * ponytail: probabilistic spread, not mutual exclusion — colliding home
- * partitions still race. The complete cross-gateway fix is the Phase 2
- * intent-SOC protocol in the hardening plan.
+ * Deliberate: probabilistic spread, not mutual exclusion, so colliding home
+ * partitions still race. The cross-gateway fix is the intent round in
+ * `partition-intent.ts`.
  */
 export function deviceHomePartition(
   deviceId: string,
@@ -161,6 +163,7 @@ export async function readPartitionLock(opts: {
   swarmEncryptionKey: Uint8Array
   batchId: BatchId
   partition: number
+  requestOptions?: BeeRequestOptions
 }): Promise<PartitionLockPayload | undefined> {
   const { bee, backupSigner, swarmEncryptionKey, batchId, partition } = opts
   const identifier = makePartitionLockIdentifier(batchId, partition)
@@ -171,6 +174,7 @@ export async function readPartitionLock(opts: {
       owner,
       identifier,
       swarmEncryptionKey,
+      opts.requestOptions,
     )
     const parsed = PartitionLockPayloadSchemaV1.safeParse(
       JSON.parse(new TextDecoder().decode(soc.payload)),
@@ -289,8 +293,10 @@ export async function acquirePartitionLock(opts: {
   const now = opts.now ?? Date.now
   const wait = opts.wait ?? sleep
   const readBounded = () =>
-    withTimeout(
-      readPartitionLock(opts),
+    withReadTimeout(
+      opts.bee,
+      "claim",
+      (requestOptions) => readPartitionLock({ ...opts, requestOptions }),
       opts.readTimeoutMs ?? SYNC_READ_TIMEOUT_MS,
       "lock read timed out",
     ).catch(() => undefined)

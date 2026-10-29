@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Per-device account-state feed (Phase 3a).
+ * Per-device account-state feed.
  *
  * Each device publishes its own **full current account view** to its OWN feed
  * (`swarm-id-devstate-v1:<accountId>:<deviceId>`). Because a device writes only
  * its own feed there is no shared SOC address and no cross-device write
- * contention — the `publishAccountState` merge-read-rewrite + `verifyWon` dance
- * is gone. Convergence happens at READ time: `foldAccount` merges every device's
- * latest view with the Phase 1 merge primitives.
+ * contention, so no device has to read, merge and rewrite a shared doc and then
+ * check that its write won. Convergence happens at READ time: `foldAccount`
+ * merges every device's latest view with the merge primitives of
+ * `merge-snapshot.ts`.
  *
  * Device membership (the `deviceId` set) lives in the append-only device roster
  * (`device-roster.ts`), not here; account-level immutables (publicKey, createdAt,
@@ -29,8 +30,11 @@ import {
 } from "@ethersphere/bee-js"
 import { z } from "zod"
 import {
+  AccountSettingsSchema,
   ConnectedAppSchemaV1,
   PostageStampSchemaV1,
+  WalletLinkSchema,
+  type AccountSettings,
   type AccountStateSnapshot,
   type ConnectedApp,
   type Device,
@@ -41,9 +45,11 @@ import {
   serializePostageStamp,
 } from "../utils/storage-managers"
 import { hexToUint8Array } from "../utils/hex"
+import type { WalletLink } from "../utils/wallet-link"
 import { AsyncEpochFinder, BasicEpochUpdater } from "../proxy/feeds/epochs"
 import { uploadData, type UploadTarget } from "../proxy/upload"
 import { downloadDataWithChunkAPI } from "../proxy/download-data"
+import { throughReadLine } from "./read-line"
 import { mergeConnectedApps, mergePostageStamps } from "./merge-snapshot"
 import { ensureInRoster } from "./device-roster"
 import type { SyncResult } from "./types"
@@ -52,16 +58,13 @@ export const DEVICE_STATE_TOPIC_PREFIX = "swarm-id-devstate-v1"
 
 const DEVICE_STATE_VERSION = 1
 
-/** Account settings carried in a device view (mirrors `account.settings`). */
-const SettingsSchema = z.object({ appSessionDuration: z.number().optional() })
-export type AccountSettings = z.infer<typeof SettingsSchema>
-
 const ClockedSchema = <T extends z.ZodTypeAny>(value: T) =>
   z.object({ value, at: z.number() })
 
 /**
- * One device's view of the account. `connectedApps`/`postageStamps` carry their
- * Phase 1 LWW/tombstone clocks; scalars carry their own per-field `at`.
+ * One device's view of the account. `connectedApps`/`postageStamps` carry the
+ * LWW and tombstone clocks `merge-snapshot.ts` merges by. Scalars carry their
+ * own per-field `at`.
  */
 export const DeviceStateSnapshotSchemaV1 = z.object({
   version: z.literal(DEVICE_STATE_VERSION),
@@ -72,7 +75,9 @@ export const DeviceStateSnapshotSchemaV1 = z.object({
   postageStamps: z.array(PostageStampSchemaV1),
   accountName: ClockedSchema(z.string()),
   defaultPostageStampBatchID: ClockedSchema(z.string().length(64).optional()),
-  settings: ClockedSchema(SettingsSchema.optional()),
+  settings: ClockedSchema(AccountSettingsSchema.optional()),
+  // A feed written before the wallet link had its own clock never edited it.
+  walletLink: ClockedSchema(WalletLinkSchema.optional()).default({ at: 0 }),
   // Account-level immutables — carried on the robust per-device feed (not the
   // roster), so the fold reconstructs them without a shared doc. Identical
   // across devices.
@@ -90,6 +95,7 @@ export interface DeviceStateView {
   accountName: { value: string; at: number }
   defaultPostageStampBatchID: { value: string | undefined; at: number }
   settings: { value: AccountSettings | undefined; at: number }
+  walletLink: { value: WalletLink | undefined; at: number }
   accountPublicKey: string
   accountCreatedAt: number
   partitionCount: number
@@ -103,11 +109,13 @@ export interface FoldedAccount {
   accountName: string
   defaultPostageStampBatchID: BatchId | undefined
   settings: AccountSettings | undefined
+  walletLink: WalletLink | undefined
   // Per-field LWW clock of each scalar's winning value, so refresh/restore can
   // apply it by LWW against the local clock.
   accountNameAt: number
   defaultStampAt: number
   settingsAt: number
+  walletLinkAt: number
   createdAt: number
   publicKey: string
   partitionCount: number
@@ -140,6 +148,7 @@ export function accountStateToDeviceView(
       at: m.defaultStampAt ?? stableAt,
     },
     settings: { value: m.settings, at: m.settingsAt ?? stableAt },
+    walletLink: { value: m.walletLink, at: m.walletLinkAt ?? stableAt },
     accountPublicKey: m.publicKey,
     accountCreatedAt: m.createdAt,
     partitionCount: m.partitionCount ?? 1,
@@ -152,6 +161,10 @@ export function deviceStateTopic(accountId: string, deviceId: string): Topic {
   )
 }
 
+/**
+ * The device-state feed's payload: this device's full current view of the
+ * account, encrypted under the Swarm encryption key.
+ */
 export function serializeDeviceState(
   accountId: string,
   deviceId: string,
@@ -167,6 +180,7 @@ export function serializeDeviceState(
     accountName: view.accountName,
     defaultPostageStampBatchID: view.defaultPostageStampBatchID,
     settings: view.settings,
+    walletLink: view.walletLink,
     accountPublicKey: view.accountPublicKey,
     accountCreatedAt: view.accountCreatedAt,
     partitionCount: view.partitionCount,
@@ -272,11 +286,12 @@ export async function readLatestDeviceState(opts: {
   owner: EthAddress
 }): Promise<DeviceStateSnapshot | undefined> {
   const topic = deviceStateTopic(opts.accountId, opts.deviceId)
-  const finder = new AsyncEpochFinder(opts.bee, topic, opts.owner)
+  const reads = throughReadLine(opts.bee, "background")
+  const finder = new AsyncEpochFinder(reads, topic, opts.owner)
   const refBytes = await finder.findAt(BigInt(Math.floor(Date.now() / 1000)))
   if (!refBytes) return undefined
   const data = await downloadDataWithChunkAPI(
-    opts.bee,
+    reads,
     new Reference(refBytes).toHex(),
   )
   return deserializeDeviceState(data)
@@ -289,14 +304,15 @@ function pickLatest<T extends { at: number }>(a: T, b: T): T {
 }
 
 /**
- * Merge every device's latest view into one account state, reusing the Phase 1
- * primitives for the collections and per-field LWW for the scalars. The device
- * set (`rosterDevices`) comes from the append-only roster (discovery); account
- * immutables come from any device view (identical across devices).
+ * Merge every device's latest view into one account state, reusing the
+ * `merge-snapshot.ts` primitives for the collections and per-field LWW for the
+ * scalars. The device set (`rosterDevices`) comes from the append-only roster
+ * (discovery). Account immutables come from any device view (identical across
+ * devices).
  *
- * Equivalent by construction to today's `mergeSnapshotWithRemote` over the same
- * data (see the differential test) — convergence and deletion semantics are
- * unchanged from Phase 1.
+ * Equivalent by construction to `mergeSnapshotWithRemote` over the same data
+ * (see the differential test), so convergence and deletion work exactly as
+ * they do there.
  */
 export function foldAccount(
   views: DeviceStateSnapshot[],
@@ -314,6 +330,7 @@ export function foldAccount(
   let accountName = { value: "", at: 0 }
   let defaultBatch: { value?: string; at: number } = { at: 0 }
   let settings: { value?: AccountSettings; at: number } = { at: 0 }
+  let walletLink: { value?: WalletLink; at: number } = { at: 0 }
 
   for (const v of views) {
     connectedApps = mergeConnectedApps(
@@ -325,6 +342,7 @@ export function foldAccount(
     accountName = pickLatest(accountName, v.accountName)
     defaultBatch = pickLatest(defaultBatch, v.defaultPostageStampBatchID)
     settings = pickLatest(settings, v.settings)
+    walletLink = pickLatest(walletLink, v.walletLink)
   }
 
   // Account immutables from any view that defines them — NOT just views[0],
@@ -355,9 +373,11 @@ export function foldAccount(
       ? new BatchId(defaultBatch.value)
       : undefined,
     settings: settings.value,
+    walletLink: walletLink.value,
     accountNameAt: accountName.at,
     defaultStampAt: defaultBatch.at,
     settingsAt: settings.at,
+    walletLinkAt: walletLink.at,
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
     publicKey,
     // No per-field clock needed: partitionCount is a fixed constant

@@ -23,7 +23,7 @@ export {
 export { createSyncAccount } from "./sync-account"
 export type { SyncAccountOptions, SyncAccountFunction } from "./sync-account"
 
-// Phase 3a: per-device snapshot feeds + append-only roster discovery
+// Per-device snapshot feeds and append-only roster discovery
 export {
   deviceStateTopic,
   accountStateToDeviceView,
@@ -39,8 +39,8 @@ export type {
   DeviceStateSnapshot,
   DeviceStateView,
   FoldedAccount,
-  AccountSettings,
 } from "./device-state"
+export type { AccountSettings } from "../schemas"
 export {
   rosterTopic,
   readRoster,

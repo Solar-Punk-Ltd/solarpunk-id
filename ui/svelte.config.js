@@ -12,6 +12,11 @@ const config = {
     paths: {
       base: process.env.BASE_PATH || '',
     },
+    // Swarm gateways such as bzz.link answer 500 to many parallel requests, and a split build makes a cold load ask
+    // for 36 to 62 files at once. One bundle makes it 5.
+    output: {
+      bundleStrategy: 'single',
+    },
   },
 }
 

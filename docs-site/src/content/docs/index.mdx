@@ -14,7 +14,7 @@ import identityStorage from '../../assets/intro/identity-storage.png'
 Swarm ID is sign-in and storage for apps built on [Swarm](https://www.ethswarm.org/). Your users
 get one account that works in every Swarm app, unlocked with a passkey, a password or an Ethereum
 wallet, in the browser they already have. Your app gets a signed-in user and somewhere to put their
-data, with no servers, no session store and nothing to install.
+data, with no server of your own to run, no session store and nothing to install.
 
 ## What your users see
 
@@ -102,11 +102,14 @@ a [subsidised gateway](./subsidised-gateway/). Downloads are free either way.
 - **Storage through the same connection.** Upload, download, publish a feed, encrypt for a chosen
   set of readers. Every Swarm request goes out on the user's behalf; uploads are paid from the
   user's drive, or from a gateway you subsidise.
-- **Keys you never hold.** The secret that controls the account never leaves the Swarm ID site, and
-  the key derived from it for your app stays in the iframe: your app gets signatures and derived
+- **Keys you never hold.** The secret that controls the account is never sent to your app, and
+  the key derived from it for your app stays in the iframe. Your app gets signatures and derived
   values, never the key itself. One app's key says nothing about another's, and nothing your app
-  holds can expose the account. Isolation is of keys, not of data: anything uploaded unencrypted
-  is public on Swarm, as it is for every Swarm app.
+  holds can expose the account. Those keys live in code served from the Swarm ID site, so that
+  site has to be trustworthy
+  ([Who you trust when you use the hosted site](./swarm-hosting/#who-you-trust-when-you-use-the-hosted-site)).
+  Isolation is of keys, not of data: anything uploaded unencrypted is public on Swarm, as it is
+  for every Swarm app.
 - **Every major browser.** Chrome, Firefox and Safari, desktop and mobile, no extension. This is the
   part that is usually hard on the web, and it is checked on real devices;
   [Architecture](./architecture/#storage) says what is confirmed and what is still open.

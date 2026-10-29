@@ -1,0 +1,18 @@
+diff --git a/dist/index-6ae5acf7.js b/dist/index-6ae5acf7.js
+index 2a629f8f1fa428c0d475551b706be3fdcf7594d3..690e2da56c3978dbc5ae78a37de43036e0ef1c8b 100644
+--- a/dist/index-6ae5acf7.js
++++ b/dist/index-6ae5acf7.js
+@@ -2951,9 +2951,10 @@ function trackWallet(provider, label) {
+     });
+ }
+ async function getEns(address, chain) {
+-    // chain we don't recognize and don't have a rpcUrl for requests
+-    if (!chain)
+-        return null;
++    // Swarm ID: the picker reads no ENS name. Onboard asks a public endpoint,
++    // ignoring the rpcUrl it was given, and that tells the endpoint which
++    // wallet opened Swarm ID. Nothing in Swarm ID reads the answer.
++    return null;
+     const provider = await getProvider(chain);
+     if (!provider)
+         return null;

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Read entry point for Phase 3a: reconstruct account state from Swarm by
- * scanning the append-only device roster (discovery) and folding every device's
- * latest state feed. Replaces the single shared-snapshot fetch used by restore
+ * Read entry point for the per-device feeds: reconstruct account state from
+ * Swarm by scanning the append-only device roster (discovery) and folding
+ * every device's latest state feed. Replaces the single shared-snapshot fetch used by restore
  * / refresh / the proxy.
  */
 
@@ -26,6 +26,8 @@ import type { SyncedAccount, Device } from "../schemas"
 export interface FoldAccountResult {
   account: FoldedAccount
   devices: Device[]
+  /** Devices still on the account whose saved state could not be read, so `account` lacks their view */
+  unreadDevices: number
 }
 
 /**
@@ -54,9 +56,11 @@ export function foldedToSyncedAccount(opts: {
     derivationKey,
     defaultPostageStampBatchID: account.defaultPostageStampBatchID,
     settings: account.settings,
+    walletLink: account.walletLink,
     accountNameAt: account.accountNameAt,
     defaultStampAt: account.defaultStampAt,
     settingsAt: account.settingsAt,
+    walletLinkAt: account.walletLinkAt,
     lastModified: opts.lastModified ?? Date.now(),
     devices: [...account.devices],
     connectedApps: [...account.connectedApps],
@@ -133,22 +137,21 @@ async function doFoldAccountFromSwarm(opts: {
   // Fold the latest view of every non-removed device. Reads run in parallel:
   // each device feed is independent and each lookup is a multi-round-trip epoch
   // traversal, so overlapping them collapses N×latency into ≈1×. A device whose
-  // feed is unreachable is skipped (best-effort), not fatal — its peers' views
-  // still converge the shared entities.
-  // ponytail: plain Promise.all — device count is tiny; add a concurrency pool
-  // only if rosters ever grow large.
+  // feed is unreachable is skipped (best-effort), not fatal, because its peers'
+  // views still converge the shared entities.
+  // Deliberate: a plain Promise.all, because the device count is tiny. Add a
+  // concurrency pool only if rosters ever grow large.
+  const activeDevices = devices.filter((device) => !device.removedAt)
   const views = (
     await Promise.all(
-      devices
-        .filter((device) => !device.removedAt)
-        .map((device) =>
-          readLatestDeviceState({
-            bee: opts.bee,
-            accountId: opts.accountId,
-            deviceId: device.deviceId,
-            owner,
-          }).catch(() => undefined),
-        ),
+      activeDevices.map((device) =>
+        readLatestDeviceState({
+          bee: opts.bee,
+          accountId: opts.accountId,
+          deviceId: device.deviceId,
+          owner,
+        }).catch(() => undefined),
+      ),
     )
   ).filter((view): view is DeviceStateSnapshot => view !== undefined)
 
@@ -161,9 +164,10 @@ async function doFoldAccountFromSwarm(opts: {
   // Coalesced callers share this ONE result (see `inFlightFolds`). Freeze the
   // arrays they iterate so a stray mutation throws loudly instead of silently
   // corrupting a concurrent caller's view.
-  // ponytail: shallow freeze (arrays only, not each element) — catches the
-  // realistic push/splice/sort corruption since today's callers only read or
-  // pass these into the pure `merge*` helpers, which never mutate their inputs.
+  // Deliberate: a shallow freeze (arrays only, not each element). It catches
+  // the realistic push/splice/sort corruption since today's callers only read
+  // or pass these into the pure `merge*` helpers, which never mutate their
+  // inputs.
   // If a caller ever mutates an element in place, deep-freeze the elements too
   // (or clone the result per caller).
   for (const arr of [
@@ -174,5 +178,9 @@ async function doFoldAccountFromSwarm(opts: {
   ]) {
     if (Array.isArray(arr)) Object.freeze(arr)
   }
-  return { account, devices }
+  return {
+    account,
+    devices,
+    unreadDevices: activeDevices.length - views.length,
+  }
 }

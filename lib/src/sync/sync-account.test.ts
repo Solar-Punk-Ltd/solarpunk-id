@@ -91,7 +91,7 @@ function createMockBee(): Bee {
 // Upload & Epoch Mock Setup
 // ============================================================================
 
-// Track what was uploaded. Phase 3a writes TWO feeds per sync (the device-state
+// Track what was uploaded. A sync writes TWO feeds (the device-state
 // blob, then the device-registry blob), so capture every upload in order;
 // `capturedUploadData` keeps the last for back-compat.
 let capturedUploads: Uint8Array[]
@@ -273,7 +273,7 @@ describe("createSyncAccount", () => {
     expect(result.status).toBe("success")
     if (result.status !== "success") return
 
-    // Phase 3a writes the device-state feed (the roster append is mocked here).
+    // A sync writes the device-state feed (the roster append is mocked here).
     expect(uploadCallCount).toBe(1)
     expect(capturedUploadData).toBeDefined()
     expect(capturedEncryptionKey).toBeDefined()
@@ -522,7 +522,7 @@ describe("createSyncAccount", () => {
   })
 
   // (Removed: the shared-feed verifyWon re-merge/republish + success-unverified
-  // tests — Phase 3a writes each device's own feed, so there is no shared-feed
+  // tests. Each device writes its own feed, so there is no shared-feed
   // collision to verify against. Per-device convergence is covered by
   // device-state.test.ts (differential fold) and the integration test.)
 })

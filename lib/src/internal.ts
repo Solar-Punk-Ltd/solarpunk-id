@@ -4,9 +4,10 @@
 /**
  * `@solarpunkltd/swarm-id/internal` — the identity UI's half of the trusted domain.
  *
- * Everything here takes the account record, the master key or the
- * `derivationKey`, none of which ever leaves the trusted domain, so a dApp has
- * no use for any of it; a dApp holds a `SwarmIdClient` from the package root.
+ * Everything here takes the account record, the master key, which never
+ * leaves the trusted domain, or the `derivationKey`, which only a context on
+ * the Swarm ID origin holds, so a dApp has no use for any of it. A dApp holds
+ * a `SwarmIdClient` from the package root.
  * The proxy iframe, which lives in the same lib, reaches these modules directly.
  * A name is on this list because `ui/` (its tests included) imports it, or
  * because the docs' "Storage layout" page names it for a host that writes the
@@ -48,6 +49,7 @@ export {
 export type {
   AccessMethod,
   Account,
+  AccountSettings,
   ConnectedApp,
   Device,
   LocalVault,
@@ -128,6 +130,8 @@ export {
   onlySiteChatBinding,
   siteChatAddress,
 } from "./utils/chat-binding"
+
+export { countersignWalletLink } from "./utils/wallet-link"
 
 export {
   DEFAULT_SITE_ALLOW_LIST_ENS_NAME,

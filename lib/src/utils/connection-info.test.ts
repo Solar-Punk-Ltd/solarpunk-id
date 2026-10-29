@@ -141,4 +141,27 @@ describe("connectionInfoEqual", () => {
       ),
     ).toBe(false)
   })
+
+  it("returns false when the wallet link is turned on, off or signed again", () => {
+    const link = {
+      message: "first",
+      walletSignature: "0x01",
+      accountSignature: "0x02",
+    }
+    const linked = { ...BASE, identity: { ...IDENTITY, walletLink: link } }
+    expect(connectionInfoEqual({ ...BASE }, linked)).toBe(false)
+    expect(connectionInfoEqual(linked, { ...BASE })).toBe(false)
+    expect(
+      connectionInfoEqual(linked, {
+        ...BASE,
+        identity: { ...IDENTITY, walletLink: { ...link, message: "newer" } },
+      }),
+    ).toBe(false)
+    expect(
+      connectionInfoEqual(linked, {
+        ...BASE,
+        identity: { ...IDENTITY, walletLink: { ...link } },
+      }),
+    ).toBe(true)
+  })
 })

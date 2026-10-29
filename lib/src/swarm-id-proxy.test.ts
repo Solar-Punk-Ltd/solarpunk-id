@@ -571,7 +571,7 @@ describe("SwarmIdProxy subsidised-mode selection", () => {
   const fireStorage = (key: string) =>
     storageListeners.forEach((listener) => listener({ key } as StorageEvent))
 
-  function mountProxy(): void {
+  function mountProxy(config: { defaultBeeNodeUrl?: string } = {}): void {
     const listeners: Record<string, unknown> = {}
     vi.stubGlobal("window", {
       addEventListener: vi.fn((type: string, listener: unknown) => {
@@ -586,7 +586,10 @@ describe("SwarmIdProxy subsidised-mode selection", () => {
       location: { origin: "https://id.example.com", pathname: "/proxy" },
       localStorage: localStorageFake,
     })
-    proxy = new SwarmIdProxy({ siteAllowList: allowingSites(PARENT_ORIGIN) })
+    proxy = new SwarmIdProxy({
+      siteAllowList: allowingSites(PARENT_ORIGIN),
+      ...config,
+    })
     messageListener = listeners["message"] as MessageListener
   }
 
@@ -864,6 +867,64 @@ describe("SwarmIdProxy subsidised-mode selection", () => {
       fireStorage(STORAGE_KEY_NETWORK_SETTINGS)
 
       expect(connectionInfo().uploadMode).toBe("unavailable")
+      expect(internals(proxy).bee.url).toBe(clientUrl(DEFAULT_BEE_NODE_URL))
+    })
+  })
+
+  describe("a default Bee node the build configured", () => {
+    const CONFIGURED_DEFAULT_URL = "https://bee.example.com/"
+
+    const remount = (defaultBeeNodeUrl = CONFIGURED_DEFAULT_URL) => {
+      storageListeners = []
+      mountProxy({ defaultBeeNodeUrl })
+    }
+
+    it("is the node when the person saved none", () => {
+      remount()
+
+      expect(internals(proxy).bee.url).toBe(clientUrl(CONFIGURED_DEFAULT_URL))
+    })
+
+    it("gives way to the node the person saved", () => {
+      setNetworkSettings(CUSTOM_BEE_URL)
+      remount()
+
+      expect(internals(proxy).bee.url).toBe(clientUrl(CUSTOM_BEE_URL))
+    })
+
+    it("is the node again once the person's saved node is cleared", () => {
+      remount()
+      setNetworkSettings(CUSTOM_BEE_URL)
+      fireStorage(STORAGE_KEY_NETWORK_SETTINGS)
+
+      store.delete(STORAGE_KEY_NETWORK_SETTINGS)
+      fireStorage(STORAGE_KEY_NETWORK_SETTINGS)
+
+      expect(internals(proxy).bee.url).toBe(clientUrl(CONFIGURED_DEFAULT_URL))
+    })
+
+    it("is not a custom node, so the dApp's gateway stays", async () => {
+      remount()
+
+      await identify(GATEWAY_URL)
+      setAccountState({})
+
+      expect(connectionInfo().uploadMode).toBe("subsidised")
+    })
+
+    it("makes a saved built-in default a custom node, which drops the gateway", async () => {
+      setNetworkSettings(DEFAULT_BEE_NODE_URL)
+      remount()
+
+      await identify(GATEWAY_URL)
+      setAccountState({})
+
+      expect(connectionInfo().uploadMode).toBe("unavailable")
+    })
+
+    it("is the built-in default when the build sets it empty", () => {
+      remount("")
+
       expect(internals(proxy).bee.url).toBe(clientUrl(DEFAULT_BEE_NODE_URL))
     })
   })

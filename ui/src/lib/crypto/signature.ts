@@ -40,6 +40,9 @@ const EIP155_V_FLOOR = 35
 /** What the canonical form offsets the recovery id by. */
 const V_OFFSET = 27
 const HEX_RADIX = 16
+/** Order of the secp256k1 group: `s` and `n - s` sign the same message. */
+const SECP256K1_N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n
+const SCALAR_HEX_LENGTH = 64
 
 export function canonicalSignature(signature: string): Hex {
   if (!/^0x[0-9a-fA-F]+$/.test(signature)) {
@@ -68,4 +71,25 @@ export function canonicalSignature(signature: string): Hex {
   // `v` in neither range (or a length that is no signature at all) throws
   // rather than deriving a key from bytes nobody can reproduce.
   return serializeSignature(parseSignature(hex))
+}
+
+/**
+ * A canonical signature with `s` in the lower half of the curve order, and the
+ * parity flipped to match when it was not. Both forms recover the same
+ * address, but the wallet link's readers (docs/Wallet-Link.md) accept only the
+ * low one, so a wallet that answers high-s would otherwise be refused.
+ *
+ * Kept apart from `canonicalSignature` on purpose: the seed key is derived
+ * from those bytes, and changing them for a high-s wallet would lock it out of
+ * a vault it already sealed.
+ */
+export function lowSSignature(signature: Hex): Hex {
+  const { r, s, yParity } = parseSignature(signature)
+  const scalar = BigInt(s)
+  if (scalar <= SECP256K1_N / 2n) {
+    return signature
+  }
+  const lowS =
+    `0x${(SECP256K1_N - scalar).toString(HEX_RADIX).padStart(SCALAR_HEX_LENGTH, '0')}` as Hex
+  return serializeSignature({ r, s: lowS, yParity: 1 - (yParity ?? 0) })
 }

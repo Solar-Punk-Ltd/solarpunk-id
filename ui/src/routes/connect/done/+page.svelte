@@ -11,10 +11,11 @@
   site with no drive. What sits between the two varies:
   - the account has drives and an entry for the site: a picker for the drive
     the site uses, starting on its current one, read from the account's own
-    record. A pick that changes the drive is saved as the site's
-    postageStampBatchID with the confirm (the default saves "follow the
-    default"), and a frame kept apart from this window's storage is handed the
-    drive, so the open site starts stamping. When that frame is gone the
+    record. A site with no drive of its own yet starts on the account default,
+    offered and not given: the confirm saves whatever the picker shows as the
+    site's postageStampBatchID when it differs from what the site has, and a
+    frame kept apart from this window's storage is handed the drive, so the
+    open site starts stamping. When that frame is gone the
     screen says the site has no drive until it connects again, and the next
     "Go to app" only closes the window.
   - the account has no drives: the drive pitch, a secondary card that opens
@@ -30,7 +31,7 @@
   import { goto } from '$app/navigation'
   import { resolve } from '$app/paths'
 
-  import { appStampChoice, appStampOptions, appStampValue } from '$lib/app-stamp'
+  import { appStampOptions, connectPickToStore, connectPickerStart } from '$lib/app-stamp'
   import AccountAvatar from '$lib/components/account-avatar.svelte'
   import AppHeader from '$lib/components/app-header.svelte'
   import DriveAddDialog from '$lib/components/drive-add-dialog.svelte'
@@ -57,10 +58,10 @@
   const showPitch = $derived(drives.length === 0)
 
   const driveOptions = $derived(account ? appStampOptions(account) : [])
-  /** The drive the site uses as the window opened, which the picker starts on */
-  const currentDriveValue = $derived(account && app ? appStampValue(app, account) : '')
+  /** Where the picker starts: the site's drive, or the account default offered to it */
+  const startDriveValue = $derived(account && app ? connectPickerStart(app, account) : '')
   let pickedDriveValue = $state<string | undefined>(undefined)
-  const selectedDriveValue = $derived(pickedDriveValue ?? currentDriveValue)
+  const selectedDriveValue = $derived(pickedDriveValue ?? startDriveValue)
   /** The pick was confirmed but could not be carried to the open site */
   let pickNotReached = $state(false)
 
@@ -76,11 +77,12 @@
 
   async function goToApp() {
     if (!pickNotReached && account && request && app) {
-      const changed =
-        showPicker && pickedDriveValue !== undefined && pickedDriveValue !== currentDriveValue
+      const choice = showPicker
+        ? connectPickToStore(app, account, selectedDriveValue, pickedDriveValue !== undefined)
+        : undefined
       await account.confirmAppStamp(
         request.appOrigin,
-        changed ? { batchID: appStampChoice(pickedDriveValue!, account) } : undefined,
+        choice === undefined ? undefined : { batchID: choice },
       )
       if (handOverPickedStamp(account, request) === 'not-reached' && showPicker) {
         pickNotReached = true

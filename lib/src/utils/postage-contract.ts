@@ -5,12 +5,13 @@
  * Reads postage batch state directly from the Swarm PostageStamp contract on
  * Gnosis Chain, by batch ID, over a plain JSON-RPC `eth_call`.
  *
- * This is the ground truth for a stamp's remaining lifetime: it is the exact
- * data a Bee node uses internally to compute `batchTTL`, but it does not
- * require the node to know about the batch. A stamp added manually (or owned
- * by a different node) has no entry in `GET /stamps/{id}`, so the Bee-node TTL
- * path falls back to a constant-price approximation that drifts as the chain
- * price moves (see issue #344). Querying the contract avoids that entirely.
+ * The chain is the source of truth for whether a batch exists and how long it
+ * has left. This is the exact data a Bee node uses internally to compute
+ * `batchTTL`, and reading it does not require the node to know about the
+ * batch, so a stamp added manually (or owned by a different node), which has
+ * no entry in `GET /stamps/{id}`, still gets its lifetime from the contract.
+ * The Bee node answers `usable`, which the chain does not hold (see
+ * {@link fetchBatchStanding}).
  *
  * The contract exposes the per-chunk normalised balance accounting used by the
  * storage-incentives system:
@@ -19,7 +20,7 @@
  *   ttlSeconds               = remainingBlocks * GNOSIS_BLOCK_TIME
  */
 
-import { fetchBatchTTL, GNOSIS_BLOCK_TIME } from "./ttl"
+import { fetchBatchDetails, GNOSIS_BLOCK_TIME } from "./ttl"
 import { CHAIN_READ_TIMEOUT_MS, jsonRpcBatch } from "./json-rpc"
 
 /**
@@ -49,11 +50,11 @@ function isLocalRpcUrl(rpcUrl: string): boolean {
 /**
  * Picks the PostageStamp contract address that matches the chain `rpcUrl` points
  * at. A dev-override address (bee-compose anvil) is only honoured against a local
- * RPC; against any remote RPC (Gnosis mainnet) it would read a nonexistent
- * contract — `eth_call` returns empty, the batch looks unknown, and callers
- * silently fall back to a bogus price estimate. Tying the address to the RPC
- * network stops the two from drifting apart, which is what produced wildly wrong
- * estimated expiry dates when a dev build read a mainnet batch (#344).
+ * RPC. Against any remote RPC (Gnosis mainnet) it would read a nonexistent
+ * contract, `eth_call` would return empty, and the standing would rest on the
+ * Bee node alone. Tying the address to the RPC network stops the two from
+ * drifting apart, which is what produced wildly wrong estimated expiry dates
+ * when a dev build read a mainnet batch (#344).
  */
 export function resolvePostageStampContractAddress(
   rpcUrl: string,
@@ -191,20 +192,6 @@ async function ethCallBatch(
 }
 
 /**
- * Fetches a consistent on-chain snapshot of a postage batch from the
- * PostageStamp contract: its `batches(batchId)` tuple plus the global
- * `currentTotalOutPayment()` and `lastPrice()`.
- *
- * @param rpcUrl - Gnosis Chain JSON-RPC URL
- * @param batchId - 32-byte hex batch ID, with or without `0x` prefix
- * @param contractAddress - PostageStamp contract address to read from. Defaults
- *          to the Gnosis mainnet deployment; override for a local dev chain
- *          (bee-compose anvil deploys it at a different address).
- * @returns The decoded state, or `undefined` if the batch is unknown to the
- *          contract (zero owner) or the RPC request fails. Never throws — the
- *          UI falls back to other expiry sources on `undefined`.
- */
-/**
  * Outcome of an on-chain batch read, keeping the two failure modes distinct:
  *   - `found` — the contract knows the batch (non-zero owner).
  *   - `not-found` — the contract returned an all-zero tuple; the batch
@@ -218,9 +205,18 @@ export type OnChainBatchResult =
   | { status: "error" }
 
 /**
- * Reads a batch's on-chain state, distinguishing "definitively absent" from
- * "couldn't check". {@link fetchOnChainBatchState} is the simpler wrapper that
- * collapses both into `undefined`.
+ * Fetches a consistent on-chain snapshot of a postage batch from the
+ * PostageStamp contract: its `batches(batchId)` tuple plus the global
+ * `currentTotalOutPayment()` and `lastPrice()`, in one batched request.
+ *
+ * @param rpcUrl - Gnosis Chain JSON-RPC URL
+ * @param batchId - 32-byte hex batch ID, with or without `0x` prefix
+ * @param contractAddress - PostageStamp contract address to read from. Defaults
+ *          to the Gnosis mainnet deployment. Override it for a local dev chain
+ *          (bee-compose anvil deploys it at a different address).
+ * @returns `found` with the decoded state, `not-found` when the contract knows
+ *          no such batch (zero owner), or `error` when the request failed or
+ *          its payload could not be decoded. Never throws.
  */
 export async function fetchOnChainBatchStateResult(
   rpcUrl: string,
@@ -265,19 +261,6 @@ export async function fetchOnChainBatchStateResult(
   }
 }
 
-export async function fetchOnChainBatchState(
-  rpcUrl: string,
-  batchId: string,
-  contractAddress: string = POSTAGE_STAMP_CONTRACT_ADDRESS,
-): Promise<OnChainBatchState | undefined> {
-  const result = await fetchOnChainBatchStateResult(
-    rpcUrl,
-    batchId,
-    contractAddress,
-  )
-  return result.status === "found" ? result.state : undefined
-}
-
 /**
  * Computes a batch's remaining TTL in seconds from an on-chain snapshot, using
  * the same integer math as the storage-incentives contract and Bee node.
@@ -301,78 +284,49 @@ export function calculateContractTTLSeconds(
   return Number(remainingBlocks * BigInt(GNOSIS_BLOCK_TIME))
 }
 
-/**
- * Convenience wrapper: fetches a batch's on-chain state and returns its
- * remaining TTL in seconds. This is the contract-backed counterpart to
- * {@link fetchBatchTTL} (which reads the Bee node), and unlike it works for any
- * batch the contract knows about, regardless of whether the configured Bee node
- * tracks it.
- *
- * @param contractAddress - PostageStamp contract address (defaults to mainnet;
- *          override for a local dev chain).
- * @returns Remaining TTL in seconds (`0` when expired), or `undefined` when the
- *          batch is unknown, the RPC request fails, or the price is zero.
- */
-export async function fetchBatchTTLFromContract(
-  rpcUrl: string,
-  batchId: string,
-  contractAddress: string = POSTAGE_STAMP_CONTRACT_ADDRESS,
-): Promise<number | undefined> {
-  const state = await fetchOnChainBatchState(rpcUrl, batchId, contractAddress)
-  if (state === undefined) {
-    return undefined
-  }
-  return calculateContractTTLSeconds(state)
-}
-
-/**
- * Resolves a batch's remaining TTL (seconds) from the most authoritative source
- * available, in order:
- *   1. The PostageStamp contract, read directly by batchId — ground truth that
- *      works for any batch, even one the configured Bee node has never seen.
- *   2. The Bee node's `batchTTL` — also live chain state, but only for batches
- *      the node tracks.
- *
- * This is the single canonical "best remaining TTL" lookup; callers layer a
- * price-based approximation ({@link calculateTTLSeconds}) on top when both
- * sources return `undefined`.
- *
- * @param gnosisRpcUrl - Gnosis Chain JSON-RPC URL (for the contract read)
- * @param beeUrl - Bee node URL (fallback)
- * @param batchId - 32-byte hex batch ID, with or without `0x` prefix
- * @param localContractAddress - PostageStamp address for a local dev chain. Only
- *          honoured when `gnosisRpcUrl` targets a local node; against any remote
- *          RPC the Gnosis mainnet deployment is used regardless (see
- *          {@link resolvePostageStampContractAddress}).
- * @returns Remaining TTL in seconds, or `undefined` if neither source can answer.
- */
-export async function fetchAuthoritativeBatchTTL(
-  gnosisRpcUrl: string,
-  beeUrl: string,
-  batchId: string,
-  localContractAddress?: string,
-): Promise<number | undefined> {
-  const contractAddress = resolvePostageStampContractAddress(
-    gnosisRpcUrl,
-    localContractAddress,
-  )
-  return (
-    (await fetchBatchTTLFromContract(gnosisRpcUrl, batchId, contractAddress)) ??
-    (await fetchBatchTTL(beeUrl, batchId))
-  )
+/** A batch's standing as {@link fetchBatchStanding} reads it. A field is absent where no source answered for it. */
+export interface BatchStanding {
+  exists?: boolean
+  /** Remaining seconds, `0` once expired. */
+  batchTTL?: number
+  usable?: boolean
 }
 
 /**
  * Resolves a batch's existence and remaining TTL, treating the on-chain contract
- * as the source of truth. A contract `not-found` is authoritative — a Bee node
- * that happens to track the batch cannot override the chain. The Bee node is
- * consulted only when the contract read itself failed (RPC unreachable), as a
- * best-effort second opinion.
- *
- * Unlike {@link fetchAuthoritativeBatchTTL} (best-effort TTL, falls back to Bee
- * even on contract `not-found`), this is the stricter lookup for existence-aware
- * UI.
+ * as the source of truth. A contract `not-found` is authoritative: the batch has
+ * expired and been removed, or never existed, and a Bee node that still tracks
+ * it cannot override the chain. The Bee node answers `usable`, which the chain
+ * does not hold, and stands in for the chain only when the contract read itself
+ * failed (RPC unreachable).
  *
  * @param localContractAddress - PostageStamp address for a local dev chain; only
  *          honoured against a local RPC (see {@link resolvePostageStampContractAddress}).
  */
+export async function fetchBatchStanding(
+  gnosisRpcUrl: string,
+  beeUrl: string,
+  batchId: string,
+  localContractAddress?: string,
+): Promise<BatchStanding> {
+  const contractAddress = resolvePostageStampContractAddress(
+    gnosisRpcUrl,
+    localContractAddress,
+  )
+  const [onChain, node] = await Promise.all([
+    fetchOnChainBatchStateResult(gnosisRpcUrl, batchId, contractAddress),
+    fetchBatchDetails(beeUrl, batchId),
+  ])
+  if (onChain.status === "not-found") {
+    return { exists: false, batchTTL: 0, usable: false }
+  }
+  if (onChain.status === "found") {
+    const batchTTL = calculateContractTTLSeconds(onChain.state)
+    return {
+      exists: true,
+      batchTTL,
+      usable: batchTTL === 0 ? false : node?.usable,
+    }
+  }
+  return node ?? {}
+}

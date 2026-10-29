@@ -75,6 +75,11 @@ app's exact origin (scheme, host and port) is in that record, `initialize()` rej
 allow list you control. `docs/Site-Allow-List.md` in the repository has the record's format and
 every reason a site is refused.
 
+Using the hosted site means trusting the gateway that serves it and whoever controls
+`solarpunkid.eth`, because they decide what code runs there.
+[Who you trust when you use the hosted site](../swarm-hosting/#who-you-trust-when-you-use-the-hosted-site)
+explains what that covers.
+
 ## Connect and upload
 
 ```typescript
@@ -163,8 +168,7 @@ Two ways to handle it, and most apps do both:
 Importing the package is harmless anywhere, but constructing a client touches `window`. In a
 framework that renders on a server (Next.js App Router, SvelteKit with SSR, Nuxt), construct it in
 code that only runs in the browser: an effect, `onMount`, or a branch on
-`typeof window !== 'undefined'`. There is no server-side client yet
-([#770](https://github.com/snaha/swarm-id/issues/770)). A server or an agent that writes to Swarm
+`typeof window !== 'undefined'`. There is no server-side client. A server or an agent that writes to Swarm
 goes through `@ethersphere/bee-js` directly with the drive's batch id and signer key, stamping each
 chunk so the user's own drive is spent through the public gateway. See
 [The Public Gateway](../public-gateway/).

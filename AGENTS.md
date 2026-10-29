@@ -6,7 +6,7 @@ Web-based identity and key management for decentralized applications on the Swar
 
 Where the two are genuinely cross-site, or the browser partitions regardless (Safari ITP, strict privacy settings), the iframe gets its own partitioned store and the connect popup hands it the account's synced projection (stamps incl. signer keys) instead — uploads keep working, and the session is kept in that partition's own store until it is disconnected or its 7 days are up ([#635](https://github.com/snaha/swarm-id/issues/635)), rather than re-handshaking on every page load ([#277](https://github.com/snaha/swarm-id/issues/277), [docs/Account-Bus.md](docs/Account-Bus.md)). That handover needs the popup to be opened **by a Swarm ID frame**, from a click inside it, because a browser lets a frame open a window only from its own click: that is the button frame `SwarmIdClient.mountButton()` shows, a second visible frame beside the hidden one in the same partition. It opens the popup, tells the hidden frame the popup's challenge, and the popup posts the handover to the Swarm ID frames beside its opener. `SwarmIdClient.connect()` opens the popup from the dApp page only when the iframe can prove its store is shared, and otherwise refuses with `button-required`. It asks the storage, not the user agent, and shared means the iframe can open what a first-party page sealed there ([#613](https://github.com/snaha/swarm-id/issues/613), `lib/src/utils/storage-probe.ts`).
 
-**Verified on real Safari** ([#584](https://github.com/snaha/swarm-id/issues/584)): measured on iOS 18.7 / Safari 26.6 against snaha's deployment of the upstream project, ITP partitions the iframe, the `window.opener` handover reaches it, the hydrated view builds a working stamper (`uploadMode: user-stamp`), and a chunk uploads and reads back byte-identical. That run measured the older path, a popup the session frame opened itself, and W6.1e measures the button frame's path on a device again. That run also saw the device id hold across a reload, which the demo's Safari check no longer tests, because apps no longer receive the device id ([docs/Hardening.md](docs/Hardening.md)). A **Safari private window** passes the same five checks, upload included. Its partitioned store is still discarded when the window closes, which is by design. Still unrun on a device: how long a dormant account's storage survives ITP's deletion ([#659](https://github.com/snaha/swarm-id/issues/659)). Two loads in one sitting say nothing about it. WebKit's published rule says seven days of Safari use without interaction, and a WebKit source change of 2024-02-09 added a 30-day tier, as `docs/Hardening.md` sets out with both sources.
+**Verified on real Safari** ([#584](https://github.com/snaha/swarm-id/issues/584)): measured on iOS 18.7 / Safari 26.6 against snaha's deployment of the upstream project, ITP partitions the iframe, the `window.opener` handover reaches it, the hydrated view builds a working stamper (`uploadMode: user-stamp`), and a chunk uploads and reads back byte-identical. That run measured the older path, a popup the session frame opened itself. The button frame's path is still to be measured on a real device. That run also saw the device id hold across a reload, which the demo's Safari check no longer tests, because apps no longer receive the device id ([docs/Hardening.md](docs/Hardening.md)). A **Safari private window** passes the same five checks, upload included. Its partitioned store is still discarded when the window closes, which is by design. Still unrun on a device: how long a dormant account's storage survives ITP's deletion ([#659](https://github.com/snaha/swarm-id/issues/659)). Two loads in one sitting say nothing about it. WebKit's published rule says seven days of Safari use without interaction, and a WebKit source change of 2024-02-09 added a 30-day tier, as `docs/Hardening.md` sets out with both sources.
 
 ## Project status
 
@@ -14,15 +14,15 @@ Where the two are genuinely cross-site, or the browser partitions regardless (Sa
 users to keep and no data to migrate, so backwards compatibility and migration are not required — a
 schema, wire format, storage key, or protocol may change in place, and the old path is deleted
 rather than kept beside the new one. `0.x` says the same thing to anyone consuming
-`@solarpunkltd/swarm-id`. That changes at `1.0`, and this note with it.
+`@solarpunkltd/swarm-id`.
 
 ## Architecture
 
-1. **Trusted Domain Model**: A trusted domain (e.g., `id.ethswarm.org`) hosts keystore UI and management
+1. **Trusted Domain Model**: A trusted domain (e.g., `solarpunkid.bzz.link`) hosts keystore UI and management
 2. **OAuth-style Popup Flow**: dApps trigger authentication popups that derive app-specific secrets from a master key
 3. **Iframe Proxy**: Hidden iframe handles secure communication and proxies Bee API calls
 
-**Security**: Master key in first-party context only, HMAC-SHA256 key derivation, all postMessage validated with Zod schemas.
+**Security**: Master key in first-party context only, which trusts whatever code the trusted domain's host serves (`docs-site/src/content/docs/swarm-hosting.mdx`, "Who you trust when you use the hosted site"), HMAC-SHA256 key derivation, all postMessage validated with Zod schemas.
 
 ### Authentication
 

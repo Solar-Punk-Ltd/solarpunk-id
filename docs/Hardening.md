@@ -25,6 +25,8 @@ Safari backup prompt, because those navigate to the account pages.
 - Tests: `ui/src/lib/frame-guard.test.ts`, `ui/src/lib/while-allowed.test.ts`,
   and the browser journey
   `ui/tests/framing.test.ts`.
+- What this does not stop: the guard is part of the code the host serves, so a
+  host that serves changed code can leave it out.
 
 ## Every use of the connect window's site checks it first
 
@@ -50,6 +52,22 @@ starts on is read from the account's own record for that site, and nothing in
 the window's link or from the site can name a drive, preselect one or skip
 the question.
 
+A site spends only the drive the person picked for it. The account default
+never stands in for a missing pick: a site
+with no pick, or whose picked drive is gone, resolves no stamp and reports
+`no-stamp`. Without this, a drive bought after the site signed in became the
+account default and the site stamped with it unasked, and removing the picked
+drive moved the site onto the default. The connect window offers the default
+to a site that has none, and only the person's confirm makes it the site's
+drive, stored by its batch so a later change of default does not move the site.
+
+Swarm ID's own account records written from a site's frame (the device-state
+feed, the roster, the lock and the partition lease, through the coordinator built
+on the site's resolved stamp) are paid from the drive the person picked for that
+site. A site with no pick writes none, and Swarm ID's own window pays from the
+account's drives as before. Not done yet: housekeeping on the account default
+through its own coordinator.
+
 Signing in gives the site no stamp. Every connect, first or not, marks the
 site's entry `stampPending`, and the handover that signs a frame kept apart in
 says `stampPending` and carries no stamp at all, signer key included. While it
@@ -59,7 +77,7 @@ channel to another context carries it, and a fold keeps this context's own.
 The person's choice in the record is never touched by it. Nothing else ends the
 wait, a drive picked on the Apps screen included: that pick is saved, the next
 connect window starts on it, and the site uses it once the person confirms
-there. "Go to app" on the done screen is the confirm: one write saves a changed pick and ends the wait,
+there. "Go to app" on the done screen is the confirm: one write saves a changed pick locally and ends the wait,
 and is stored before the window closes, so a frame that reads the shared store
 picks the drive up from it. A frame kept apart is handed the confirmed drive a
 second time the way the session itself was, posted to the Swarm ID frames
@@ -96,7 +114,9 @@ message, and the window cannot tell.
   `lib/src/swarm-id-proxy-partition.test.ts` ("a stamp withheld until the
   person confirms it", "a stamp picked in the connect window after the
   handover") and the browser journeys `ui/tests/connect-drive-picker.test.ts`
-  and `ui/tests/connect-drive-picker-shared.test.ts`.
+  and `ui/tests/connect-drive-picker-shared.test.ts`. The default never standing
+  in: `lib/src/utils/postage-stamp-association.test.ts`, `ui/src/lib/app-stamp.test.ts`
+  and `ui/tests/drive-needs-pick.test.ts`.
 
 ## Keys are sealed at rest
 
@@ -164,8 +184,12 @@ renders no page until the stored accounts are read with their keys open
   hooks in `lib/src/utils/versioned-storage.ts`, the partitioned session in
   `lib/src/swarm-id-proxy.ts` (`savePartitionSession`, `readPartitionSession`).
 - What this does not stop: script running on the identity origin can use the
-  wrapping key. It keeps the plain keys out of the files a profile is stored
-  in, out of storage dumps and out of backups of the browser profile.
+  wrapping key. One way script gets there is code the host serves in place of
+  the real files: the browser does not check what bzz.link or any other host
+  sends against the build. Sealing keeps the plain keys out of the files a
+  profile is stored in, out of storage dumps and out of backups of the browser
+  profile. It rests on the served code being unchanged, as the frame guard
+  above does.
 
 ## A restored session checks it was not ended before its first write, and a session lasts 7 days
 
@@ -184,6 +208,32 @@ answer:
 An account that has never published anything (it has no drive) cannot have
 published a revoke either. The check confirms that its roster is empty, as an
 answer rather than as a failed read, and allows the session.
+
+"Ended" means a removal or a disconnect newer than this session's sign-in,
+the clock the account's merge ranks a site by, so a sign-in after an older
+removal wins here as it wins there. A site the published account does not
+list has had nothing saved about it, its end included, because a removal
+keeps the site's entry with its mark, and the session is allowed, but only
+when every device still on the account was read. A device that could not be
+read may hold the removal, so the answer is then unconfirmed and writes wait.
+A removal also keeps the sign-in time it saw, so an entry marked ended that
+carries this session's own sign-in time ends it, whatever the removing
+device's clock said. Before
+0.10.4 an old removal and a site not listed both read as ended, and since the
+connect window closes before its save lands, an account with a drive was
+signed out of a site on every reload.
+
+"Go to app" closes the connect window without waiting for a save to Swarm.
+The sign-in itself queues a save behind the 2 s debounce when the account is
+picked, which starts while the done screen is open, and the close cuts it off
+when it has not landed. A changed drive pick queues another, which the closing
+window outruns. 0.10.4 had it wait for the save of the sign-in
+before closing, and that save claims a share of the same drive the site's
+frame claims at that moment to send with. On a slow gateway each claim's read
+of the other's intent timed out and counted as missing, so both won the same
+share. A new sign-in reaches the account's saved state with its next save,
+the next account change made in a Swarm ID tab that stays open for its 2 s
+debounce, and until then this check allows it.
 
 A session the person connects in this load writes without the check.
 
@@ -210,10 +260,8 @@ with it. WebKit's published rule is seven days
 A WebKit source change of 2024-02-09
 ([`4506123`](https://github.com/WebKit/WebKit/commit/45061230013728ec9c4900b01b12af26dc592b4b))
 added a 30-day tier for sites never reached through cross-site link decoration,
-and its own message says it does not change current behaviour. No device run in
-this repository has measured which applies
-([#659](https://github.com/snaha/swarm-id/issues/659)). The prompt's text says
-seven days, the shorter of the two.
+and its own message says it does not change current behaviour. The prompt
+assumes the shorter of the two, and its text says seven days.
 After an account is created or imported on this device, a Safari visitor is
 asked once to save their Secret Recovery Phrase or export a backup file, through
 the Account tab's existing sections. Every browser on iPhone and iPad runs

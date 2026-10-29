@@ -94,6 +94,21 @@ const restoredSessionVerdict = vi.hoisted(
 vi.mock("./sync/session-check", () => ({
   checkRestoredSession: vi.fn(() => restoredSessionVerdict.value),
 }))
+/**
+ * The wallet link the account last published, which a restored session reads
+ * on its load. Left answering nothing, the account that never published.
+ */
+const publishedWalletLink = vi.hoisted(
+  () =>
+    ({ value: undefined }) as {
+      value:
+        | { walletLink: WalletLink | undefined; walletLinkAt: number }
+        | undefined
+    },
+)
+vi.mock("./sync/published-wallet-link", () => ({
+  readPublishedWalletLink: vi.fn(async () => publishedWalletLink.value),
+}))
 
 // Passes through, so a test can say this page could not reach the wrapping
 // key for one stored value, which is what a failed IndexedDB read leaves.
@@ -216,7 +231,12 @@ import { BatchId, EthAddress, PrivateKey } from "@ethersphere/bee-js"
 
 import { SwarmIdProxy, PUBLISH_DEBOUNCE_MS } from "./swarm-id-proxy"
 import type { ProxyConfig } from "./swarm-id-proxy"
-import { allowingSites, appSecretAddressChatBinding } from "./test-fixtures"
+import {
+  TEST_LINK_ACCOUNT_KEY_HEX,
+  allowingSites,
+  appSecretAddressChatBinding,
+  signedWalletLink,
+} from "./test-fixtures"
 import { SignalingTransport } from "./bus/signaling-transport"
 import { busChannelName } from "./bus/account-bus"
 import { BusMessageSchema } from "./bus/messages"
@@ -230,6 +250,7 @@ import {
   serializeSyncedAccount,
 } from "./utils/storage-managers"
 import { serializeAccountStateSnapshot } from "./utils/account-state-snapshot"
+import type { WalletLink } from "./utils/wallet-link"
 import {
   IframeToParentMessageSchema,
   STORAGE_CHALLENGE_KEY,
@@ -300,7 +321,16 @@ function makeSyncedAccount(): SyncedAccount {
     publicKey: `02${"ab".repeat(32)}`,
     defaultPostageStampBatchID: new BatchId(BATCH_ID_HEX),
     devices: [],
-    connectedApps: [],
+    // The site has picked the account's one drive: a site spends only its
+    // own pick, never the default (D4, 2026-10-16).
+    connectedApps: [
+      {
+        appUrl: PARENT_ORIGIN,
+        appName: "dApp",
+        lastConnectedAt: 1_000_000,
+        postageStampBatchID: new BatchId(BATCH_ID_HEX),
+      },
+    ],
     postageStamps: [
       {
         batchID: new BatchId(BATCH_ID_HEX),
@@ -496,6 +526,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
           appSecret: "44".repeat(32),
           lastConnectedAt: Date.now(),
           connectedUntil: Date.now() + 60_000,
+          postageStampBatchID: new BatchId(BATCH_ID_HEX),
         },
       ],
       // Inert but schema-valid: the vault is never opened here.
@@ -815,6 +846,12 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         shell.load().map((account) => ({
           ...account,
           defaultPostageStampBatchID: replacement,
+          connectedApps: (account as SignedInAccount).connectedApps.map(
+            (app) => ({
+              ...app,
+              postageStampBatchID: replacement,
+            }),
+          ),
           postageStamps: (account as SyncedAccount).postageStamps.map(
             (stamp) => ({
               ...stamp,
@@ -971,6 +1008,12 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         shell.load().map((account) => ({
           ...account,
           defaultPostageStampBatchID: replacement,
+          connectedApps: (account as SignedInAccount).connectedApps.map(
+            (app) => ({
+              ...app,
+              postageStampBatchID: replacement,
+            }),
+          ),
           postageStamps: (account as SyncedAccount).postageStamps.map(
             (stamp) => ({ ...stamp, batchID: replacement }),
           ),
@@ -1132,6 +1175,35 @@ describe("SwarmIdProxy partitioned write enablement", () => {
           mode: "subsidised",
           gatewayUrl: GATEWAY_URL,
         })
+      })
+
+      // D4's second case: the person removes the drive picked for this site.
+      // The account still has another drive as its default, and the site
+      // must not fall through to it.
+      it("leaves the site with no stamp when its picked drive is removed, not on the default", async () => {
+        await seedConnectedAccount()
+        await identify()
+        chooseForSite(new BatchId(OTHER_BATCH_ID_HEX))
+        await vi.waitFor(() =>
+          expect(lastConnectionInfo()?.postageBatchId).toBe(OTHER_BATCH_ID_HEX),
+        )
+
+        const shell = createAccountsStorageManager()
+        const [current] = shell.load() as SignedInAccount[]
+        shell.save([
+          {
+            ...current,
+            postageStamps: current.postageStamps.filter(
+              (stamp) => stamp.batchID.toHex() !== OTHER_BATCH_ID_HEX,
+            ),
+          },
+        ])
+        await vi.waitFor(() =>
+          expect(lastConnectionInfo()?.uploadUnavailableReason).toBe(
+            "no-stamp",
+          ),
+        )
+        expect(lastConnectionInfo()?.postageBatchId).toBeUndefined()
       })
 
       it("says the site has no stamp when it names no gateway", async () => {
@@ -1352,6 +1424,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
               appSecret: OTHER_APP_SECRET,
               lastConnectedAt: Date.now(),
               connectedUntil: Date.now() + PAST_DRIVE_TTL_MS * 2,
+              postageStampBatchID: new BatchId(BATCH_ID_HEX),
             },
           ],
         })
@@ -1447,6 +1520,33 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     expect(last.storagePartitioned).toBe(true)
     expect(last.uploadMode).toBe("unavailable")
     expect(last.uploadUnavailableReason).toBe("no-stamp")
+  })
+
+  // A site spends only the drive the person picked for it, so an account
+  // default the site was never given stays out of its reach, in the handover
+  // and in what it reports.
+  it("reports no-stamp for a site with no pick, though the account has a default drive", async () => {
+    const account = makeSyncedAccount()
+    const challenge = await startPartitionedConnect()
+    await sendSetSecret(challenge, {
+      account: serializeSyncedAccount({
+        ...account,
+        connectedApps: [
+          {
+            appUrl: PARENT_ORIGIN,
+            appName: "dApp",
+            lastConnectedAt: Date.now(),
+          },
+        ],
+      }),
+    })
+
+    const infos = messagesOfType("connectionInfoChanged")
+    const last = infos[infos.length - 1]
+    expect(last.storagePartitioned).toBe(true)
+    expect(last.uploadMode).toBe("unavailable")
+    expect(last.uploadUnavailableReason).toBe("no-stamp")
+    expect(last.postageBatchId).toBeUndefined()
   })
 
   it("reports stamper-failed when the stamp resolves but the stamper does not build", async () => {
@@ -1548,6 +1648,276 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     const createCalls = vi.mocked(UtilizationAwareStamper.create).mock.calls
     expect(createCalls.length).toBeGreaterThanOrEqual(1)
     expect(String(createCalls[0][1])).toBe(BATCH_ID_HEX)
+  })
+
+  describe("wallet link", () => {
+    const linkedAccount = (walletLink?: WalletLink): SyncedAccount => ({
+      ...makeSyncedAccount(),
+      id: new EthAddress(
+        new PrivateKey(TEST_LINK_ACCOUNT_KEY_HEX).publicKey().address().toHex(),
+      ),
+      walletLink,
+    })
+
+    // The frame stores the session after the handover, through the global
+    // `localStorage`, which the next test points at its own fake. Waiting for
+    // that write here keeps this test's linked session out of the next one,
+    // whose frame would otherwise restore it.
+    afterEach(async () => {
+      await vi.waitFor(() =>
+        expect(
+          localStorageFake.getItem(partitionSessionStorageKey(PARENT_ORIGIN)),
+        ).not.toBeNull(),
+      )
+    })
+
+    const lastIdentity = () => {
+      const infos = messagesOfType("connectionInfoChanged")
+      return infos[infos.length - 1].identity
+    }
+
+    it("shares the link in the identity while the account has it on", async () => {
+      const walletLink = signedWalletLink()
+      const challenge = await startPartitionedConnect()
+      await sendSetSecret(challenge, {
+        account: serializeSyncedAccount(linkedAccount(walletLink)),
+      })
+
+      expect(lastIdentity()?.walletLink).toEqual(walletLink)
+    })
+
+    it("shares nothing while the setting is off", async () => {
+      const challenge = await startPartitionedConnect()
+      await sendSetSecret(challenge, {
+        account: serializeSyncedAccount(linkedAccount(undefined)),
+      })
+
+      expect(lastIdentity()).toBeDefined()
+      expect(lastIdentity()?.walletLink).toBeUndefined()
+    })
+
+    // A link is the account's own claim, so one that another account signed,
+    // or that names another account, never reaches a site as this one's.
+    it("shares no link that does not verify for this account", async () => {
+      const challenge = await startPartitionedConnect()
+      await sendSetSecret(challenge, {
+        account: serializeSyncedAccount(
+          linkedAccount(signedWalletLink("ef".repeat(32))),
+        ),
+      })
+
+      expect(lastIdentity()).toBeDefined()
+      expect(lastIdentity()?.walletLink).toBeUndefined()
+    })
+
+    // The setting is turned on or off in Swarm ID's own tab, which a
+    // partitioned frame hears only as an `account-delta` on the link's own
+    // clock. The site has to be told while it is open, or its next message
+    // still carries the wallet the person just withdrew.
+    describe("changed in Swarm ID while the site is signed in", () => {
+      const SIGNED_IN_AT = 2_000_000
+      const CHANGED_AT = 3_000_000
+
+      function walletLinkDelta(
+        walletLink: WalletLink | undefined,
+        walletLinkAt: number,
+      ): Record<string, unknown> {
+        const account = linkedAccount(walletLink)
+        return {
+          type: "account-delta",
+          snapshot: serializeAccountStateSnapshot({
+            accountId: account.id.toHex(),
+            metadata: {
+              accountName: account.name,
+              defaultPostageStampBatchID: BATCH_ID_HEX,
+              publicKey: account.publicKey,
+              settings: undefined,
+              walletLink,
+              walletLinkAt,
+              createdAt: account.createdAt,
+              lastModified: walletLinkAt,
+              devices: [],
+              partitionCount: 2,
+            },
+            connectedApps: [],
+            postageStamps: account.postageStamps,
+            timestamp: walletLinkAt,
+          }),
+        }
+      }
+
+      async function signedInWith(
+        walletLink: WalletLink | undefined,
+      ): Promise<BroadcastChannel> {
+        const challenge = await startPartitionedConnect()
+        await sendSetSecret(challenge, {
+          account: serializeSyncedAccount({
+            ...linkedAccount(walletLink),
+            walletLinkAt: SIGNED_IN_AT,
+          }),
+        })
+        await awaitBusJoin()
+        return new BroadcastChannel(accountChannelName)
+      }
+
+      it("stops sharing the link once it is turned off", async () => {
+        const walletLink = signedWalletLink()
+        const busChannel = await signedInWith(walletLink)
+        try {
+          expect(lastIdentity()?.walletLink).toEqual(walletLink)
+
+          busChannel.postMessage(walletLinkDelta(undefined, CHANGED_AT))
+
+          await vi.waitFor(() => {
+            expect(lastIdentity()).toBeDefined()
+            expect(lastIdentity()?.walletLink).toBeUndefined()
+          })
+        } finally {
+          busChannel.close()
+        }
+      })
+
+      it("starts sharing the link once it is turned on", async () => {
+        const walletLink = signedWalletLink()
+        const busChannel = await signedInWith(undefined)
+        try {
+          expect(lastIdentity()?.walletLink).toBeUndefined()
+
+          busChannel.postMessage(walletLinkDelta(walletLink, CHANGED_AT))
+
+          await vi.waitFor(() =>
+            expect(lastIdentity()?.walletLink).toEqual(walletLink),
+          )
+        } finally {
+          busChannel.close()
+        }
+      })
+
+      it("keeps it off on the site's next load", async () => {
+        const busChannel = await signedInWith(signedWalletLink())
+        try {
+          busChannel.postMessage(walletLinkDelta(undefined, CHANGED_AT))
+          await vi.waitFor(() =>
+            expect(lastIdentity()?.walletLink).toBeUndefined(),
+          )
+        } finally {
+          busChannel.close()
+        }
+
+        await reload()
+
+        await vi.waitFor(() => {
+          expect(lastIdentity()).toBeDefined()
+          expect(lastIdentity()?.walletLink).toBeUndefined()
+        })
+      })
+
+      // The bus keeps no mailbox, so a change made while no page of the site
+      // was open reaches its frame only through what the account published.
+      describe("while the site was closed", () => {
+        afterEach(() => {
+          publishedWalletLink.value = undefined
+        })
+
+        it("stops sharing the link on the next load", async () => {
+          ;(await signedInWith(signedWalletLink())).close()
+          publishedWalletLink.value = {
+            walletLink: undefined,
+            walletLinkAt: CHANGED_AT,
+          }
+
+          await reload()
+
+          await vi.waitFor(() => {
+            expect(lastIdentity()).toBeDefined()
+            expect(lastIdentity()?.walletLink).toBeUndefined()
+          })
+        })
+
+        it("starts sharing the link on the next load", async () => {
+          const walletLink = signedWalletLink()
+          ;(await signedInWith(undefined)).close()
+          publishedWalletLink.value = { walletLink, walletLinkAt: CHANGED_AT }
+
+          await reload()
+
+          await vi.waitFor(() =>
+            expect(lastIdentity()?.walletLink).toEqual(walletLink),
+          )
+        })
+
+        it("keeps the link the published state turned off before it", async () => {
+          const walletLink = signedWalletLink()
+          ;(await signedInWith(walletLink)).close()
+          publishedWalletLink.value = {
+            walletLink: undefined,
+            walletLinkAt: SIGNED_IN_AT - 1,
+          }
+
+          await reload()
+          await flushBus()
+
+          expect(lastIdentity()?.walletLink).toEqual(walletLink)
+        })
+
+        // An account with no drive publishes nothing, so a change made while
+        // no page of the site was open reaches the frame only from an open
+        // Swarm ID tab or a new sign-in. Until one of them confirms the saved
+        // link, the frame cannot tell it from one the person withdrew, and a
+        // message carrying a withdrawn wallet cannot be taken back.
+        describe("for an account that published nothing", () => {
+          it("holds the saved link back on the next load", async () => {
+            ;(await signedInWith(signedWalletLink())).close()
+
+            await reload()
+            await flushBus()
+
+            expect(lastIdentity()).toBeDefined()
+            expect(lastIdentity()?.walletLink).toBeUndefined()
+          })
+
+          it("shares it once an open Swarm ID tab confirms it", async () => {
+            const walletLink = signedWalletLink()
+            ;(await signedInWith(walletLink)).close()
+            await reload()
+            await awaitBusJoin()
+            const busChannel = new BroadcastChannel(accountChannelName)
+            try {
+              busChannel.postMessage(walletLinkDelta(walletLink, SIGNED_IN_AT))
+
+              await vi.waitFor(() =>
+                expect(lastIdentity()?.walletLink).toEqual(walletLink),
+              )
+            } finally {
+              busChannel.close()
+            }
+          })
+
+          it("shares it once the person signs in again", async () => {
+            const walletLink = signedWalletLink()
+            ;(await signedInWith(walletLink)).close()
+            await reload()
+            await flushBus()
+            expect(lastIdentity()?.walletLink).toBeUndefined()
+            ;(await signedInWith(walletLink)).close()
+
+            expect(lastIdentity()?.walletLink).toEqual(walletLink)
+          })
+        })
+      })
+
+      it("keeps the link when the change is older than its own", async () => {
+        const walletLink = signedWalletLink()
+        const busChannel = await signedInWith(walletLink)
+        try {
+          busChannel.postMessage(walletLinkDelta(undefined, SIGNED_IN_AT - 1))
+          await flushBus()
+          expect(lastIdentity()?.walletLink).toEqual(walletLink)
+        } finally {
+          busChannel.close()
+        }
+      })
+    })
   })
 
   // The device id is the frame's own: the lease and the roster identify this
@@ -1691,6 +2061,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
             appSecret: "44".repeat(32),
             lastConnectedAt: Date.now(),
             connectedUntil: Date.now() + 60_000,
+            postageStampBatchID: new BatchId(BATCH_ID_HEX),
             stampPending: true,
           },
         ],
@@ -2973,6 +3344,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
               appUrl: PARENT_ORIGIN,
               appName: "dApp",
               lastConnectedAt: Date.now() - 1000,
+              postageStampBatchID: new BatchId(BATCH_ID_HEX),
               chatBinding: binding,
             },
             {
@@ -3195,6 +3567,18 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       }
     }
 
+    /** The site's entry once its drive was replaced: the pick moved to the
+     *  replacement, on a clock newer than the hydrated entry's. */
+    function replacedPick(now: number): ConnectedApp {
+      return {
+        appUrl: PARENT_ORIGIN,
+        appName: "dApp",
+        lastConnectedAt: now,
+        postageStampBatchID: new BatchId(OTHER_BATCH_ID_HEX),
+        postageStampBatchIDAt: now + 1,
+      }
+    }
+
     /** A revoke as the UI writes it: auth material cleared, tombstoned. */
     function revoked(appUrl: string): ConnectedApp {
       const now = Date.now()
@@ -3309,13 +3693,13 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       }
     })
 
-    // A default-stamp change is two moves in one delta: the old stamp is
-    // tombstoned and the pointer moves to a new one. Fold the collections
-    // without the metadata and the pointer stays on the tombstone —
-    // `resolveStampForApp` then resolves nothing, the stamper is cleared, and
-    // the session cannot upload for the page's life with the replacement stamp
+    // Replacing the site's drive is two moves in one delta: the old stamp is
+    // tombstoned and the site's pick moves to a new one. Fold the stamps
+    // without the site's entry and the pick stays on the tombstone, so
+    // `resolveStampForApp` resolves nothing, the stamper is cleared, and the
+    // session cannot upload for the page's life with the replacement stamp
     // and its signer key already in hand.
-    it("rebinds the stamper when a delta moves the default stamp", async () => {
+    it("rebinds the stamper when a delta moves the site's drive", async () => {
       const busChannel = await hydratedSession()
       const replacementKey = "ab".repeat(32)
       try {
@@ -3323,6 +3707,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         const now = Date.now()
         busChannel.postMessage(
           accountDelta({
+            connectedApps: [replacedPick(now)],
             defaultPostageStampBatchID: OTHER_BATCH_ID_HEX,
             defaultStampAt: now,
             postageStamps: [
@@ -3372,7 +3757,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         vi.stubGlobal("Worker", FakeStampWorker)
       })
 
-      it("is rebuilt with the new signer when a delta moves the default stamp", async () => {
+      it("is rebuilt with the new signer when a delta moves the site's drive", async () => {
         const busChannel = await hydratedSession()
         const replacementKey = "ab".repeat(32)
         try {
@@ -3384,6 +3769,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
           const now = Date.now()
           busChannel.postMessage(
             accountDelta({
+              connectedApps: [replacedPick(now)],
               defaultPostageStampBatchID: OTHER_BATCH_ID_HEX,
               defaultStampAt: now,
               postageStamps: [
@@ -3524,7 +3910,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     // re-save the fold above lives only in memory: the next reload comes back
     // on the tombstoned stamp and its superseded signer key, and uploads with
     // it until some later delta happens to arrive while the page is open.
-    it("re-persists the stored session after a delta moves the default stamp", async () => {
+    it("re-persists the stored session after a delta moves the site's drive", async () => {
       const busChannel = await hydratedSession()
       const before = JSON.parse(
         localStorageFake.getItem(partitionSessionStorageKey(PARENT_ORIGIN))!,
@@ -3534,6 +3920,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         const now = Date.now()
         busChannel.postMessage(
           accountDelta({
+            connectedApps: [replacedPick(now)],
             defaultPostageStampBatchID: OTHER_BATCH_ID_HEX,
             defaultStampAt: now,
             postageStamps: [
@@ -3584,7 +3971,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         busChannel.postMessage(
           accountDelta({
             lastModified: localAt - 10_000,
-            // The second stamp has to be one this app's pointers name, or the
+            // The second stamp has to be the one this app picked, or the
             // narrowing (#578) drops it and the fold is unobservable here: the
             // delta re-points the app at it in the same message.
             connectedApps: [
@@ -3607,7 +3994,11 @@ describe("SwarmIdProxy partitioned write enablement", () => {
           }),
         )
         await vi.waitFor(() =>
-          expect(internals.partitionAccount!.postageStamps).toHaveLength(2),
+          expect(
+            internals.partitionAccount!.postageStamps.map((held) =>
+              held.batchID.toHex(),
+            ),
+          ).toEqual([OTHER_BATCH_ID_HEX]),
         )
         expect(internals.partitionAccount!.lastModified).toBe(localAt)
       } finally {
@@ -3751,6 +4142,7 @@ describe("SwarmIdProxy partitioned write enablement", () => {
                 appUrl: PARENT_ORIGIN,
                 appName: "dApp",
                 lastConnectedAt: Date.now(),
+                postageStampBatchID: new BatchId(BATCH_ID_HEX),
               },
             ],
           }),
@@ -3988,9 +4380,9 @@ describe("SwarmIdProxy partitioned write enablement", () => {
     /** What the narrowing filters BY has to be what the merge just decided —
      *  the delta carries both the new pointer and the stamp it names, and a
      *  narrowing that reads the pre-merge pointers throws the stamp away while
-     *  keeping the pointer. `resolveStampForApp` then falls through to the
-     *  account default and the session uploads to the wrong batch, until some
-     *  unrelated change happens to publish again. */
+     *  keeping the pointer. `resolveStampForApp` then resolves nothing and the
+     *  session cannot upload, until some unrelated change happens to publish
+     *  again. */
     function otherStamp(): PostageStamp {
       return {
         ...makeSyncedAccount().postageStamps[0],
@@ -4092,11 +4484,11 @@ describe("SwarmIdProxy partitioned write enablement", () => {
       }
     })
 
-    /** Same shape, one field over: the account default moves. Before the
-     *  narrowing the session at least HELD the new default's stamp; now a
-     *  pointer that never folds filters it out, so the session goes
-     *  upload-dead the moment the old default is tombstoned. */
-    it("follows the account default a newer delta moves", async () => {
+    /** Same shape, one field over: the account default moves. The site
+     *  spends only its own pick (D4, 2026-10-16), so the fold takes the new
+     *  default as account metadata and the session neither holds nor stamps
+     *  with the drive it names. */
+    it("keeps its own pick when a newer delta moves the account default", async () => {
       const busChannel = await hydratedSession()
       try {
         busChannel.postMessage(
@@ -4119,7 +4511,10 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         )
         expect(
           held.partitionAccount.postageStamps.map((s) => s.batchID.toHex()),
-        ).toContain(OTHER_BATCH_ID_HEX)
+        ).toEqual([BATCH_ID_HEX])
+        expect(
+          messagesOfType("connectionInfoChanged").at(-1)?.postageBatchId,
+        ).toBe(BATCH_ID_HEX)
       } finally {
         busChannel.close()
       }
@@ -4260,6 +4655,38 @@ describe("SwarmIdProxy partitioned write enablement", () => {
           (app) => app.appUrl === PARENT_ORIGIN,
         )
         expect(ours?.revokedAt).toBeDefined()
+      } finally {
+        busChannel.close()
+      }
+    })
+
+    // The end this frame read is somebody else's, and it already carries its
+    // own time. Stating it again at the moment it was read makes it newer than
+    // every sign-in the account's other devices made since, and the merge then
+    // ends those sessions too (`restoreLocalSessionFields`). One device's
+    // session ending this way signed out every other device of the account.
+    it("keeps the time of an end it read from storage", async () => {
+      const endedAt = Date.now() - 60_000
+      const busChannel = await unpartitionedSession()
+      try {
+        await seedConnectedAccount({
+          connectedApps: [disconnected(PARENT_ORIGIN, endedAt)],
+        })
+        await (
+          proxy as unknown as {
+            handleAccountStorageChange(): Promise<void>
+          }
+        ).handleAccountStorageChange()
+        await settleAccountWrites()
+
+        expect(messagesOfType("disconnectResponse")).toHaveLength(1)
+        const stored = JSON.parse(
+          localStorageFake.getItem(STORAGE_KEY_ACCOUNTS)!,
+        ) as { data: { connectedApps: Record<string, unknown>[] }[] }
+        const ours = stored.data[0].connectedApps.find(
+          (app) => app.appUrl === PARENT_ORIGIN,
+        )
+        expect(ours?.disconnectedAt).toBe(endedAt)
       } finally {
         busChannel.close()
       }

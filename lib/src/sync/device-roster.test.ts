@@ -19,7 +19,10 @@ import {
   RosterScanInconclusiveError,
   rosterTopic,
   rosterIdentifier,
+  ROSTER_SCAN_WINDOW,
 } from "./device-roster"
+import { MISS_READ_TIMEOUT_MS } from "./timing-constants"
+import { GATEWAY_READS_IN_FLIGHT } from "./read-line"
 
 const OWNER = new EthAddress("a".repeat(40))
 const ACCOUNT_ID = "b".repeat(40)
@@ -154,9 +157,11 @@ describe("readRoster — windowed-parallel scan", () => {
   })
 })
 
-// The per-read timeout (ROSTER_READ_TIMEOUT_MS) is module-private; the SOC read
-// is bounded by it. Driven here with fake timers + a hanging download.
-const ROSTER_READ_TIMEOUT_MS = 2500
+// The SOC read is bounded by MISS_READ_TIMEOUT_MS. Driven here with fake
+// timers + a hanging download.
+
+/** How long the public gateway took to answer a missing chunk with Bee's 404, the slowest of six reads on 2026-10-18. */
+const PUBLIC_GATEWAY_MISS_MS = 4_800
 
 /**
  * Fake Bee where index `slowOnce` HANGS on its first SOC read (→ a timeout, not
@@ -213,6 +218,45 @@ function fakeBeeWithSlow(opts: {
   }
 }
 
+describe("readRoster — a slow gateway's miss is still a miss", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    resetRosterScanCache()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // The public gateway, Swarm ID's default, answers an absent chunk with Bee's
+  // own 404 only after searching the network, and does not route GET /soc. A
+  // read limit under its miss time made every empty roster inconclusive, so no
+  // device ever wrote its first entry and no account could sign in elsewhere.
+  it("reads an empty roster as empty when every miss takes as long as the public gateway's", async () => {
+    const bee = {
+      soc: {
+        makeReader: () => ({
+          download: () =>
+            new Promise((_resolve, reject) =>
+              setTimeout(() => reject(notFound404()), PUBLIC_GATEWAY_MISS_MS),
+            ),
+        }),
+      },
+    }
+    const promise = readRoster({
+      bee: bee as never,
+      accountId: ACCOUNT_ID,
+      owner: OWNER,
+    })
+    const settled = promise.then(
+      (devices) => ({ devices }),
+      (error: unknown) => ({ error }),
+    )
+    await vi.advanceTimersByTimeAsync(PUBLIC_GATEWAY_MISS_MS * 4)
+    expect(await settled).toEqual({ devices: [] })
+  })
+})
+
 describe("readRoster — a timed-out read is not end-of-feed", () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -237,7 +281,7 @@ describe("readRoster — a timed-out read is not end-of-feed", () => {
       accountId: ACCOUNT_ID,
       owner: OWNER,
     })
-    await vi.advanceTimersByTimeAsync(ROSTER_READ_TIMEOUT_MS) // fire the hang
+    await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS) // fire the hang
     expect((await promise).map((d) => d.deviceId)).toEqual(["dev-0"])
   })
 
@@ -252,7 +296,7 @@ describe("readRoster — a timed-out read is not end-of-feed", () => {
       accountId: ACCOUNT_ID,
       owner: OWNER,
     })
-    await vi.advanceTimersByTimeAsync(ROSTER_READ_TIMEOUT_MS)
+    await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS)
     const devices = await promise
     expect(devices).toHaveLength(17)
     expect(devices.some((d) => d.deviceId === "dev-16")).toBe(true)
@@ -272,8 +316,8 @@ describe("readRoster — a timed-out read is not end-of-feed", () => {
     const assertion = expect(promise).rejects.toBeInstanceOf(
       RosterScanInconclusiveError,
     )
-    await vi.advanceTimersByTimeAsync(ROSTER_READ_TIMEOUT_MS) // first read
-    await vi.advanceTimersByTimeAsync(ROSTER_READ_TIMEOUT_MS) // the one retry
+    await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS) // first read
+    await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS) // the one retry
     await assertion
   })
 
@@ -556,9 +600,11 @@ describe("readRoster — /soc absence probe on an inconclusive /chunks read (#45
       const assertion = expect(promise).rejects.toBeInstanceOf(
         RosterScanInconclusiveError,
       )
-      // First round + the one retry, each bounded by the per-read timeout.
-      await vi.advanceTimersByTimeAsync(ROSTER_READ_TIMEOUT_MS)
-      await vi.advanceTimersByTimeAsync(ROSTER_READ_TIMEOUT_MS)
+      // First round + the one retry, each bounded by the per-read timeout,
+      // and each a window of probes sent a line's width at a time.
+      const waves = Math.ceil(ROSTER_SCAN_WINDOW / GATEWAY_READS_IN_FLIGHT)
+      await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS * waves)
+      await vi.advanceTimersByTimeAsync(MISS_READ_TIMEOUT_MS * waves)
       await assertion
     } finally {
       vi.useRealTimers()

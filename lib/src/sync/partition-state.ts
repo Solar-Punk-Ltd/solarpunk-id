@@ -43,9 +43,10 @@ import { z } from "zod"
 import {
   downloadDataWithChunkAPI,
   downloadEncryptedSOC,
+  type ChunkDownloader,
 } from "../proxy/download-data"
 import { uploadChunk, uploadSOC, type UploadTarget } from "../proxy/upload"
-import { TimeoutError, withTimeout } from "../utils/promise"
+import { TimeoutError } from "../utils/promise"
 import { makeEncryptedContentAddressedChunk } from "../chunk"
 import {
   LEASE_TTL_MS,
@@ -63,7 +64,8 @@ import {
   intentSocAddress,
   partitionOccupancyAddress,
 } from "./partition-intent"
-import { SYNC_READ_TIMEOUT_MS } from "./timing-constants"
+import { MISS_READ_TIMEOUT_MS } from "./timing-constants"
+import { throughReadLine, withReadTimeout } from "./read-line"
 
 /** Length of a Swarm encrypted reference: 32-byte address + 32-byte key. */
 const ENCRYPTED_REFERENCE_BYTES = 64
@@ -149,9 +151,6 @@ export const STATE_POINTER_EPOCH_MS = INTENT_EPOCH_MS
  * final heartbeats it survives.
  */
 const POINTER_LOOKUP_SLACK_BUCKETS = 2
-
-/** Bound a single pointer read so an absent SOC doesn't block on peer exhaustion. */
-const STATE_POINTER_READ_TIMEOUT_MS = SYNC_READ_TIMEOUT_MS
 
 /**
  * Sentinel for a pointer-bucket read that TIMED OUT — distinct from `undefined`
@@ -342,14 +341,18 @@ export async function readStatePointer(opts: {
     ordered.map(async (bucket) => {
       const identifier = makeStatePointerIdentifier(topic, bucket)
       try {
-        const soc = await withTimeout(
-          downloadEncryptedSOC(
-            opts.bee,
-            opts.owner,
-            identifier,
-            opts.swarmEncryptionKey,
-          ),
-          STATE_POINTER_READ_TIMEOUT_MS,
+        const soc = await withReadTimeout(
+          opts.bee,
+          "claim",
+          (requestOptions) =>
+            downloadEncryptedSOC(
+              opts.bee,
+              opts.owner,
+              identifier,
+              opts.swarmEncryptionKey,
+              requestOptions,
+            ),
+          MISS_READ_TIMEOUT_MS,
           "state-pointer read timed out",
         )
         const parsed = StatePointerPayloadSchemaV1.safeParse(
@@ -568,6 +571,7 @@ export async function readPartitionState(
 
   const referenceHex = pointer.referenceHex
   const refBytes = new Reference(referenceHex).toUint8Array()
+  const claimReads = throughReadLine(bee, "claim")
 
   // Cache hit: the pointer still names the reference this device's local counter
   // is already in sync with. Skip the COUNTER-chunk downloads — but still fetch
@@ -578,7 +582,7 @@ export async function readPartitionState(
   if (knownReferenceHex !== undefined && referenceHex === knownReferenceHex) {
     const { numUtilizationChunks } = getChunkLayout(batchDepth)
     const references = await downloadReferenceChunkRefs(
-      bee,
+      claimReads,
       refBytes,
       numUtilizationChunks,
     ).catch(() => undefined)
@@ -612,7 +616,7 @@ export async function readPartitionState(
   try {
     const { numUtilizationChunks } = getChunkLayout(batchDepth)
     references = await downloadReferenceChunkRefs(
-      bee,
+      claimReads,
       refBytes,
       numUtilizationChunks,
     )
@@ -625,9 +629,10 @@ export async function readPartitionState(
       references.map((ref, i) =>
         bytesAllZero(ref)
           ? undefined
-          : downloadDataWithChunkAPI(bee, Binary.uint8ArrayToHex(ref)).then(
-              (data) => ({ i, ref, data }),
-            ),
+          : downloadDataWithChunkAPI(
+              claimReads,
+              Binary.uint8ArrayToHex(ref),
+            ).then((data) => ({ i, ref, data })),
       ),
     )
     for (const read of chunkReads) {
@@ -667,7 +672,7 @@ export async function readPartitionState(
  * full-read path, or to `undefined` references on the best-effort cache-hit path).
  */
 async function downloadReferenceChunkRefs(
-  bee: Bee,
+  bee: ChunkDownloader,
   refBytes: Uint8Array,
   numUtilizationChunks: number,
 ): Promise<Uint8Array[]> {

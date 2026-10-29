@@ -14,8 +14,9 @@
 
   import SafariBackupPrompt from '$lib/components/safari-backup-prompt.svelte'
   import Toast from '$lib/components/toast.svelte'
-  // ponytail: the sync engine lives under `$lib/dev` but operates on real account
-  // data — #389 can relocate it out of `$lib/dev`; not worth the churn here.
+  // Known gap: the sync engine lives under `$lib/dev` but operates on real
+  // account data. #389 can relocate it out of `$lib/dev`, not worth the churn
+  // here.
   import { foldCurrentAccount, startFoldInterval } from '$lib/dev/account-refresh'
   import { triggerSync } from '$lib/dev/sync-hooks'
   import { LAYOUT_VIEW, isFramed, layoutView } from '$lib/frame-guard'

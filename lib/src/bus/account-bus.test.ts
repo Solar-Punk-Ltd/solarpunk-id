@@ -287,6 +287,37 @@ describe("AccountBus over BroadcastChannelTransport", () => {
     }
   })
 
+  // The signaling transport is always attached after construction, so an
+  // arrival hook wired only in the constructor would never hear a peer.
+  it("reports a peer joining a transport attached after construction, until removed", () => {
+    let arrive: ((peerId: string) => void) | undefined
+    const remote: BusTransport = {
+      local: false,
+      publish: () => {},
+      subscribe: () => () => {},
+      onPeerJoined: (handler) => {
+        arrive = handler
+        return () => {
+          arrive = undefined
+        }
+      },
+      close: () => {},
+    }
+    const bus = new AccountBus([])
+    const joined: string[] = []
+    bus.onPeerJoined((peerId) => joined.push(peerId))
+    try {
+      const remove = bus.addTransport(remote)
+      arrive?.("socket-2")
+      expect(joined).toEqual(["socket-2"])
+
+      remove()
+      expect(arrive).toBeUndefined()
+    } finally {
+      bus.close()
+    }
+  })
+
   it("closes a transport attached after close() instead of adopting it", () => {
     const bus = makeBus()
     bus.close()

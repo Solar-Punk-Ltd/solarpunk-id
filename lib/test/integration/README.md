@@ -115,13 +115,4 @@ independent and can run in any order against the shared node.
 - **CORS.** Node's `fetch` never sends a preflight. gateway-proxy 0.17.0
   hard-codes its `Access-Control-Allow-Headers`, and `swarm-postage-stamp` is
   not on the list, so a browser's user-stamp upload through this image fails
-  its preflight. Subsidised uploads are unaffected. A browser test of either mode belongs to
-  the e2e step of [#831](https://github.com/snaha/swarm-id/issues/831).
-
-## Next steps
-
-Natural extensions: sequential/epoch feeds, ACT, and manifests. These need
-network push and retrieval to work, which is why they waited on a multi-node
-cluster; `dev:cluster:start` has run queen + 3 full workers with public
-reachability since bee-compose 0.1.4, so the original blocker is gone and the
-gap is just unwritten tests.
+  its preflight. Subsidised uploads are unaffected.

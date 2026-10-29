@@ -1,5 +1,173 @@
 # Changelog
 
+## 0.10.9
+
+### Features
+
+- **ui:** a build can name its default Bee node with `PUBLIC_DEFAULT_BEE_NODE_URL`. It is the node used while the
+  person has set none, the value Network settings resets to, and the node that does not count as the person's own
+  custom one, so a site's subsidised gateway still carries uploads on it. Unset, empty or not an http or https URL, the
+  default stays `https://api.gateway.ethswarm.org/`.
+- **lib:** the proxy takes its default Bee node from `defaultBeeNodeUrl` in its config, falling back to
+  `DEFAULT_BEE_NODE_URL`.
+
+### Fixes
+
+- **lib:** a site's frame no longer signs the account out of that site on its other devices when its own session ends
+  because of something it read: a Disconnect or Remove made elsewhere, a session check, or a lapsed session. It used
+  to write that end down again dated the moment it read it, which made the end newer than every sign-in the other
+  devices had made since, so each of them was signed out too. Only the site's own Disconnect is now dated by the frame.
+
+## 0.10.8
+
+### Fixes
+
+- **lib:** the site allow list is read through ENS's Universal Resolver. A name migrated to ENSv2 has no resolver left
+  in the old ENS registry, which was the only place the allow list was looked up, so a migrated `solarpunkid.eth`
+  read as having no record and Swarm ID refused every site.
+
+## 0.10.7
+
+### Fixes
+
+- **lib:** `getPostageBatch` no longer reports an expired drive with time left. Once the PostageStamp contract no longer
+  holds the batch, it says the batch does not exist, is not usable and has no time left, whatever a Bee node still
+  tracking it says. Where neither the chain nor the Bee node answers, the drive's stored lifetime aged to now stands
+  in. The Swarmscan price estimate is gone: it was the lifetime of a fresh batch with the same deposit, so a site saw
+  an expired drive as having weeks left.
+- **ui:** the connect window no longer starts on a site's own drive once it has expired. That drive is listed but
+  cannot be chosen, and starting on it let "Go to app" keep it. The window now starts on the account default when it
+  has not expired, and on no drive otherwise.
+
+## 0.10.6
+
+### Fixes
+
+- **ui:** the site is built as one script and one stylesheet. bzz.link answers 500 to a good share of a burst of
+  parallel requests, and the split build made a cold load ask for 36 to 62 files at once, so one failed file left
+  Swarm ID stuck on its logo and the sign-in never came up. A cold load now asks for 5 files. Each page downloads
+  the whole app, 4.8 MB of script, once for each site that embeds Swarm ID and again after each release.
+
+## 0.10.5
+
+### Fixes
+
+- **ui:** the connect window closes at once again and does not wait for a save to Swarm. 0.10.4 had "Go to app" save the
+  sign-in first, and that save claims a share of the same drive the site's frame claims at that moment to send
+  with. On the public gateway each claim's read of the other's intent timed out and counted as missing, so both
+  won the same share, and a message on the person's own stamp waited over a minute. The reload fix of 0.10.4
+  stays: a site not yet in the account's saved state is allowed, so the sign-in no longer has to be saved
+  before the window closes.
+- **lib:** a restored session is held to a removal the 0.10.4 check could miss. A site the saved account does not
+  list is allowed only when every device still on the account was read, because an unread device may hold the
+  removal. Otherwise the answer is unconfirmed and writes wait for a later check. And an entry marked removed or
+  disconnected that carries this session's own sign-in time ends it, since the removal keeps the sign-in time it
+  saw, so a removing device whose clock runs behind no longer lets the session through.
+
+## 0.10.4
+
+### Fixes
+
+- **lib:** a site stays signed in across a reload on an account with a drive. A reloaded site's frame asks the
+  account's saved state on Swarm whether the site was removed or signed out while no page of it was open. It
+  read any removal mark, however old, and a site the saved state did not list, as ended. A new sign-in is
+  saved to Swarm by the connect window, which closed before its save ran, so the saved state still carried the
+  site's earlier removal, or did not list it, and every reload signed the person out. The check now ends a
+  session only for a removal or a sign-out newer than its sign-in, the clock the account's merge already
+  ranks a site by, and a site the saved state does not list is allowed, because a removal keeps the entry.
+- **ui:** "Go to app" in the connect window saves the sign-in to Swarm before it closes the window, showing
+  "Saving your sign-in…", for up to 30 s, so the account's other devices and a reloaded site see the new
+  sign-in Reverted in 0.10.5.
+
+## 0.10.3
+
+### Fixes
+
+- **lib:** a site's frame claims its share of the drive on the public gateway while it is also syncing the
+  account, so a message on the person's own stamp goes out. The public gateway, the default, speaks HTTP/1.1,
+  so a browser sends it at most six requests at a time and holds the rest back, and it takes 2.8 to 5.7 s to
+  say a chunk is missing. A claim makes a dozen reads at once, and the device list and the other devices'
+  states were being read beside it, so the claim's reads waited in the browser's queue while their time
+  limits ran. They came back as timed out, the frame went read-only, and the message stayed at Sending. In a
+  live run the frame sent 344 requests to the gateway and 125 got no answer. The frame now sends at most five
+  reads to a gateway at once (`GATEWAY_READS_IN_FLIGHT`), the claim's first, and a read's limit starts when
+  it is sent. Writes keep the sixth connection. Against a simulated gateway that answers a miss in 2.7 to
+  5 s, with a dozen devices' states read at the same time, the claim takes about 9 to 13 s on an account
+  with no other active device and about 29 to 38 s with one to three, 12 s of which is the watch for a
+  rival's intent that a contested claim always has. Before, it went read-only in the same simulation.
+
+## 0.10.2
+
+### Fixes
+
+- **lib:** a site's message on the person's own stamp is sent on the public gateway. Before a site's frame
+  stamps, it claims a share of the drive, which reads the share's lock and its last saved state. On a drive
+  no site had used, both are missing, and the public gateway, the default, takes 3.4 to 4.8 s to say so,
+  past the 2.5 s these reads had. The frame then went read-only and stamped nothing, so the message stayed
+  at Sending. These reads, and the device list's, now share an 8 s limit (`MISS_READ_TIMEOUT_MS`), which
+  replaces 0.10.1's `ROSTER_READ_TIMEOUT_MS`.
+
+## 0.10.1
+
+### Fixes
+
+- **lib:** signing in to an existing account on another device works on the public gateway. Swarm ID read
+  each slot of the account's device list with a 2.5 s limit, and the public gateway, the default, takes 3.4
+  to 4.8 s to say a slot is empty, so an empty list could never be confirmed. A first device then never
+  wrote itself into the list, and "I already have an account" elsewhere failed with "roster scan
+  inconclusive". The device list is now read with a 10 s limit (`ROSTER_READ_TIMEOUT_MS`). An account made
+  before this fix gets its first device in the list the next time that device publishes its state, which
+  an account with a drive does on its next sync.
+
+## 0.10.0
+
+### Breaking changes
+
+- **lib:** a site stamps only with the drive the person picked for it. The account default no
+  longer stands in for a missing pick, so a site with no pick, or whose picked drive is gone,
+  has no stamp and reports `uploadUnavailableReason: "no-stamp"` until the person picks one in
+  the connect window or on the Apps screen. Before, a drive bought after signing in became the
+  default and the site used it unasked, and removing the picked drive moved the site onto the
+  default. `resolveStampForApp(app, stamps)` and `stampsReachableByApp(app, stamps)` in
+  `@solarpunkltd/swarm-id/internal` no longer take the account.
+- **ui:** the connect window still starts its picker on the account default for a site with no
+  drive, and "Go to app" saves that drive as the site's. A drive picked on the Apps screen or in
+  the connect window is stored by its batch, the default included, so a later change of default
+  does not move the site.
+
+### Features
+
+- **lib:** Swarm ID's own account records written from a site's frame are paid from the drive the person picked for that site, and a site with no pick writes none (docs/Hardening.md).
+- **ui:** "Show my ENS name on sites", in the Account tab's Identity section, for an account
+  secured with an Ethereum wallet. Off by default. Turning it on asks the wallet to sign a wallet
+  link, a five-line "Swarm ID wallet link v1" statement that says in plain words what it does and
+  names the account and the wallet, which the account's own key countersigns. It is kept in the
+  account's synced state on a clock of its own, so every device has it and no settings edit on
+  another device brings it back once it is off. A smart-contract wallet cannot turn it on. Turning it off stops sites receiving it, and
+  messages already sent keep the name (docs/Wallet-Link.md).
+- **lib:** while the setting is on, `connectionInfo.identity.walletLink` carries the link as
+  `{ message, walletSignature, accountSignature }`. While it is off, a site learns no wallet.
+  Turning it off or on reaches a signed-in site at once as a `connectionInfoChanged`, and a
+  site that was closed meanwhile on its next load, from what the account published. A site
+  loaded again holds its saved link back until the published state, an open page of Swarm ID
+  or a new sign-in confirms it, so an account with no drive, which publishes nothing, never
+  hands a site a link turned off while it was closed.
+- **lib:** `verifyWalletLink(link, { account })` checks a link strictly and returns the account,
+  wallet and date it names, or undefined. `buildWalletLinkMessage`, `parseWalletLinkMessage`,
+  `WALLET_LINK_TITLE` and `WALLET_LINK_STATEMENT` give the exact format.
+- **lib:** `resolveVerifiedEnsName(wallet, { rpcUrl, timeoutMs })` answers a wallet's ENS name
+  when ENS's Universal Resolver, read through viem's `getEnsName` over the mainnet endpoint you
+  name, finds a primary name whose address record names the wallet back, and the name is already
+  ENSIP-15 normalised. Names behind CCIP-read, wildcard and ENSIP-19 resolvers are read too, and
+  their gateway sees the lookup. Anything that goes wrong answers undefined. Answers are kept for
+  ten minutes, and a failed read for 30 seconds. The library now depends on `viem`.
+
+### Fixed
+
+- **ui:** the wallet picker contacts no host of its own. It no longer fetches the Inter font
+  from rsms.me and draws in the app's font instead, and it no longer looks up each connected
+  wallet's ENS name at cloudflare-eth.com. Both told a third party who opened Swarm ID.
+
 ## 0.9.1
 
 ### Fixed
