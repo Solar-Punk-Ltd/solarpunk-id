@@ -57,7 +57,10 @@ resolver in ENSv2 as well as in the old ENS registry and asks it for
 `text(node, key)`. That is one `eth_call` to the Ethereum mainnet JSON-RPC
 endpoint the build names. Asking the old registry alone no longer works for a
 name migrated to ENSv2, because the migration leaves no resolver there, so such
-a name read as having no record and every site was refused. The list is never read
+a name read as having no record and every site was refused. The Universal
+Resolver is an upgradeable contract whose admin is the ENS DAO, so the list
+also trusts that the DAO does not upgrade it to answer falsely, the same trust
+the rest of ENS rests on. The list is never read
 through bzz.link or any Swarm gateway, so the gateway that serves the code does
 not also answer which sites it trusts. This does not make the host harmless.
 A host that serves changed code can drop the check altogether. And the endpoint
