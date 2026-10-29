@@ -3,7 +3,8 @@ title: Using Your Own Bee Node
 description: Point Swarm ID at a self-hosted Bee node, and allow the right origin in its CORS configuration
 ---
 
-By default Swarm ID talks to the public gateway at `https://api.gateway.ethswarm.org/`. To use a
+By default Swarm ID talks to the public gateway at `https://api.gateway.ethswarm.org/`, unless the
+build names another default node ([A build's default node](#a-builds-default-node)). To use a
 node you run yourself, open the settings menu in the identity site, choose **Network settings**, and
 put your node's API URL in **Bee address**.
 An application that embeds the identity site and runs the node itself can write that setting
@@ -101,3 +102,23 @@ you run by hand needs the setting above.
 
 A [subsidised gateway](../subsidised-gateway/) is fetched by the same iframe, so it needs the same
 entry in its CORS configuration — the identity site's origin, not the origins of the apps it serves.
+
+## A build's default node
+
+A copy of the identity site that runs its own gateway can make that gateway the default, so a
+person who never opened **Network settings** uses it. The setting is a public build-time setting of
+the identity site, like the others in `ui/.env.example`, read from `_app/env.js` when the page
+starts.
+
+| Setting                       | Default                             | What it does                                                                                                                                                           |
+| ----------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PUBLIC_DEFAULT_BEE_NODE_URL` | `https://api.gateway.ethswarm.org/` | The Bee node used while the person has set none, the value **Reset** puts back, and the node that does not count as the person's own custom one. An http or https URL. |
+
+A Bee address the person saved still wins over it. A value that is not an http or https URL is
+ignored with a warning in the console, and the built-in default stands. A bare origin is read with
+a trailing slash, so `https://bee.example.com` and `https://bee.example.com/` are the same default.
+
+The default decides one more thing. While the node in effect is the default, a site's
+[subsidised gateway](../subsidised-gateway/) carries its uploads. A node the person picked
+themselves switches that gateway off, so their uploads go to their node. With this setting, a
+person who saved `https://api.gateway.ethswarm.org/` by hand has a custom node on that build.
