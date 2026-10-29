@@ -5,12 +5,13 @@
  * Reads postage batch state directly from the Swarm PostageStamp contract on
  * Gnosis Chain, by batch ID, over a plain JSON-RPC `eth_call`.
  *
- * This is the ground truth for a stamp's remaining lifetime: it is the exact
- * data a Bee node uses internally to compute `batchTTL`, but it does not
- * require the node to know about the batch. A stamp added manually (or owned
- * by a different node) has no entry in `GET /stamps/{id}`, so the Bee-node TTL
- * path falls back to a constant-price approximation that drifts as the chain
- * price moves (see issue #344). Querying the contract avoids that entirely.
+ * The chain is the source of truth for whether a batch exists and how long it
+ * has left. This is the exact data a Bee node uses internally to compute
+ * `batchTTL`, and reading it does not require the node to know about the
+ * batch, so a stamp added manually (or owned by a different node), which has
+ * no entry in `GET /stamps/{id}`, still gets its lifetime from the contract.
+ * The Bee node answers `usable`, which the chain does not hold (see
+ * {@link fetchBatchStanding}).
  *
  * The contract exposes the per-chunk normalised balance accounting used by the
  * storage-incentives system:
@@ -49,11 +50,11 @@ function isLocalRpcUrl(rpcUrl: string): boolean {
 /**
  * Picks the PostageStamp contract address that matches the chain `rpcUrl` points
  * at. A dev-override address (bee-compose anvil) is only honoured against a local
- * RPC; against any remote RPC (Gnosis mainnet) it would read a nonexistent
- * contract — `eth_call` returns empty, the batch looks unknown, and callers
- * silently fall back to a bogus price estimate. Tying the address to the RPC
- * network stops the two from drifting apart, which is what produced wildly wrong
- * estimated expiry dates when a dev build read a mainnet batch (#344).
+ * RPC. Against any remote RPC (Gnosis mainnet) it would read a nonexistent
+ * contract, `eth_call` would return empty, and the standing would rest on the
+ * Bee node alone. Tying the address to the RPC network stops the two from
+ * drifting apart, which is what produced wildly wrong estimated expiry dates
+ * when a dev build read a mainnet batch (#344).
  */
 export function resolvePostageStampContractAddress(
   rpcUrl: string,
@@ -191,20 +192,6 @@ async function ethCallBatch(
 }
 
 /**
- * Fetches a consistent on-chain snapshot of a postage batch from the
- * PostageStamp contract: its `batches(batchId)` tuple plus the global
- * `currentTotalOutPayment()` and `lastPrice()`.
- *
- * @param rpcUrl - Gnosis Chain JSON-RPC URL
- * @param batchId - 32-byte hex batch ID, with or without `0x` prefix
- * @param contractAddress - PostageStamp contract address to read from. Defaults
- *          to the Gnosis mainnet deployment; override for a local dev chain
- *          (bee-compose anvil deploys it at a different address).
- * @returns The decoded state, or `undefined` if the batch is unknown to the
- *          contract (zero owner) or the RPC request fails. Never throws — the
- *          UI falls back to other expiry sources on `undefined`.
- */
-/**
  * Outcome of an on-chain batch read, keeping the two failure modes distinct:
  *   - `found` — the contract knows the batch (non-zero owner).
  *   - `not-found` — the contract returned an all-zero tuple; the batch
@@ -218,9 +205,18 @@ export type OnChainBatchResult =
   | { status: "error" }
 
 /**
- * Reads a batch's on-chain state, distinguishing "definitively absent" from
- * "couldn't check".
- * collapses both into `undefined`.
+ * Fetches a consistent on-chain snapshot of a postage batch from the
+ * PostageStamp contract: its `batches(batchId)` tuple plus the global
+ * `currentTotalOutPayment()` and `lastPrice()`, in one batched request.
+ *
+ * @param rpcUrl - Gnosis Chain JSON-RPC URL
+ * @param batchId - 32-byte hex batch ID, with or without `0x` prefix
+ * @param contractAddress - PostageStamp contract address to read from. Defaults
+ *          to the Gnosis mainnet deployment. Override it for a local dev chain
+ *          (bee-compose anvil deploys it at a different address).
+ * @returns `found` with the decoded state, `not-found` when the contract knows
+ *          no such batch (zero owner), or `error` when the request failed or
+ *          its payload could not be decoded. Never throws.
  */
 export async function fetchOnChainBatchStateResult(
   rpcUrl: string,
