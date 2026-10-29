@@ -155,9 +155,8 @@ told it had been revoked, and `ConnectionInfo.uploadUnavailableReason` says whic
 causes a connected session hit.
 
 A private window passes the same checks. Its sessions are still discarded when the window closes,
-by design. Not yet checked on a device: how long a dormant account's partitioned storage survives
-ITP's deletion ([#659](https://github.com/snaha/swarm-id/issues/659)). WebKit's published rule is
-seven days of Safari use without interaction on the site
+by design. ITP deletes a dormant site's partitioned storage after a stretch of Safari use without
+interaction on the site. WebKit's published rule puts that stretch at seven days
 ([webkit.org, 2020-03-24](https://webkit.org/blog/10218/full-third-party-cookie-blocking-and-more/)).
 A WebKit source change of 2024-02-09 added a 30-day tier for sites never reached through
 cross-site link decoration

@@ -1,9 +1,8 @@
 # Account bus — live state propagation across tabs, partitions, and devices
 
 Status: **implemented** ([#547](https://github.com/snaha/swarm-id/pull/547) through
-[#655](https://github.com/snaha/swarm-id/pull/655); the SWIP-60 transport adapter is the one
-part still pending). Answers [#277](https://github.com/snaha/swarm-id/issues/277) — Safari sessions are no
-longer read-only — by making the Safari iframe a full participant, and unifies
+[#655](https://github.com/snaha/swarm-id/pull/655)). Answers [#277](https://github.com/snaha/swarm-id/issues/277), so Safari sessions are no
+longer read-only, by making the Safari iframe a full participant, and unifies
 cross-tab/cross-device propagation on every browser. (#277 itself is still open at the time of
 writing; the behaviour it asks for is shipped and verified on device in
 [#584](https://github.com/snaha/swarm-id/issues/584).) Builds on the account model in [`Account-State.md`](./Account-State.md) and the write
@@ -34,9 +33,9 @@ Two distinct problems hid in "synchronized back":
   partition as a separate device would multiply that contention. The lease protocol had to stay
   (it is the offline-safe fallback) but live contexts deserved a fast path.
 
-Constraint carried through the whole design: Swarm's upcoming pub-sub
-([SWIP-60](https://github.com/ethersphere/SWIPs/pull/104)) must be able to plug in later
-without an architecture change.
+Constraint carried through the whole design: every transport sits behind one interface, so a
+brokered pub-sub such as Swarm's [SWIP-60](https://github.com/ethersphere/SWIPs/pull/104) is a
+transport, not an architecture change.
 
 ## What the research established
 
@@ -65,12 +64,12 @@ Full option matrix in the appendix; the load-bearing facts:
   are available in Safari cross-origin iframes (only `getUserMedia` is permission-gated), and
   same-device loopback needs no STUN/TURN. There is no store-and-forward — which is acceptable
   precisely because durable truth stays in storage (below).
-- **SWIP-60 is real-time-only and pre-release.** Draft spec (Aug 2026), bee
+- **SWIP-60 is real-time only.** It is a draft spec (Aug 2026), with bee
   [PR #5435](https://github.com/ethersphere/bee/pull/5435) and bee-js
-  [PR #1151](https://github.com/ethersphere/bee-js/pull/1151) open, in no release; history
-  delivery is explicitly deferred to a future SWIP. Its `FEED_TOPIC` cohort binding makes an
-  ordinary sequence feed the pub-sub topic (`id = keccak256(topic ‖ index)`), so a feed-based
-  design gets broker push later with zero data-model change.
+  [PR #1151](https://github.com/ethersphere/bee-js/pull/1151). It delivers live messages and
+  carries no history. Its `FEED_TOPIC` cohort binding makes an ordinary sequence feed the
+  pub-sub topic (`id = keccak256(topic ‖ index)`), so a feed-based design maps onto it with no
+  data-model change.
 - **No third-party networks.** Public Nostr relays / MQTT brokers / Waku would work
   technically, but none offers guarantees appropriate for this application, and a dependency
   on an unrelated decentralized network is unacceptable. A small centralized service **we
@@ -91,13 +90,12 @@ feeds of [`Account-State.md`](./Account-State.md)) remain the stores of record. 
 only _deltas and coordination between live peers_ — which is why WebRTC's
 "both-peers-online-or-nothing" property is acceptable by design rather than a flaw.
 
-One interface (`BusTransport`, `lib/src/bus/account-bus.ts`), three transports:
+One interface (`BusTransport`, `lib/src/bus/account-bus.ts`), two transports:
 
-| Transport                                       | Scope                                                                                                                                     | Status                                                                                                |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `BroadcastChannel`                              | same origin + same partition — its **reach** (SwarmID tab↔tab, same-dApp Safari tabs), not who attaches it: see "Who attaches what" below | shipped; generalizes the old `BroadcastChannel("swarm-id-utilization")` channel                       |
-| WebRTC DataChannel mesh, self-hosted signaling  | across partitions, dApps, and devices                                                                                                     | shipped: `signaling/`, reached through `PUBLIC_BUS_SIGNALING_URL`, none on the hosted site by default |
-| SWIP-60 (`pubsubConnect`, `FEED_TOPIC` binding) | synced accounts, once bee/bee-js release it                                                                                               | future adapter behind the same interface                                                              |
+| Transport                                      | Scope                                                                                                                                            | Status                                                                                                |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `BroadcastChannel`                             | same origin + same partition. This is its **reach** (SwarmID tab↔tab, same-dApp Safari tabs), not who attaches it: see "Who attaches what" below | shipped, generalizes the old `BroadcastChannel("swarm-id-utilization")` channel                       |
+| WebRTC DataChannel mesh, self-hosted signaling | across partitions, dApps, and devices                                                                                                            | shipped: `signaling/`, reached through `PUBLIC_BUS_SIGNALING_URL`, none on the hosted site by default |
 
 The signaling WebSocket **doubles as an encrypted-blob relay** for peer pairs WebRTC cannot
 connect (restrictive NATs — there is no TURN). Same service, no extra infrastructure; the
@@ -153,7 +151,7 @@ newcomer                         signaling server                       existing
   so a teardown announcement made in the closing tick still reaches the wire.
 - **No mailbox.** A message reaches the peers that are in the room right now. That is the
   whole design: the bus makes live peers converge fast; it does not carry anything to a
-  context that is closed (see Known gaps). What a newcomer missed while it was closed it
+  context that is closed (see Behaviour at the edges). What a newcomer missed while it was closed it
   hears from a SwarmID tab that is open: the tab answers every `peer-joined` with the
   account's `account-delta`, debounced like any other publish, and the newcomer folds it on
   the per-field clocks, so an answer it did not need changes nothing.
@@ -243,9 +241,8 @@ With the bus in place the partitioned iframe is a first-class writer:
   `derivationKey`, so it can derive the envelope key and read the room — and every
   `account-delta` a publisher sends carries the whole stamp collection, signer keys included,
   because the publisher is unpartitioned and does not know which app each receiver is. Anything
-  running there can wait for one message. Narrowing that too means publishing per-app deltas,
-  which needs a per-app room; not in scope here, and worth stating so the next reader does not
-  mistake this for a boundary.
+  running there can wait for one message. The bus has one room per account, not one per app,
+  so a publisher cannot narrow a delta to one receiver, and this is not a boundary.
 
 - `handlePopupMessage` hydrates the projection into an in-memory account view
   (`partitionAccount`) **and keeps the handover itself** under
@@ -287,17 +284,17 @@ With the bus in place the partitioned iframe is a first-class writer:
 ### Why this shape
 
 - The socket now buys something even for a lone dApp tab: presence is what makes this device a
-  rival to every other context of the account, and what tells it who its own rivals are. Any
-  gating of the signaling attach ([#581](https://github.com/snaha/swarm-id/issues/581)) has to
-  be weighed against that.
+  rival to every other context of the account, and what tells it who its own rivals are. That
+  is why every proxy iframe attaches the signaling transport whenever a signaling URL is
+  configured.
 - On Safari, during normal dApp use the iframe is often the **only** live context — so
   correctness must never depend on the bus, only latency does. That is exactly the split
   between durable stores (unchanged) and bus (fast path).
 - One code path everywhere: Chrome/Firefox cross-tab propagation moves onto the same bus
   (BroadcastChannel transport) instead of bespoke storage-event plumbing, and cross-device
   propagation gets faster on every browser. Safari stops being a special case.
-- The bus interface is the SWIP-60 seam. Its brokered per-topic model maps 1:1; adopting it
-  is a transport adapter, not a redesign.
+- The bus interface is transport-agnostic. A brokered per-topic pub-sub such as SWIP-60 maps
+  onto `BusTransport` one to one, as another transport beside the two above.
 
 ## What shipped
 
@@ -395,59 +392,50 @@ Each landed as its own PR chain, in this order:
 6. **Presence** (#655): the heartbeat above, in the proxy and the SwarmID tab, feeding the
    rival set and the dev device list's Online badge.
 
-### Not yet
+## Replays
 
-- **SWIP-60 transport adapter**, once bee/bee-js release it
-  ([#571](https://github.com/snaha/swarm-id/issues/571)).
-- **Replay protection** ([#604](https://github.com/snaha/swarm-id/issues/604)): envelopes carry no
-  replay nonce or timestamp (they do carry a per-message AES-GCM IV — a nonce in the cryptographic
-  sense, fresh per encryption, which is not what stops a replay), and nothing durable tracks what
-  has been seen. Checked per kind, worst first:
+Envelopes carry no replay nonce or timestamp, and nothing durable tracks what has been seen. They
+do carry a per-message AES-GCM IV, a nonce in the cryptographic sense, fresh per encryption, which
+is not what stops a replay. What a replay of each kind does, worst first:
 
-  | kind                  | reaches the relay? | what a replay does                                                                                                                                                                  |
-  | --------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `lease-request`       | yes                | an idle holder releases its lane — two stamped Swarm writes — and re-acquires on its next upload. **The only durable cost.**                                                        |
-  | `lease-claim`         | yes                | stands other holders down for that round; the waiter falls back to its 10 s poll                                                                                                    |
-  | `lease-released`      | yes                | wakes a waiter early: one extra read round, and one re-scan window per wait (#593, #724)                                                                                            |
-  | `presence`            | yes                | the receiver stamps its own clock, so a replay keeps a departed device in the rival set for the 3-minute window — one absent intent read, and indefinitely if replayed on a timer\* |
-  | `account-delta`       | yes                | inert up to the one bounded echo described above\*                                                                                                                                  |
-  | `utilization-updated` | **no**             | published `localOnly`, so it never leaves the device and a relay never sees it                                                                                                      |
+| kind                  | reaches the relay? | what a replay does                                                                                                                                                                                  |
+| --------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lease-request`       | yes                | an idle holder releases its lane (two stamped Swarm writes) and re-acquires on its next upload. **The only durable cost.**                                                                          |
+| `lease-claim`         | yes                | stands other holders down for that round, and the waiter falls back to its 10 s poll                                                                                                                |
+| `lease-released`      | yes                | wakes a waiter early: one extra read round, and one re-scan window per wait (#593, #724)                                                                                                            |
+| `presence`            | yes                | the receiver stamps its own clock, so a replay keeps a departed device in the rival set for the 3-minute window. That costs one absent intent read, and lasts indefinitely if replayed on a timer\* |
+| `account-delta`       | yes                | inert up to the one bounded echo described above\*                                                                                                                                                  |
+| `utilization-updated` | **no**             | published `localOnly`, so it never leaves the device and a relay never sees it                                                                                                                      |
 
-  \* The `account-delta` echo: LWW converges and a replayed tombstone re-applies itself, but the
-  SwarmID tab's fold always commits, so the _first_ replay of a stale snapshot can change serialized
-  bytes → a real storage event → the one-round-trip republish above (a bus delta, plus a stamped feed
-  write if a partition is held). Self-limiting: the second identical replay writes identical bytes.
-  A timed `presence` replay is the same denial as a withheld `peer-left`, which the threat model
-  below already covers.
+\* The `account-delta` echo: LWW converges and a replayed tombstone re-applies itself, but the
+SwarmID tab's fold always commits, so the _first_ replay of a stale snapshot can change serialized
+bytes → a real storage event → the one-round-trip republish above (a bus delta, plus a stamped feed
+write if a partition is held). Self-limiting: the second identical replay writes identical bytes.
+A timed `presence` replay is the same denial as a withheld `peer-left`.
 
-  Server-originated frames (`welcome`, `peer-joined`, `peer-left`) are not envelopes and are not in
-  that table: they are the server's word, trusted from it by construction. Since #669 `peer-left`
-  drops a device from the rival set, so a forged one costs an intent round its rival — but a server
-  that would forge it can drop the real ones instead, which is the same denial for less work.
+Server-originated frames (`welcome`, `peer-joined`, `peer-left`) are not envelopes and are not in
+that table: they are the server's word, trusted from it by construction. Since #669 `peer-left`
+drops a device from the rival set, so a forged one costs an intent round its rival. But a server
+that would forge it can drop the real ones instead, which is the same denial for less work.
 
-  **Who can replay.** The room topic and the envelope key both derive from `derivationKey`
-  (`bus-context.ts`), so anything that can join the room already holds the account. The replayer is
-  therefore the signaling server or a WSS MITM — a party that can already deny the fast path
-  outright by dropping frames, which is cheaper and more effective than replaying one.
+**Who can replay.** The room topic and the envelope key both derive from `derivationKey`
+(`bus-context.ts`), so anything that can join the room already holds the account. The replayer is
+therefore the signaling server or a WSS MITM, a party that can already deny the fast path
+outright by dropping frames, which is cheaper and more effective than replaying one.
 
-  **What bounds the one path that costs.** `canYieldForPeer` requires a held lane, zero in-flight
-  uploads, and 3 s since the last lease activity, so a context with work ignores replays entirely;
-  and a yield leaves the holder with no lane, so it cannot be made to yield again until it
-  re-acquires. `answeredRequests` (32 ids, FIFO, in memory) absorbs a replay of a round this
-  instance already handled — but it falls through twice over: it is empty after a reload, so a
-  captured request replayed against a fresh page always lands, and FIFO eviction means even a
-  long-lived instance yields again for a captured request once 32 later rounds have pushed it out. That residue is exactly what a `sentAt` window would cover: the
-  two guards are complementary, not redundant.
+**What bounds the one path that costs.** `canYieldForPeer` requires a held lane, zero in-flight
+uploads, and 3 s since the last lease activity, so a context with work ignores replays entirely.
+A yield leaves the holder with no lane, so it cannot be made to yield again until it
+re-acquires. `answeredRequests` (32 ids, FIFO, in memory) absorbs a replay of a round this
+instance already handled, but it falls through twice over. It is empty after a reload, so a
+captured request replayed against a fresh page always lands, and FIFO eviction means even a
+long-lived instance yields again for a captured request once 32 later rounds have pushed it out.
 
-  **Why it is not built.** A `{ sentAt, message }` wrapper reintroduces clock skew into a design
-  that avoided it on purpose — presence carries no timestamp precisely so there is "no timestamp to
-  skew" — and the window has to be generous enough for a hidden tab's throttled timers, which still
-  admits an immediate replay. Bounded nuisance, from an attacker with cheaper denial available,
-  against a real new failure mode. Revisit with SWIP-60 (#571), where the transport is brokered by
-  someone else and the envelope has to carry its own guarantees.
-
-- **Gating the signaling attach** ([#581](https://github.com/snaha/swarm-id/issues/581)) — see
-  Why this shape.
+**Why envelopes carry no timestamp.** A `{ sentAt, message }` wrapper would reintroduce clock
+skew into a design that avoids it on purpose. Presence carries no timestamp precisely so there is
+no timestamp to skew. The window would also have to be generous enough for a hidden tab's
+throttled timers, which still admits an immediate replay. A replay is a bounded nuisance, from an
+attacker with cheaper denial available, and a time window would add a real new failure mode.
 
 ## Verification
 
@@ -486,31 +474,17 @@ Done:
   discarded when the window closes. Apps no longer receive the device id, so this is no longer
   checked ([Hardening.md](Hardening.md)). That run measured the older path, a popup the session
   frame opened posting through `window.opener`. The popup is now opened by the Swarm ID button
-  frame and posts to the Swarm ID frames beside it (`ui/src/lib/handover-targets.ts`), which
-  is still to be measured on a real device.
+  frame and posts to the Swarm ID frames beside it (`ui/src/lib/handover-targets.ts`).
 
-Not yet written:
+## Behaviour at the edges
 
-- Lease handover with a signaling server in the live suite — sub-second with both peers live,
-  timeout fallback with one peer killed. Extends
-  `lib/test/live/multi-device-acquire-upload.test.ts` and
-  `three-device-acquire-handoff.test.ts`, not the Playwright rig.
-- Whether a dormant account's partitioned storage survives ITP's deletion window, seven or 30
-  days of Safari use depending on the source (see the ITP note under Known gaps)
-  ([#659](https://github.com/snaha/swarm-id/issues/659)) — two loads in one sitting say
-  nothing about it. Nothing in the bus depends on the answer now that stale devices are
-  ignored rather than removed.
-
-## Known gaps
-
-- **A mixed-version window means two holders of one lane.** The lock, intent and occupancy
-  addresses derive from the batch since [#589](https://github.com/snaha/swarm-id/issues/589), so an
-  old bundle and a new one compute different addresses for the same `(batch, partition)` and each
-  reads the other's lane as free — two writers in one slot set, not a stale read. Both sides deploy
-  together, which is what makes that window short rather than absent; it is the same deploy-in-step
-  property [#588](https://github.com/snaha/swarm-id/issues/588) established for the channel rename, and
-  the first change here where the cost of getting it wrong is a corrupted lane rather than a missed
-  message.
+- **Two bundles on different lane addresses means two holders of one lane.** The lock, intent
+  and occupancy addresses derive from the batch since
+  [#589](https://github.com/snaha/swarm-id/issues/589), so a bundle from before that change and
+  one from after it compute different addresses for the same `(batch, partition)` and each
+  reads the other's lane as free. That is two writers in one slot set, not a stale read. Both sides
+  deploy together for that reason, the same deploy-in-step property
+  [#588](https://github.com/snaha/swarm-id/issues/588) established for the channel rename.
 - A revocation made while a dApp partition is **closed** is not pushed to it: the room has no
   mailbox. Since #635 the popup re-handshake is no longer what catches it either — a restored
   session reads the account's published state before its first write instead, and ends itself
@@ -535,8 +509,8 @@ Not yet written:
 - **Network settings do not reach a partitioned session at all.** The Bee node and RPC URLs are
   browser-local (`swarm-id-network-settings`), not account state, so they ride the connect
   handover and nothing refreshes them: a node changed in the first-party SwarmID tab is picked up
-  at the next connect. Deliberately out of scope for the bus — the settings are per-browser, and a
-  peer's copy would be as meaningless as its session deadline. The proxy's `storage` listener for
+  at the next connect. The bus does not carry them: the settings are per-browser, and a peer's
+  copy would be as meaningless as its session deadline. The proxy's `storage` listener for
   that key is skipped while partitioned, since the store it would re-read is the partition's own
   and holds nothing: loading it would silently reset the session to the public gateway and the
   default RPC ([#580](https://github.com/snaha/swarm-id/issues/580)).
@@ -566,9 +540,7 @@ Not yet written:
   with a **30 operational day** tier for sites never reached through cross-site link
   decoration, or reached with link decoration filtered, and seven days kept for a site reached
   with unfiltered link decoration. That commit's message says it does not change current
-  behaviour, so it does not settle which window shipped Safari applies, and no device run here
-  has measured it ([#659](https://github.com/snaha/swarm-id/issues/659)). The Safari backup
-  prompt plans for seven ([Hardening.md](Hardening.md)).
+  behaviour. The Safari backup prompt assumes seven ([Hardening.md](Hardening.md)).
   Impact here: partitioned iframe storage is re-seeded per popup handshake (harmless),
   and every Safari connect is a first-party click in the popup that resets the trusted
   domain's clock. The residual risk is a **dormant local account's vault**
@@ -586,12 +558,12 @@ Not yet written:
 
 ## Appendix — alternatives considered
 
-| Option                                                                 | Verdict                                                                                                                                                                      |
-| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Storage Access API (non-cookie extension), FedCM, Partitioned Popins   | No Safari implementation or timeline; cookie-only SAA also demands a prior first-party visit + gesture + prompt. Dead end.                                                   |
-| "Safari iframe as a device" over Swarm feeds alone                     | Sound for synced accounts and kept as the durable layer, but excludes local accounts (P1) and inherits the slow lease UX unaccelerated (P2).                                 |
-| Third-party store-and-forward relays (Nostr NIP-78, public MQTT, Waku) | Right semantics, wrong dependency: no guarantees from unrelated networks (Nostr), test-only ToS (public MQTT), heavy/pre-1.0/mid-rebrand (Waku → Logos). Rejected.           |
-| Popup performs all writes (Coinbase keys.coinbase.com model)           | Keeps keys first-party but costs a visible popup per upload session, fights popup blockers/gesture rules, and iOS popup lifetimes are fragile.                               |
-| PSS / GSOC subscribe in the browser                                    | Receiving requires operating a full node in the mined neighborhood; GSOC is a doorbell (last message only), not a mailbox. Revisit as a doorbell once we run infrastructure. |
-| WebRTC as the _primary_ channel                                        | No store-and-forward, so unusable alone; adopted instead as the live fast path over durable stores — which is this design.                                                   |
-| A retained-message mailbox on the signaling server                     | Considered in the original design so a change could reach a closed partition; never built. The restore-time revocation read (#635) covers the case that mattered.            |
+| Option                                                                 | Verdict                                                                                                                                                            |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Storage Access API (non-cookie extension), FedCM, Partitioned Popins   | No Safari implementation or timeline. Cookie-only SAA also demands a prior first-party visit + gesture + prompt. Dead end.                                         |
+| "Safari iframe as a device" over Swarm feeds alone                     | Sound for synced accounts and kept as the durable layer, but excludes local accounts (P1) and inherits the slow lease UX unaccelerated (P2).                       |
+| Third-party store-and-forward relays (Nostr NIP-78, public MQTT, Waku) | Right semantics, wrong dependency: no guarantees from unrelated networks (Nostr), test-only ToS (public MQTT), heavy/pre-1.0/mid-rebrand (Waku → Logos). Rejected. |
+| Popup performs all writes (Coinbase keys.coinbase.com model)           | Keeps keys first-party but costs a visible popup per upload session, fights popup blockers/gesture rules, and iOS popup lifetimes are fragile.                     |
+| PSS / GSOC subscribe in the browser                                    | Receiving requires operating a full node in the mined neighborhood. GSOC is a doorbell (last message only), not a mailbox.                                         |
+| WebRTC as the _primary_ channel                                        | No store-and-forward, so unusable alone. Adopted instead as the live fast path over durable stores, which is this design.                                          |
+| A retained-message mailbox on the signaling server                     | Considered in the original design so a change could reach a closed partition, never built. The restore-time revocation read (#635) covers the case that mattered.  |

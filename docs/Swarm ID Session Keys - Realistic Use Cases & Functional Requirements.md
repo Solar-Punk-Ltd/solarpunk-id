@@ -144,9 +144,3 @@ _A team collaborates on a shared document using a decentralized editor._
 | **Validation Logic**     | Swarm Clients must be able to verify the chain of trust from Session Key \-\> Persona.                                                                            |
 | **ACT Compatibility**    | The ACT protocol must accept a valid Session Key as a proxy for the Owner/Grantee during encryption/decryption operations.                                        |
 | **State Permanence**     | Actions that modify the global state (uploads, ACT updates) must persist independently of the Session Key's lifecycle.                                            |
-
-###
-
-### **Optional / Future Research Areas**
-
-- **Granular Scope:** Restricting Session Keys to specific actions (e.g., "Read-Only," "Upload-Only," "Sign-Only"). While valuable, this adds significant complexity to the verification layer and is treated as a "Nice-to-Have" for future iterations.

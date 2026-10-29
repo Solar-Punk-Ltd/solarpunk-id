@@ -260,10 +260,8 @@ with it. WebKit's published rule is seven days
 A WebKit source change of 2024-02-09
 ([`4506123`](https://github.com/WebKit/WebKit/commit/45061230013728ec9c4900b01b12af26dc592b4b))
 added a 30-day tier for sites never reached through cross-site link decoration,
-and its own message says it does not change current behaviour. No device run in
-this repository has measured which applies
-([#659](https://github.com/snaha/swarm-id/issues/659)). The prompt's text says
-seven days, the shorter of the two.
+and its own message says it does not change current behaviour. The prompt
+assumes the shorter of the two, and its text says seven days.
 After an account is created or imported on this device, a Safari visitor is
 asked once to save their Secret Recovery Phrase or export a backup file, through
 the Account tab's existing sections. Every browser on iPhone and iPad runs

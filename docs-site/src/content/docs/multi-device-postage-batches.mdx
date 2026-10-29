@@ -602,16 +602,3 @@ To interoperate with the reference implementation, an external client must:
 All hashes are keccak256; multi-byte integers in identifiers and topics are **big-endian**
 (`uint32` for partitions, `uint64` for epochs); serialized counters are **little-endian**;
 every feed and SOC is owned by the backup signer.
-
-## Future work
-
-Tracked under the multi-device umbrella
-([#217](https://github.com/snaha/swarm-id/issues/217)):
-
-- **SWIP-60 transport for the account bus**, so synced accounts get broker push through the
-  Bee node instead of a separate signaling server. Waits on bee and bee-js releasing it;
-  tracked in [#571](https://github.com/snaha/swarm-id/issues/571).
-- **Live-suite coverage of the bus handover** — sub-second with both peers live, timeout
-  fallback with one peer killed — in `lib/test/live/`.
-- **A stale lock read after a bus wake** still costs a full poll interval and can make a
-  second holder yield ([#724](https://github.com/snaha/swarm-id/issues/724)).
