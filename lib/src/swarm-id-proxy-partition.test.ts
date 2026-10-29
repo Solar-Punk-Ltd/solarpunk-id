@@ -4659,6 +4659,38 @@ describe("SwarmIdProxy partitioned write enablement", () => {
         busChannel.close()
       }
     })
+
+    // The end this frame read is somebody else's, and it already carries its
+    // own time. Stating it again at the moment it was read makes it newer than
+    // every sign-in the account's other devices made since, and the merge then
+    // ends those sessions too (`restoreLocalSessionFields`). One device's
+    // session ending this way signed out every other device of the account.
+    it("keeps the time of an end it read from storage", async () => {
+      const endedAt = Date.now() - 60_000
+      const busChannel = await unpartitionedSession()
+      try {
+        await seedConnectedAccount({
+          connectedApps: [disconnected(PARENT_ORIGIN, endedAt)],
+        })
+        await (
+          proxy as unknown as {
+            handleAccountStorageChange(): Promise<void>
+          }
+        ).handleAccountStorageChange()
+        await settleAccountWrites()
+
+        expect(messagesOfType("disconnectResponse")).toHaveLength(1)
+        const stored = JSON.parse(
+          localStorageFake.getItem(STORAGE_KEY_ACCOUNTS)!,
+        ) as { data: { connectedApps: Record<string, unknown>[] }[] }
+        const ours = stored.data[0].connectedApps.find(
+          (app) => app.appUrl === PARENT_ORIGIN,
+        )
+        expect(ours?.disconnectedAt).toBe(endedAt)
+      } finally {
+        busChannel.close()
+      }
+    })
   })
 
   // `buckets` carry the PER-PARTITION counter `j`, not an absolute slot, so a
