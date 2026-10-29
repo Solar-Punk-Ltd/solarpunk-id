@@ -499,12 +499,6 @@ contract SessionKeyRegistry {
 3. Consider **caching layer** for revocation lists
 4. Document security model clearly
 
-### Long-Term (Future Research)
-
-1. Evaluate **Proxy Re-Encryption** for stronger cryptographic guarantees
-2. Investigate **blockchain integration** for authoritative time
-3. Research **Attribute-Based Encryption** for granular permissions
-
 ---
 
 ## 8. Relevant Codebase Files
