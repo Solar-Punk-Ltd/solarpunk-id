@@ -7,6 +7,14 @@
  */
 export const LOADING_SCREEN_ID = 'swarm-id-loading'
 
-export function removeLoadingScreen(): void {
+function removeLoadingScreen(): void {
   document.getElementById(LOADING_SCREEN_ID)?.remove()
+}
+
+/**
+ * Takes the loader away once `loaded` settles either way. A rejection is
+ * left to whoever else awaits `loaded`, and is never rethrown from here.
+ */
+export function removeLoadingScreenOnceSettled(loaded: Promise<unknown>): void {
+  loaded.then(removeLoadingScreen, removeLoadingScreen)
 }

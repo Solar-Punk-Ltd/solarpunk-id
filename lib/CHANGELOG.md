@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.10
+
+### Fixes
+
+- **ui:** a screen reader reads "Loading Swarm ID" from the loader a Swarm ID page shows while it loads. The words were
+  only the loader's label, which names it but is not its content, so a screen reader read nothing from it.
+- **ui:** after 30 seconds the loader says "Swarm ID is taking longer than usual." under the Swarm mark, in the same
+  live region, so a slow load can be told from a stuck one.
+- **ui:** a page whose accounts cannot be read no longer leaves an unhandled promise rejection behind when it takes its
+  loader away.
+
 ## 0.10.9
 
 ### Features

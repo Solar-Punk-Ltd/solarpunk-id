@@ -13,6 +13,8 @@ import { ID_ORIGIN } from './helpers'
 const LOADER = '#swarm-id-loading'
 const DARK_BACKGROUND = 'oklch(0.145 0 0)'
 const LIGHT_BACKGROUND = 'oklch(1 0 0)'
+const SLOW_TEXT = 'Swarm ID is taking longer than usual.'
+const SLOW_AFTER_MS = 30_000
 
 /** Only the page itself arrives: no script of the app runs */
 async function holdBackTheApp(page: Page) {
@@ -36,8 +38,20 @@ test('a page starts dark with the loader when the stored theme is dark', async (
   await page.goto(`${ID_ORIGIN}/connect`)
 
   await expect(page.locator(LOADER)).toBeVisible()
-  await expect(page.getByRole('status', { name: 'Loading Swarm ID' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Loading Swarm ID' })).toBeVisible()
   expect(await backgroundOf(page)).toBe(DARK_BACKGROUND)
+})
+
+test('the loader says so in words when the app takes longer than 30 seconds', async ({ page }) => {
+  await page.clock.install()
+  await holdBackTheApp(page)
+  await page.goto(`${ID_ORIGIN}/connect`)
+  const status = page.getByRole('status').filter({ hasText: 'Loading Swarm ID' })
+  await expect(status).toBeVisible()
+  await expect(page.getByText(SLOW_TEXT)).toHaveCount(0)
+
+  await page.clock.fastForward(SLOW_AFTER_MS)
+  await expect(status.getByText(SLOW_TEXT)).toBeVisible()
 })
 
 test('a page starts light when the stored theme is light', async ({ page }) => {
