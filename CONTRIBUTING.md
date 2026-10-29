@@ -35,7 +35,7 @@ For trivial changes (typos, small doc fixes), you may skip the issue step.
 We enforce consistent code style. Before committing:
 
 ```bash
-pnpm check:all  # Run all checks (format, lint, typecheck, test, knip)
+pnpm check:all  # Format check, then each package's own check:all (lint, typecheck, unit tests, and knip in ui and demo)
 ```
 
 ### Style Rules
@@ -87,7 +87,7 @@ Keep PRs small and focused on a single concern.
 ## Testing
 
 - **Unit tests**: `*.test.ts` (Vitest), beside the code they cover
-- **E2E and browser tests**: `tests/*.test.ts` in `ui/` and `demo/` (Playwright)
+- **E2E and browser tests**: `tests/*.test.ts` in `ui/` (Playwright)
 - **Integration tests**: `lib/test/integration/` (Vitest) against a local Bee cluster — run in CI
   by `integration-tests.yml`, and locally once `pnpm dev:cluster:start` is up
 - **Live tests**: `lib/test/live/`, opt-in, they self-skip without a configured endpoint
@@ -95,11 +95,13 @@ Keep PRs small and focused on a single concern.
 Run tests with:
 
 ```bash
-pnpm check:all                      # Everything CI runs, including each package's tests
+pnpm check:all                      # The unit-level checks, including each package's unit tests
 pnpm --filter @solarpunkltd/swarm-id test  # One package's unit tests
 ```
 
 There is no `pnpm test` at the repo root — tests run per package, or through `check:all`.
+CI also runs the integration, Playwright e2e, fork and three-device suites, each in its own
+workflow.
 
 ## Code Review
 
