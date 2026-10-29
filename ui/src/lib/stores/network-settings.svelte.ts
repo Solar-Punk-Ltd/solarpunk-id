@@ -1,6 +1,5 @@
 // Copyright 2026 The Swarm Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
-import { DEFAULT_BEE_NODE_URL } from '@solarpunkltd/swarm-id'
 import {
   DEFAULT_GNOSIS_RPC_URL,
   type NetworkSettings,
@@ -8,6 +7,8 @@ import {
 } from '@solarpunkltd/swarm-id/internal'
 
 import { browser } from '$app/environment'
+
+import { defaultBeeNodeUrl } from '$lib/default-bee-node'
 
 /**
  * Read through the getters, written only through `updateSettings` (pin these
@@ -27,7 +28,7 @@ function withNetworkSettingsStore(): NetworkSettingsStore {
   const storageManager = browser ? createNetworkSettingsStorageManager() : undefined
 
   const defaultSettings: NetworkSettings = {
-    beeNodeUrl: DEFAULT_BEE_NODE_URL,
+    beeNodeUrl: defaultBeeNodeUrl(),
     gnosisRpcUrl: DEFAULT_GNOSIS_RPC_URL,
   }
 
@@ -44,7 +45,7 @@ function withNetworkSettingsStore(): NetworkSettingsStore {
   /**
    * Back to following the defaults — storage cleared, not overwritten with
    * today's values. Saving the current defaults would pin them, so a later
-   * change to `DEFAULT_BEE_NODE_URL` would never reach anyone who had once
+   * change to the default node would never reach anyone who had once
    * pressed this.
    */
   function reset() {

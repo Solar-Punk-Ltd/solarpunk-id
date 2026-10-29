@@ -499,6 +499,8 @@ export class SwarmIdProxy {
   private utilizationStore: UtilizationStoreDB | undefined
   /** The Bee node the person set in Swarm ID's network settings. */
   private ownBeeApiUrl: string
+  /** The node `ownBeeApiUrl` is while the person has set none. */
+  private defaultBeeNodeUrl: string
   /**
    * The Bee node the embedding site named for its own session, from
    * `parentIdentify` or `setBeeApiUrl`. In memory only: a frame
@@ -566,7 +568,7 @@ export class SwarmIdProxy {
   private dropGatewayForOwnCustomNode(): void {
     if (
       this.siteBeeApiUrl === undefined &&
-      this.ownBeeApiUrl !== DEFAULT_BEE_NODE_URL
+      this.ownBeeApiUrl !== this.defaultBeeNodeUrl
     ) {
       this.subsidisedGatewayUrl = undefined
     }
@@ -674,9 +676,10 @@ export class SwarmIdProxy {
 
   constructor(config: ProxyConfig) {
     this.siteAllowList = config.siteAllowList
+    this.defaultBeeNodeUrl = config.defaultBeeNodeUrl || DEFAULT_BEE_NODE_URL
     // Load Bee API URL from network settings, falling back to default
     const networkSettings = createNetworkSettingsStorageManager().load()
-    this.ownBeeApiUrl = networkSettings?.beeNodeUrl || DEFAULT_BEE_NODE_URL
+    this.ownBeeApiUrl = networkSettings?.beeNodeUrl || this.defaultBeeNodeUrl
     this.gnosisRpcUrl = networkSettings?.gnosisRpcUrl || DEFAULT_GNOSIS_RPC_URL
     // PostageStamp contract address for on-chain TTL reads. The host app
     // supplies this from a build-time env so local dev can point at the
@@ -815,7 +818,7 @@ export class SwarmIdProxy {
   ): void {
     this.gnosisRpcUrl = settings?.gnosisRpcUrl || DEFAULT_GNOSIS_RPC_URL
 
-    const beeNodeUrl = settings?.beeNodeUrl || DEFAULT_BEE_NODE_URL
+    const beeNodeUrl = settings?.beeNodeUrl || this.defaultBeeNodeUrl
     if (beeNodeUrl === this.ownBeeApiUrl) {
       return
     }
@@ -6415,6 +6418,13 @@ export interface ProxyConfig {
    * origin it refuses gets an `initError` and nothing else.
    */
   siteAllowList: SiteAllowList
+  /**
+   * The Bee node used while the person has set none in the network settings,
+   * and the one that does not count as their own custom node. Defaults to
+   * `DEFAULT_BEE_NODE_URL`. The identity UI passes the same value its network
+   * settings default to, or the two would disagree on which node is custom.
+   */
+  defaultBeeNodeUrl?: string
   /**
    * PostageStamp contract address for on-chain stamp-TTL reads. Defaults to the
    * Gnosis mainnet deployment; set this (from a build-time env) to the local

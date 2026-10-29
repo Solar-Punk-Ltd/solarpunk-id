@@ -10,7 +10,7 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
   import Info from '@lucide/svelte/icons/info'
   import Settings from '@lucide/svelte/icons/settings'
-  import { DEFAULT_BEE_NODE_URL, uint8ArrayToHex, withTimeout } from '@solarpunkltd/swarm-id'
+  import { uint8ArrayToHex, withTimeout } from '@solarpunkltd/swarm-id'
   import {
     DEFAULT_GNOSIS_RPC_URL,
     derivePostageSignerKey,
@@ -37,6 +37,7 @@
   import { Switch } from '$lib/components/ui/switch'
   import { Tabs } from '$lib/components/ui/tabs'
   import { onboard } from '$lib/crypto/onboard'
+  import { defaultBeeNodeUrl } from '$lib/default-bee-node'
   import {
     ANVIL_ACCOUNT,
     type FundsRow,
@@ -157,7 +158,7 @@
       return 'Local'
     }
     if (
-      sameEndpoint(beeNodeUrl, DEFAULT_BEE_NODE_URL) &&
+      sameEndpoint(beeNodeUrl, defaultBeeNodeUrl()) &&
       sameEndpoint(gnosisRpcUrl, DEFAULT_GNOSIS_RPC_URL)
     ) {
       return 'Production'
