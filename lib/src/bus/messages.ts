@@ -129,7 +129,7 @@ export const LeaseReleasedMessageSchema = z.object({
 /**
  * "This device is live." Published on joining the room and every
  * `PRESENCE_INTERVAL_MS` (`presence.ts`); a receiver stamps its own clock, so
- * there is no timestamp to skew and a replay (#604) only refreshes a device it
+ * there is no timestamp to skew and a replay only refreshes a device it
  * has already heard. A peer on an older bundle drops it at the schema — a new
  * kind, not an envelope change, so nothing to deploy in step.
  */

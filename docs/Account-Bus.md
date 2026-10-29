@@ -64,12 +64,12 @@ Full option matrix in the appendix; the load-bearing facts:
   are available in Safari cross-origin iframes (only `getUserMedia` is permission-gated), and
   same-device loopback needs no STUN/TURN. There is no store-and-forward — which is acceptable
   precisely because durable truth stays in storage (below).
-- **SWIP-60 is real-time-only and pre-release.** Draft spec (Aug 2026), bee
+- **SWIP-60 is real-time only.** It is a draft spec (Aug 2026), with bee
   [PR #5435](https://github.com/ethersphere/bee/pull/5435) and bee-js
-  [PR #1151](https://github.com/ethersphere/bee-js/pull/1151) open, in no release; history
-  delivery is explicitly deferred to a future SWIP. Its `FEED_TOPIC` cohort binding makes an
-  ordinary sequence feed the pub-sub topic (`id = keccak256(topic ‖ index)`), so a feed-based
-  design gets broker push later with zero data-model change.
+  [PR #1151](https://github.com/ethersphere/bee-js/pull/1151). It delivers live messages and
+  carries no history. Its `FEED_TOPIC` cohort binding makes an ordinary sequence feed the
+  pub-sub topic (`id = keccak256(topic ‖ index)`), so a feed-based design maps onto it with no
+  data-model change.
 - **No third-party networks.** Public Nostr relays / MQTT brokers / Waku would work
   technically, but none offers guarantees appropriate for this application, and a dependency
   on an unrelated decentralized network is unacceptable. A small centralized service **we
