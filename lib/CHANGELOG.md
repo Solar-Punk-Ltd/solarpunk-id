@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **lib:** the site allow list is read through ENS's Universal Resolver. A name migrated to ENSv2 has no resolver left
+  in the old ENS registry, which was the only place the allow list was looked up, so a migrated `solarpunkid.eth`
+  read as having no record and Swarm ID refused every site.
+
 ## 0.10.7
 
 ### Fixes
