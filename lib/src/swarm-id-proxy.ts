@@ -749,7 +749,7 @@ export class SwarmIdProxy {
         // gateway and the default RPC, moving a user on a local or custom Bee
         // node onto neither (#580). A settings change made in the first-party
         // tab does not reach such a session at all — it is picked up at the
-        // next connect (docs/Account-Bus.md, Known gaps).
+        // next connect (docs/Account-Bus.md, Behaviour at the edges).
         if (this.partitionAccount) {
           return
         }
