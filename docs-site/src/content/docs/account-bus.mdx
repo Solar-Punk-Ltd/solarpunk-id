@@ -30,13 +30,12 @@ linkable to the account id, so the server learns a room name, connection timing,
 
 ## Transports
 
-One interface, three transports:
+One interface, two transports:
 
 | Transport                                  | Reaches                                                      | Status                                                                                                |
 | ------------------------------------------ | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
 | `BroadcastChannel`                         | contexts in the same origin and the same storage partition   | shipped                                                                                               |
 | Signaling server + WebRTC `RTCDataChannel` | everything else: other partitions, other apps, other devices | shipped, at the URL in `PUBLIC_BUS_SIGNALING_URL`, none on the hosted site by default, `:5520` in dev |
-| SWIP-60 pub-sub                            | synced accounts, through the Bee node                        | future adapter, once bee and bee-js ship it                                                           |
 
 The Swarm ID tab uses the signaling transport only — anything a `BroadcastChannel` would
 reach from there already converges through storage events.
@@ -114,8 +113,8 @@ never settles, even on a single device.
   read of the account's published state it does on restore.
 - **Not the record.** Every message either shortcuts a wait the durable protocol would
   have resolved anyway, or carries state the durable stores already hold.
-- **Not replay-protected yet** ([#604](https://github.com/snaha/swarm-id/issues/604)). The lease
-  messages are bounded by their own guards; a replayed delta or presence is inert.
+- **Not replay-protected.** Messages carry no replay nonce or timestamp. The lease messages are
+  bounded by their own guards, and a replayed delta or presence is inert.
 - **Not NAT-traversing.** Pairs WebRTC cannot connect stay on the relay through the server.
 
 ## Running it locally
