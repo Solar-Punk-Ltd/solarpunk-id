@@ -66,7 +66,7 @@ const INTENT_LIVENESS_GRACE_MS = 30_000
 /** How long a disconnected session is watched for coming back on its own. */
 const DISCONNECT_SETTLE_MS = 5_000
 /** How many rounds `ensureAllConnected` makes. Each sign-in can sign out only the
- *  devices that signed in before the last Disconnect, so the second round settles it. */
+ *  devices that signed in before the last Disconnect, so the second round normally settles it. */
 const MAX_CONNECT_PASSES = 3
 /** Long enough for a seeded device to authenticate from storage, or for one
  *  popup round trip and a retry. */
@@ -405,9 +405,13 @@ async function ensureAllConnected(devices: Device[]): Promise<void> {
       if (await device.ensureConnected()) connectedAny = true
     }
     if (!connectedAny) return
+    if (pass === MAX_CONNECT_PASSES - 1) break
     // The news reaches the others within a second of the sign-in window opening.
     await sleep(DISCONNECT_SETTLE_MS)
   }
+  throw new Error(
+    `devices still sign each other out after ${MAX_CONNECT_PASSES} rounds of sign-ins`,
+  )
 }
 
 /** The one invariant: the partitions held right now are pairwise distinct. */
