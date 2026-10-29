@@ -1,34 +1,10 @@
-# Contributing to Swarm ID
+# Working on this fork
 
-Thank you for your interest in contributing to Swarm ID! This document outlines the process for contributing to this project.
+This repository is Solar Punk's experimental fork of [snaha/swarm-id](https://github.com/snaha/swarm-id). It is
+an experiment, so it takes no outside contributions, and its issues and discussions are switched off. To report a
+problem in Swarm ID itself, or to contribute to it, go to [snaha/swarm-id](https://github.com/snaha/swarm-id).
 
-## Types of Contributions
-
-We welcome:
-
-- Bug reports and fixes
-- Feature requests and implementations
-- Documentation improvements
-
-## Issue-First Workflow
-
-**Please open a GitHub issue before starting work on any non-trivial change.**
-
-This helps us:
-
-- Avoid duplicate efforts
-- Ensure your contribution aligns with the project direction
-- Provide guidance before you invest significant time
-
-### Process
-
-1. **Search existing issues** to avoid duplicates
-2. **Open a new issue** describing the bug or feature
-3. **Wait for feedback** from maintainers
-4. **Once approved**, fork the repo and create your PR
-5. **Link your PR** to the issue (e.g., "Closes #123")
-
-For trivial changes (typos, small doc fixes), you may skip the issue step.
+What follows is how the fork is worked on.
 
 ## Code Style
 
@@ -73,17 +49,6 @@ fix: resolve Safari storage access issue
 docs: update architecture diagram
 ```
 
-## Pull Requests
-
-1. **Fork** the repository
-2. **Create a branch** from `main`
-3. **Make your changes** following the code style
-4. **Run checks**: `pnpm check:all`
-5. **Submit PR** with a clear description
-6. **Link the issue** (e.g., "Closes #123")
-
-Keep PRs small and focused on a single concern.
-
 ## Testing
 
 - **Unit tests**: `*.test.ts` (Vitest), beside the code they cover
@@ -103,16 +68,6 @@ There is no `pnpm test` at the repo root — tests run per package, or through `
 CI also runs the integration, Playwright e2e, fork and three-device suites, each in its own
 workflow.
 
-## Code Review
-
-- All PRs require review from a maintainer
-- Be responsive to feedback
-- Update your PR based on review comments
-
 ## License
 
-This project is licensed under the [Apache License 2.0](LICENSE). By contributing, you agree that your contributions will be licensed under the same license.
-
-## Questions?
-
-Open an issue or check the [documentation](docs-site/src/content/docs).
+This project is licensed under the [Apache License 2.0](LICENSE).
