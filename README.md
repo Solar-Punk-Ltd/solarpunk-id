@@ -353,9 +353,10 @@ How a partitioned session behaves:
 
 See [#277](https://github.com/snaha/swarm-id/issues/277) for the background.
 
-## Contribute
+## Contributing
 
-We have a separate [guide document](CONTRIBUTING.md) if you want to contribute to the project.
+This fork is an experiment and takes no outside contributions. [CONTRIBUTING.md](CONTRIBUTING.md) says how it is
+worked on, and [snaha/swarm-id](https://github.com/snaha/swarm-id) is where Swarm ID itself takes them.
 
 ## License
 
