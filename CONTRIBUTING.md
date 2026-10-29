@@ -17,8 +17,8 @@ pnpm check:all  # Format check, then each package's own check:all (lint, typeche
 ### Style Rules
 
 - **No semicolons**
-- **Never use `null`** — use `undefined` instead
-- **Never use `any`** — use proper types, generics, or `unknown`
+- **Never use `null`**, use `undefined` instead
+- **Never use `any`**, use proper types, generics, or `unknown`
 - **kebab-case** for file and directory names
 - **Format with Prettier**: `pnpm exec prettier --write <file>`
 
@@ -34,12 +34,12 @@ Optional longer description
 
 ### Types
 
-- `feat:` — New feature
-- `fix:` — Bug fix
-- `docs:` — Documentation only
-- `refactor:` — Code change that neither fixes a bug nor adds a feature
-- `test:` — Adding or updating tests
-- `chore:` — Maintenance tasks
+- `feat:` New feature
+- `fix:` Bug fix
+- `docs:` Documentation only
+- `refactor:` Code change that neither fixes a bug nor adds a feature
+- `test:` Adding or updating tests
+- `chore:` Maintenance tasks
 
 ### Examples
 
@@ -53,7 +53,7 @@ docs: update architecture diagram
 
 - **Unit tests**: `*.test.ts` (Vitest), beside the code they cover
 - **E2E and browser tests**: `tests/*.test.ts` in `ui/` (Playwright)
-- **Integration tests**: `lib/test/integration/` (Vitest) against a local Bee cluster — run in CI
+- **Integration tests**: `lib/test/integration/` (Vitest) against a local Bee cluster, run in CI
   by `integration-tests.yml`, and locally once `pnpm dev:cluster:start` is up
 - **Live tests**: `lib/test/live/`, opt-in, they self-skip without a configured endpoint
 
@@ -64,7 +64,7 @@ pnpm check:all                      # The unit-level checks, including each pack
 pnpm --filter @solarpunkltd/swarm-id test  # One package's unit tests
 ```
 
-There is no `pnpm test` at the repo root — tests run per package, or through `check:all`.
+There is no `pnpm test` at the repo root. Tests run per package, or through `check:all`.
 CI also runs the integration, Playwright e2e, fork and three-device suites, each in its own
 workflow.
 
