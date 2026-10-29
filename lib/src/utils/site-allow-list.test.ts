@@ -30,10 +30,28 @@ const RESOLVER = `0x${"11".repeat(20)}`
 const SITE = "https://viewer.example.com"
 const OTHER_SITE = "https://chat.example.com"
 const RESOLVE_SELECTOR = "0x9061b923"
+/**
+ * `resolve(dnsName, text(namehash, key))` for solarpunkid.eth and
+ * buzz.solarpunk.sites, encoded by viem 2.55, not by the code under test,
+ * one ABI word a line.
+ */
+const EXPECTED_RESOLVE_CALL =
+  RESOLVE_SELECTOR +
+  [
+    "0000000000000000000000000000000000000000000000000000000000000040",
+    "0000000000000000000000000000000000000000000000000000000000000080",
+    "0000000000000000000000000000000000000000000000000000000000000011",
+    "0b736f6c617270756e6b69640365746800000000000000000000000000000000",
+    "0000000000000000000000000000000000000000000000000000000000000084",
+    "59d1d43c8434204f752f86aa77edfea2f3e47273534f3f0c0e8810046350d0b9",
+    "9b76961a00000000000000000000000000000000000000000000000000000000",
+    "0000004000000000000000000000000000000000000000000000000000000000",
+    "0000001462757a7a2e736f6c617270756e6b2e73697465730000000000000000",
+    "0000000000000000000000000000000000000000000000000000000000000000",
+  ].join("")
 const TEXT_SELECTOR = "0x59d1d43c"
 const WORD_HEX = 64
 const WORD_BYTES = 32
-const SELECTOR_HEX = 10
 const START = 1_000_000
 
 /** ABI encoding of one `string` return value, written out independently. */
@@ -93,12 +111,9 @@ function stubEndpoint(): void {
     const [{ to, data }] = body.params
     const node = ensNamehash(ENS_NAME).slice(2)
     expect(to.toLowerCase()).toBe(ENS_UNIVERSAL_RESOLVER_ADDRESS.toLowerCase())
-    expect(data.slice(0, SELECTOR_HEX)).toBe(RESOLVE_SELECTOR)
+    expect(data).toBe(EXPECTED_RESOLVE_CALL)
     expect(data).toContain(uint8ArrayToHex(dnsEncodeName(ENS_NAME)))
     expect(data).toContain(`${TEXT_SELECTOR.slice(2)}${node}`)
-    expect(data).toContain(
-      uint8ArrayToHex(new TextEncoder().encode(RECORD_KEY)),
-    )
     if (!chain.resolver) {
       // The Universal Resolver reverts for a name with no resolver anywhere.
       return rpcResponse({
