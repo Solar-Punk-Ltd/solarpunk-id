@@ -11,6 +11,13 @@
 - **lib:** the proxy takes its default Bee node from `defaultBeeNodeUrl` in its config, falling back to
   `DEFAULT_BEE_NODE_URL`.
 
+### Fixes
+
+- **lib:** a site's frame no longer signs the account out of that site on its other devices when its own session ends
+  because of something it read: a Disconnect or Remove made elsewhere, a session check, or a lapsed session. It used
+  to write that end down again dated the moment it read it, which made the end newer than every sign-in the other
+  devices had made since, so each of them was signed out too. Only the site's own Disconnect is now dated by the frame.
+
 ## 0.10.8
 
 ### Fixes

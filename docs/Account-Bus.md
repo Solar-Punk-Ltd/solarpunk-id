@@ -521,7 +521,10 @@ Not yet written:
   its roster is empty and allows it ([Hardening](Hardening.md)).
 - That check asks only whether the connection ENDED: a `revokedAt` (Remove) or a `disconnectedAt`
   (Disconnect) newer than the connection the session came from. A missing entry is a sign-in not
-  saved yet, since a removal keeps its entry. A **rotated
+  saved yet, since a removal keeps its entry. A frame that ends its session on such news keeps the
+  end's own time and never dates it anew, because an end dated at the moment it was read is newer
+  than every sign-in the account's other devices made since, and would sign them all out. Only the
+  site's own Disconnect is dated by the frame. A **rotated
   signer key or site stamp changed on the Apps screen** made while the tab
   was closed is not adopted on restore;
   the session comes up on the handed-over view and corrects at the next live overlap. The wallet
