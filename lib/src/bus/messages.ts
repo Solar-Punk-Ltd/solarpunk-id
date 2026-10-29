@@ -5,8 +5,8 @@
  * Account-bus message schemas.
  *
  * Wire format is JSON-serializable (plain objects, hex strings) so the same
- * messages can later travel transports that leave the browser (WebRTC,
- * SWIP-60). Receivers parse with `BusMessageSchema`, which revives typed
+ * messages travel transports that leave the browser (the WebRTC mesh and the
+ * signaling relay). Receivers parse with `BusMessageSchema`, which revives typed
  * values (BatchId, PrivateKey, bigint) exactly like the device-state feed
  * payloads do — see `docs/Account-Bus.md`.
  */
