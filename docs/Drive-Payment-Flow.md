@@ -443,13 +443,11 @@ has `topUpAmount === 0`, so nothing was paid, nothing grew, and a retry costs ex
 attempt did — nothing. The same failure there is an ordinary error in the ordinary red tone, saying
 so; the neutral copy would otherwise tell the user their money went somewhere it did not.
 
-Retrying it is **not yet free**. `runResize` re-derives `resizePlan` from the live remaining balance,
-which the top-up has just increased, so a keep-lifespan retry asks for a second top-up sized against
-the grown figure — for a depth step of one, exactly twice the first. Chain state alone cannot fix
-this: a batch topped up for a pending resize is indistinguishable from one that always held that
-balance, so resuming needs the target depth persisted on the record. Tracked, along with the dialog
-copy that currently promises otherwise, in
-[#541](https://github.com/snaha/swarm-id/issues/541).
+Retrying it costs again. `runResize` re-derives `resizePlan` from the live remaining balance, which
+the top-up has just increased, so a keep-lifespan retry asks for a second top-up sized against the
+grown figure, for a depth step of one exactly twice the first. Chain state cannot tell a batch
+topped up for a pending resize from one that always held that balance, so a retry has nothing to
+resume from. The neutral message says so: trying again re-prices the change and costs again.
 
 ## Dev and testing
 
@@ -506,7 +504,8 @@ because nothing needs paying for, not because a rail was suppressed.
 `ui/tests/payment-rail.test.ts` is the suite that deliberately does not prefund, so the screens open
 and the rail runs end to end: method → connect → configure → pay, then a real deposit on the source
 chain, the solver's delivery, the real Sushi swap and the real `createBatch`. Isolated component
-tests would re-cover those same screens with nothing behind them, so that tier is not planned.
+tests would re-cover those same screens with nothing behind them, so the payment screens have no
+isolated component tests.
 
 One delivery hazard is worth knowing while reading this: a native transfer to an address that has
 authorised an EIP-7702 delegate executes that delegate's fallback, so the 21 000 gas a transfer to a
@@ -514,14 +513,6 @@ plain EOA costs is not enough and the transfer reverts. Every postage signer aut
 permanently on its first bundled operation, so from a drive's second paid operation onward the
 recipient is a delegated address. `estimateTransferGas` (`multichain/src/rpc.ts`) estimates rather
 than assumes.
-
-## Out of scope
-
-- **Extending or resizing through the widget.** Its ABI cannot, so those dialogs list one method.
-  Contributing `mode=topup` upstream to `ethersphere/multichain-widget` would change that, and is not
-  planned here.
-- **Retiring either method.** Which one eventually wins is a decision for after the built-in engine
-  has a mainnet season behind it; until then both are shipped and the older one leads.
 
 ## Files and tests
 
