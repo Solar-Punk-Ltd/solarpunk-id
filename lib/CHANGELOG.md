@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.9
+
+### Features
+
+- **ui:** a build can name its default Bee node with `PUBLIC_DEFAULT_BEE_NODE_URL`. It is the node used while the
+  person has set none, the value Network settings resets to, and the node that does not count as the person's own
+  custom one, so a site's subsidised gateway still carries uploads on it. Unset, empty or not an http or https URL, the
+  default stays `https://api.gateway.ethswarm.org/`.
+- **lib:** the proxy takes its default Bee node from `defaultBeeNodeUrl` in its config, falling back to
+  `DEFAULT_BEE_NODE_URL`.
+
 ## 0.10.8
 
 ### Fixes
