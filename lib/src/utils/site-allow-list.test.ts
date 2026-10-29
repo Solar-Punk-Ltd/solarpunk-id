@@ -10,7 +10,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { MockInstance } from "vitest"
 import { uint8ArrayToHex } from "./hex"
-import { ENS_REGISTRY_ADDRESS, ensNamehash } from "./ens"
+import {
+  dnsEncodeName,
+  ENS_UNIVERSAL_RESOLVER_ADDRESS,
+  ensNamehash,
+} from "./ens"
 import {
   SITE_ALLOW_LIST_CACHE_MS,
   createSiteAllowList,
@@ -23,10 +27,9 @@ const RPC_URL = "https://rpc.example"
 const ENS_NAME = "solarpunkid.eth"
 const RECORD_KEY = "buzz.solarpunk.sites"
 const RESOLVER = `0x${"11".repeat(20)}`
-const ZERO_ADDRESS = `0x${"00".repeat(20)}`
 const SITE = "https://viewer.example.com"
 const OTHER_SITE = "https://chat.example.com"
-const RESOLVER_SELECTOR = "0x0178b8bf"
+const RESOLVE_SELECTOR = "0x9061b923"
 const TEXT_SELECTOR = "0x59d1d43c"
 const WORD_HEX = 64
 const WORD_BYTES = 32
@@ -43,8 +46,20 @@ function abiString(text: string): string {
   return `0x${offset}${length}${padded}`
 }
 
-function addressWord(address: string): string {
-  return `0x${address.slice(2).padStart(WORD_HEX, "0")}`
+/**
+ * The Universal Resolver's `(bytes, address)` return value around the
+ * resolver's own answer, written out independently.
+ */
+function universalAnswer(resolved: string, resolver: string): string {
+  const inner = resolved.slice(2)
+  const padded = inner.padEnd(
+    Math.ceil(inner.length / WORD_HEX) * WORD_HEX,
+    "0",
+  )
+  const offset = (WORD_BYTES * 2).toString(16).padStart(WORD_HEX, "0")
+  const address = resolver.slice(2).padStart(WORD_HEX, "0")
+  const length = (inner.length / 2).toString(16).padStart(WORD_HEX, "0")
+  return `0x${offset}${address}${length}${padded}`
 }
 
 function rpcResponse(body: unknown, status = 200): Response {
@@ -77,23 +92,27 @@ function stubEndpoint(): void {
     expect(body.method).toBe("eth_call")
     const [{ to, data }] = body.params
     const node = ensNamehash(ENS_NAME).slice(2)
-    if (to.toLowerCase() === ENS_REGISTRY_ADDRESS.toLowerCase()) {
-      expect(data).toBe(`${RESOLVER_SELECTOR}${node}`)
+    expect(to.toLowerCase()).toBe(ENS_UNIVERSAL_RESOLVER_ADDRESS.toLowerCase())
+    expect(data.slice(0, SELECTOR_HEX)).toBe(RESOLVE_SELECTOR)
+    expect(data).toContain(uint8ArrayToHex(dnsEncodeName(ENS_NAME)))
+    expect(data).toContain(`${TEXT_SELECTOR.slice(2)}${node}`)
+    expect(data).toContain(
+      uint8ArrayToHex(new TextEncoder().encode(RECORD_KEY)),
+    )
+    if (!chain.resolver) {
+      // The Universal Resolver reverts for a name with no resolver anywhere.
       return rpcResponse({
-        result: addressWord(chain.resolver ?? ZERO_ADDRESS),
+        jsonrpc: "2.0",
+        id: 1,
+        error: { code: 3, message: "execution reverted" },
       })
     }
-    if (chain.resolver && to.toLowerCase() === chain.resolver.toLowerCase()) {
-      expect(data.slice(0, SELECTOR_HEX)).toBe(TEXT_SELECTOR)
-      expect(data.slice(SELECTOR_HEX, SELECTOR_HEX + WORD_HEX)).toBe(node)
-      expect(data).toContain(
-        uint8ArrayToHex(new TextEncoder().encode(RECORD_KEY)),
-      )
-      return rpcResponse({
-        result: chain.rawText ?? abiString(chain.record ?? ""),
-      })
-    }
-    return rpcResponse({ result: "0x" })
+    return rpcResponse({
+      result: universalAnswer(
+        chain.rawText ?? abiString(chain.record ?? ""),
+        chain.resolver,
+      ),
+    })
   })
 }
 
@@ -340,8 +359,8 @@ describe("createSiteAllowList", () => {
       const list = createSiteAllowList(settings())
 
       await Promise.all([list.check(SITE), list.check(OTHER_SITE)])
-      // One resolver lookup and one text read.
-      expect(readsOfTheChain()).toBe(2)
+      // One read of the record through the Universal Resolver.
+      expect(readsOfTheChain()).toBe(1)
     })
   })
 

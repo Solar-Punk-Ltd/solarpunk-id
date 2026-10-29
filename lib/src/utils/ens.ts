@@ -3,20 +3,24 @@
 
 /**
  * Reading an ENS text record over an Ethereum mainnet JSON-RPC endpoint the
- * caller names: the registry's resolver for a name, then the record from that
- * resolver. Never through a Swarm gateway, since what ENS says decides who a
- * page trusts, and a gateway that serves this code must not be able to say it.
+ * caller names, through ENS's Universal Resolver, which finds a name's
+ * resolver in ENSv2 as well as in the old registry. A name migrated to ENSv2
+ * has no resolver left in the old registry, so asking that registry alone
+ * reads it as having no record. Never through a Swarm gateway, since what ENS
+ * says decides who a page trusts, and a gateway that serves this code must not
+ * be able to say it.
  *
- * Only on-chain resolvers are read. A name whose resolver answers through
- * CCIP-read (EIP-3668) or a wildcard (ENSIP-10) reads as having no record.
+ * Only on-chain answers are read. A resolver that answers through CCIP-read
+ * (EIP-3668) makes the Universal Resolver revert, which reads as no record.
  */
 
 import { keccak_256 } from "@noble/hashes/sha3"
 import { hexToUint8Array, uint8ArrayToHex } from "./hex"
 import { jsonRpcCall } from "./json-rpc"
 
-/** The ENS registry, at the same address on every chain ENS is deployed to. */
-export const ENS_REGISTRY_ADDRESS = "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"
+/** ENS's Universal Resolver on Ethereum mainnet, the deployment that reads ENSv2 names. */
+export const ENS_UNIVERSAL_RESOLVER_ADDRESS =
+  "0xeeeeeeee14d718c2b47d9923deab1335e144eeee"
 
 /**
  * The longest chain answer read by default, in bytes. A text record of a
@@ -27,13 +31,14 @@ export const ENS_REGISTRY_ADDRESS = "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"
 const MAX_CHAIN_ANSWER_BYTES = 128 * 1024
 
 const WORD_BYTES = 32
-const ADDRESS_BYTES = 20
 const SELECTOR_BYTES = 4
 const HEX_RADIX = 16
 const HEX_PREFIX_LENGTH = 2
 
-const RESOLVER_SELECTOR = selector("resolver(bytes32)")
+const RESOLVE_SELECTOR = selector("resolve(bytes,bytes)")
 const TEXT_SELECTOR = selector("text(bytes32,string)")
+/** The longest label DNS wire format can carry, its length held in one byte. */
+const MAX_LABEL_BYTES = 255
 
 /** How long each read may take. */
 export interface EnsReadOptions {
@@ -62,6 +67,34 @@ export function ensNamehash(name: string): string {
 
 function word(value: number): string {
   return value.toString(HEX_RADIX).padStart(WORD_BYTES * 2, "0")
+}
+
+/** `name` in DNS wire format (ENSIP-10): each label behind its length, then a zero byte. */
+export function dnsEncodeName(name: string): Uint8Array {
+  const labels = name === "" ? [] : name.split(".")
+  const parts = labels.map((label) => {
+    const bytes = new TextEncoder().encode(label)
+    if (bytes.length === 0 || bytes.length > MAX_LABEL_BYTES) {
+      throw new Error(`${name} has a label DNS cannot carry.`)
+    }
+    return [bytes.length, ...bytes]
+  })
+  return new Uint8Array([...parts.flat(), 0])
+}
+
+/** ABI encoding of one dynamic `bytes` value: its length word, then the bytes padded to whole words. */
+function encodeBytes(hex: string): string {
+  const paddedLength = Math.ceil(hex.length / (WORD_BYTES * 2)) * WORD_BYTES * 2
+  return `${word(hex.length / 2)}${hex.padEnd(paddedLength, "0")}`
+}
+
+/** `resolve(bytes name, bytes data)`: the Universal Resolver asks the name's resolver for `call`. */
+function encodeResolveCall(name: string, call: string): string {
+  const nameArgument = encodeBytes(uint8ArrayToHex(dnsEncodeName(name)))
+  const callArgument = encodeBytes(call.slice(HEX_PREFIX_LENGTH))
+  const firstOffset = WORD_BYTES * 2
+  const secondOffset = firstOffset + nameArgument.length / 2
+  return `0x${RESOLVE_SELECTOR}${word(firstOffset)}${word(secondOffset)}${nameArgument}${callArgument}`
 }
 
 function encodeTextCall(node: string, key: string): string {
@@ -97,22 +130,23 @@ function readWord(bytes: Uint8Array, offset: number): bigint {
 }
 
 /**
- * One ABI-encoded `address` return value, or undefined for the zero address.
- * @throws on an answer that is not exactly one word holding an address.
+ * The resolver's own answer inside the Universal Resolver's `(bytes, address)`
+ * return value, as hex data to decode again.
+ * @throws on an offset or a length past the answer's end.
  */
-function decodeAddress(result: unknown, subject: string): string | undefined {
+function decodeResolvedBytes(result: unknown, subject: string): string {
   const bytes = resultBytes(result, subject)
-  if (bytes.length !== WORD_BYTES) {
-    throw new Error(`${subject} answered an address that is not one word.`)
+  const offset = readWord(bytes, 0)
+  if (offset > BigInt(bytes.length)) {
+    throw new Error(`${subject} answered an offset past its end.`)
   }
-  const padding = bytes.slice(0, WORD_BYTES - ADDRESS_BYTES)
-  if (padding.some((byte) => byte !== 0)) {
-    throw new Error(`${subject} answered a word that is not an address.`)
+  const start = Number(offset)
+  const length = readWord(bytes, start)
+  const end = BigInt(start + WORD_BYTES) + length
+  if (end > BigInt(bytes.length)) {
+    throw new Error(`${subject} answered bytes longer than its answer.`)
   }
-  const address = bytes.slice(WORD_BYTES - ADDRESS_BYTES)
-  return address.every((byte) => byte === 0)
-    ? undefined
-    : `0x${uint8ArrayToHex(address)}`
+  return `0x${uint8ArrayToHex(bytes.slice(start + WORD_BYTES, Number(end)))}`
 }
 
 /**
@@ -158,28 +192,9 @@ async function ethCall(
 }
 
 /**
- * The resolver the registry names for `node`, or undefined when it names none.
- * @throws when the endpoint fails or the answer does not decode.
- */
-async function readEnsResolver(
-  rpcUrl: string,
-  node: string,
-  options: EnsReadOptions,
-): Promise<string | undefined> {
-  return decodeAddress(
-    await ethCall(
-      rpcUrl,
-      ENS_REGISTRY_ADDRESS,
-      `0x${RESOLVER_SELECTOR}${node.slice(2)}`,
-      options,
-    ),
-    "The registry",
-  )
-}
-
-/**
- * The text record `key` of `name`, through the resolver the registry names.
- * @throws when the name has no resolver or the answers do not decode.
+ * The text record `key` of `name`, through the Universal Resolver.
+ * @throws when the name has no resolver, which the Universal Resolver answers
+ *         with a revert, or when the answers do not decode.
  */
 export async function readEnsText(
   rpcUrl: string,
@@ -187,13 +202,15 @@ export async function readEnsText(
   key: string,
   options: EnsReadOptions,
 ): Promise<string> {
-  const node = ensNamehash(name)
-  const resolver = await readEnsResolver(rpcUrl, node, options)
-  if (!resolver) {
-    throw new Error(`${name} has no resolver.`)
-  }
-  return decodeString(
-    await ethCall(rpcUrl, resolver, encodeTextCall(node, key), options),
-    "The resolver",
+  const textCall = encodeTextCall(ensNamehash(name), key)
+  const resolved = decodeResolvedBytes(
+    await ethCall(
+      rpcUrl,
+      ENS_UNIVERSAL_RESOLVER_ADDRESS,
+      encodeResolveCall(name, textCall),
+      options,
+    ),
+    "The Universal Resolver",
   )
+  return decodeString(resolved, "The resolver")
 }

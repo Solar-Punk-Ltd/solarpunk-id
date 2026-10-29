@@ -51,10 +51,13 @@ not allow `https://a.viewer.example.com`, `https://viewer.example.com:8443` or
 
 ## How the record is read
 
-The name is resolved properly: the ENS registry
-(`0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e`) names the name's resolver, and
-the resolver's `text(node, key)` gives the record. Both are `eth_call`s to the
-Ethereum mainnet JSON-RPC endpoint the build names. The list is never read
+The name is resolved through ENS's Universal Resolver on Ethereum mainnet
+(`0xeeeeeeee14d718c2b47d9923deab1335e144eeee`), which finds the name's
+resolver in ENSv2 as well as in the old ENS registry and asks it for
+`text(node, key)`. That is one `eth_call` to the Ethereum mainnet JSON-RPC
+endpoint the build names. Asking the old registry alone no longer works for a
+name migrated to ENSv2, because the migration leaves no resolver there, so such
+a name read as having no record and every site was refused. The list is never read
 through bzz.link or any Swarm gateway, so the gateway that serves the code does
 not also answer which sites it trusts. This does not make the host harmless.
 A host that serves changed code can drop the check altogether. And the endpoint

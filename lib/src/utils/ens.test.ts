@@ -3,7 +3,7 @@
 
 import { keccak_256 } from "@noble/hashes/sha3"
 import { describe, expect, it } from "vitest"
-import { ensNamehash } from "./ens"
+import { dnsEncodeName, ensNamehash } from "./ens"
 import { uint8ArrayToHex } from "./hex"
 
 const WORD_BYTES = 32
@@ -27,5 +27,17 @@ describe("ensNamehash", () => {
     const name = join(eth, "solarpunkid")
     expect(ensNamehash("eth")).toBe(`0x${uint8ArrayToHex(eth)}`)
     expect(ensNamehash("solarpunkid.eth")).toBe(`0x${uint8ArrayToHex(name)}`)
+  })
+})
+
+describe("dnsEncodeName", () => {
+  it("writes each label behind its length and ends on a zero byte", () => {
+    expect(uint8ArrayToHex(dnsEncodeName("solarpunkid.eth"))).toBe(
+      `0b${uint8ArrayToHex(new TextEncoder().encode("solarpunkid"))}03${uint8ArrayToHex(new TextEncoder().encode("eth"))}00`,
+    )
+  })
+
+  it("refuses an empty label", () => {
+    expect(() => dnsEncodeName("solarpunkid..eth")).toThrow()
   })
 })
