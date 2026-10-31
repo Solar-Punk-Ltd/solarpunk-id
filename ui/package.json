@@ -10,6 +10,7 @@
     "clean": "rm -rf build .svelte-kit",
     "preview": "vite preview --port 5501",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check:bundle": "node scripts/check-bundle.mjs",
     "check:all": "pnpm lint && pnpm check && pnpm knip && pnpm test",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "lint": "prettier --check . && eslint .",
