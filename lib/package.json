@@ -1,6 +1,6 @@
 {
   "name": "@solarpunkltd/swarm-id",
-  "version": "0.10.10",
+  "version": "0.10.11",
   "type": "module",
   "description": "Swarm ID library for authentication and Bee API operations",
   "main": "dist/swarm-id.esm.js",
