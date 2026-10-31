@@ -131,27 +131,13 @@ jobs:
           fi
 
       # The site is served from Swarm through bzz.link, which answers 500 to a
-      # good share of a burst of parallel requests. A split build made a cold
-      # load ask for 36 to 62 files at once, and one failed file left the page
-      # stuck on its logo. `bundleStrategy: 'single'` (svelte.config.js) makes
-      # it one script and one stylesheet. A later option or plugin that splits
-      # the build again would pass every other check, so count the files.
-      - name: Check the build is one bundle (ui)
+      # good share of a burst of parallel requests and sends files
+      # uncompressed. `frameAndRest` (vite.config.ts) keeps a cold load to a
+      # few files and the embedded frames to their third of the app. A later
+      # option or plugin that undoes either would pass every other check.
+      - name: Check the build's chunks (ui)
         working-directory: ./ui
-        run: |
-          split=0
-          # $1 what is counted, $2 the files found
-          require_one() {
-            count=$(printf '%s\n' "$2" | grep -c . || true)
-            if [ "$count" -ne 1 ]; then
-              echo "::error::The ui build has $count $1 files where one bundle is expected (bundleStrategy 'single' in svelte.config.js):"
-              printf '%s\n' "$2" | head -20
-              split=1
-            fi
-          }
-          require_one script "$(find build/_app -name '*.js' ! -name env.js | sort)"
-          require_one stylesheet "$(find build/_app -name '*.css' | sort)"
-          exit "$split"
+        run: pnpm check:bundle
 
       - name: Check the build (ui)
         working-directory: ./ui

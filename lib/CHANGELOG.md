@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.11
+
+### Fixes
+
+- **ui:** the frames other sites embed, `/proxy` and `/button`, download about a third of the app, 1.6 MB, and not all
+  4.8 MB of it. bzz.link sends the site uncompressed, and the whole app took long enough that a site's client could
+  give up on starting Swarm ID. The build is two big scripts, the frames' part and the rest, and CI checks that no page
+  loads more than 8 scripts at first and no frame more than 1.9 MB.
+
 ## 0.10.10
 
 ### Fixes
