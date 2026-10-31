@@ -12,10 +12,10 @@ const config = {
     paths: {
       base: process.env.BASE_PATH || '',
     },
-    // Swarm gateways such as bzz.link answer 500 to many parallel requests, and a split build makes a cold load ask
-    // for 36 to 62 files at once. One bundle makes it 5.
+    // Split, so the frames other sites embed load only their part of the app. vite.config.ts groups the modules into
+    // two chunks, so a cold load still asks for a few files rather than 36 to 62.
     output: {
-      bundleStrategy: 'single',
+      bundleStrategy: 'split',
     },
   },
 }

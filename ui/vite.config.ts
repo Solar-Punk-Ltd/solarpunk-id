@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Plugin } from 'vite'
+import type { Plugin, Rollup } from 'vite'
 import { defineConfig } from 'vitest/config'
 
 import { stampWorkerDev } from '../lib/dev/vite-stamp-worker.js'
@@ -68,6 +68,49 @@ function stubDevOnlyModules(): Plugin {
   }
 }
 
+/**
+ * The site is served from Swarm through bzz.link, which answers 500 to a good
+ * share of a burst of parallel requests and sends every file uncompressed. So
+ * the client build is two scripts rather than one file per module, which made a
+ * cold load ask for 36 to 62 files at once:
+ *
+ * - `frame`, every module the entries and the frames other sites embed
+ *   (`/proxy`, `/button`, the root layout and error page) import statically,
+ *   about a third of the app;
+ * - `rest`, everything else, mostly the wallet libraries the connect window
+ *   and the account pages load.
+ *
+ * `frame` is closed under static imports, so it never pulls `rest` in: a frame
+ * downloads one script, not the whole app. SvelteKit's generated route nodes
+ * stay their own few-byte files, because a node assigned here would import the
+ * chunk holding its page. `pnpm check:bundle` reads the build's manifest and
+ * fails a page that loads too many scripts or a frame that loads too much.
+ */
+const FRAME_ROUTE =
+  /[/\\]src[/\\]routes[/\\](\+layout\.(svelte|ts)|\+error\.svelte|(proxy|button)[/\\][^/\\]+)$/
+const GENERATED = /[/\\]\.svelte-kit[/\\]generated[/\\]/
+/** SvelteKit makes every route node an entry, so a node is never a seed: it would bring its page in. */
+const ROUTE_NODE = /[/\\]\.svelte-kit[/\\]generated[/\\][^/\\]+[/\\]nodes[/\\]/
+
+const frameAndRest: Rollup.GetManualChunk = (() => {
+  let frame: Set<string> | null = null
+  return (id, { getModuleIds, getModuleInfo }) => {
+    if (GENERATED.test(id) || getModuleInfo(id)?.isEntry) return undefined
+    if (frame === null) {
+      const seeds = [...getModuleIds()].filter(
+        (moduleId) =>
+          FRAME_ROUTE.test(moduleId) ||
+          (getModuleInfo(moduleId)?.isEntry && !ROUTE_NODE.test(moduleId)),
+      )
+      frame = new Set(seeds)
+      for (const moduleId of frame) {
+        for (const imported of getModuleInfo(moduleId)?.importedIds ?? []) frame.add(imported)
+      }
+    }
+    return frame.has(id) ? 'frame' : 'rest'
+  }
+})()
+
 export default defineConfig(({ command }) => ({
   plugins: [tailwindcss(), sveltekit(), stampWorkerDev(), stubDevOnlyModules()],
   resolve: {
@@ -84,6 +127,10 @@ export default defineConfig(({ command }) => ({
             ),
           }
         : undefined,
+  },
+  // The server build only prerenders, and its own chunking must stay as it is.
+  environments: {
+    client: { build: { rollupOptions: { output: { manualChunks: frameAndRest } } } },
   },
   optimizeDeps: {
     exclude: ['@solarpunkltd/swarm-id', '@solarpunkltd/swarm-id/internal'],
